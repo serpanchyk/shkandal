@@ -12,3 +12,10 @@ Source priority:
 6. class defaults.
 
 Real secrets belong in ignored `.env` files, not tracked examples.
+
+Future classifier artifacts should be configured by path/environment and kept
+outside git. DVC is planned when the training flow and model artifacts exist.
+
+LLM prompts should be tracked as Ukrainian plain-text files in `worker-ml`.
+Runtime settings should select model endpoints and secrets through environment
+variables or file secrets, never committed values.

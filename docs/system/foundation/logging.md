@@ -9,7 +9,8 @@ Required fields:
 - `level`
 - `message`
 
-Optional context fields are included for future request and review workflows:
+Optional context fields are included for future request tracing and public
+interaction workflows:
 
 - `trace_id`
 - `session_id`

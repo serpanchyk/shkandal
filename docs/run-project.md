@@ -31,3 +31,9 @@ Default ports:
 - backend: <http://localhost:8000/healthz>
 - postgres: `localhost:5432`
 - qdrant: <http://localhost:6333>
+
+## Current Scope
+
+The repository currently starts service shells and infrastructure. It does not
+yet implement article ingestion, schema migrations, classifier inference, LLM
+resolution, Qdrant indexing, or public dossier pages.

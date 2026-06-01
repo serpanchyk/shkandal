@@ -2,16 +2,16 @@
 
 ## Purpose
 
-Shkandal turns scattered Ukrainian media articles about public scandals,
-corruption investigations, political cases, and socially important stories into
-structured case files.
+Shkandal turns scattered Ukrainian media and institutional articles about public
+scandals, corruption investigations, political cases, and socially important
+stories into Ukrainian-language reader-facing dossiers.
 
 ## Service Boundaries
 
 - `apps/backend`: public API and application business boundary.
-- `apps/worker-ingestion`: URL discovery, fetching, extraction, and article normalization.
-- `apps/worker-ml`: relevance classification, embeddings, retrieval, LLM resolution, and deduplication.
-- `apps/frontend`: reader and review UI.
+- `apps/worker-ingestion`: URL discovery, fetching, extraction, article normalization, and remote image URL extraction.
+- `apps/worker-ml`: binary relevance classification, article cards, embeddings, Qdrant retrieval, LLM resolution, and deduplication.
+- `apps/frontend`: public case feed, case pages, and entity pages.
 - `packages/common`: shared runtime utilities only.
 - `infra/postgres`: source-of-truth database runtime.
 - `infra/qdrant`: rebuildable vector index runtime.
@@ -23,6 +23,8 @@ structured case files.
 - Load runtime settings through Pydantic settings classes.
 - Do not commit real `.env` files or secrets.
 - Do not introduce Redis, queues, or new databases unless the product need is documented first.
+- Keep public generated content Ukrainian-only; keep code and schema names English.
+- Treat cases as reader-facing dossiers, not exclusive article clusters.
 
 ## Verification
 
@@ -46,5 +48,5 @@ npm run build
 
 ## Docs
 
-Update `PROJECT_CONTEXT.md` and `docs/system/` when service boundaries,
-runtime dependencies, configuration, or implemented behavior changes.
+Update `PROJECT_CONTEXT.md`, `README.md`, and `docs/system/` when service
+boundaries, runtime dependencies, configuration, or implemented behavior changes.

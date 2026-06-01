@@ -1,268 +1,264 @@
 # Shkandal
 
-Shkandal is a platform for tracking public cases, political scandals, corruption investigations, and socially important stories in Ukrainian media.
+Shkandal is a Ukrainian-language platform for turning scattered Ukrainian media and institutional articles about public scandals, corruption investigations, political cases, and socially important stories into reader-facing dossiers.
 
-The project collects articles from open sources, filters relevant news, groups articles into cases, extracts key actors, and builds a timeline of how each case develops over time.
+The project is built for Ukraine and about Ukraine. Public UI text, generated case titles, summaries, event descriptions, and entity descriptions are Ukrainian only. Code, database fields, and service names stay English.
 
-## Idea
+## Product Direction
 
-A normal news feed loses context quickly. One scandal can develop for months, but articles about it are scattered across different media, dates, and headlines.
+A normal news feed loses context quickly. One public case can develop for months, but articles are scattered across dates, sources, headlines, and institutions.
 
-Shkandal tries to turn scattered articles into a structured case file:
+Shkandal should show readers a living case page that answers:
 
-- what happened;
-- who is involved;
-- what the key events are;
-- how the case developed over time;
-- which articles belong to it.
+- what this case is about;
+- who and which organizations are involved;
+- what happened in chronological order;
+- which source articles support each event;
+- how this case connects to broader or more specific cases.
 
-## What Counts as a Case
+The first public version is automatic. The system should ingest articles, classify relevance, resolve cases, entities, and events, then update public pages without a mandatory human review queue. Later review and correction tools can be added, but they are not part of the MVP control flow.
 
-The project does not try to track every news article.
+## Core Concepts
 
-A good case usually has:
+### Case
 
-- named actors, suspects, officials, victims, or institutions;
-- a clear public, political, or anti-corruption interest;
-- development over time;
-- enough context for a reader to follow the story.
+A `Case` is a reader-facing dossier/topic, not an exclusive article cluster.
 
-One-off anonymous crime reports without named actors or follow-up are usually treated as noise.
+Examples:
 
-## How It Works
+- Mindichgate / Midas;
+- Dynasty cooperative corruption case;
+- Oleksiy Chernyshov related case lines;
+- Denys Komarnytskyi / Clean City;
+- Bill No. 14057 and risks for investigative journalism.
 
-Shkandal processes news articles through an automated pipeline that combines classic data engineering, vector search, machine learning, and LLM-based reasoning.
+Cases can overlap. One article can belong to multiple cases. One event can be relevant to multiple cases. A specific case can have multiple broader parent cases.
 
-The goal is not just to collect articles, but to understand whether a new article belongs to an existing public case, starts a new case, or should be ignored as irrelevant noise.
+Case relationships are explicit:
 
-### 1. Article Discovery
+- `parent_child` for broad/specific relationships;
+- `related` for meaningful overlap without containment;
+- `possible_duplicate` for later automatic or manual merge handling.
 
-The ingestion worker collects article URLs from Ukrainian media sources.
+### Article
 
-Supported discovery methods include:
+An `Article` is an ingested source item. It remains the evidence source, but public case pages should query direct case links after processing.
 
-- sitemap.xml files;
-- manually configured source sections.
+Articles store:
 
-The source configuration mostly describes where to find article URLs and which URL patterns should be included or excluded. The project tries to avoid hardcoding full article parsers for every media website.
+- source and source type;
+- original URL and canonical/normalized URL;
+- title, lead, publication date, language;
+- extracted text;
+- raw HTML;
+- remote image URL and image metadata when available.
 
-### 2. Article Fetching and Extraction
+Article clicks in the public UI go directly to the original media or institution page. Shkandal does not publish copied full article pages in the MVP.
 
-After a URL is discovered, the system downloads the page and extracts the article content.
+### Entity
 
-The extraction pipeline is generic-first:
+An `Entity` is a global person, organization, institution, company, political party, informal group, or unknown actor. There is one `entities` table with an `entity_type`, canonical Ukrainian name, aliases, and a short Ukrainian description.
 
-1. article text is extracted with generic content extraction tools;
-2. site-specific selectors are used only as a fallback;
+Entity pages are part of the product. They should show the entity description, related cases, and articles where the entity is mentioned. Entity descriptions are generated only from articles connected to public cases.
 
-The system checks whether the extracted article has a valid title, enough text, publication date, source, and acceptable boilerplate ratio.
+### Event
 
-Raw HTML can be stored so extraction can be improved later without crawling the same page again.
+An `Event` is a global real-world occurrence. Event identity is strict: two mentions are the same event only when they refer to the same occurrence with compatible date, actors, institution, action, and object.
 
-### 3. Relevance Filtering
+Related developments are separate events. For example, a court setting bail and an appeal court changing bail are different events in the same case timeline.
 
-Not every article is useful for Shkandal.
+Events do not need direct `event_relations` in the MVP. Shared cases and entities are enough for first timelines.
 
-A relevance classifier filters out unrelated news such as weather, sports, lifestyle, entertainment, generic foreign policy, or one-off crime reports without public significance.
+## Public Pages
 
-Relevant articles usually involve:
+### Homepage
 
-- Ukrainian domestic politics;
-- corruption;
-- public officials;
-- courts and law enforcement;
-- investigative journalism;
-- scandals with named actors;
-- important institutional decisions;
-- major public conflicts.
+The homepage should feel modern and live, not like an old archive. The MVP should expose a case feed with sorting modes:
 
-Articles that do not pass the relevance filter are marked as noise and are not processed further.
+- `latest`: most recently updated cases;
+- `newest`: recently created cases;
+- `popular`: most viewed cases by anonymous aggregate counters;
+- `biggest`: cases with the most linked articles;
+- `trending`: cases with the highest recent article/event velocity.
 
-### 4. Article Card Generation
+Future homepage ideas include live event streams, infographics, and real-time update blocks.
 
-For every relevant article, the system creates a compact article card.
+### Case Page
 
-The article card contains only the most important information:
+A case page should contain:
+
+- stable Ukrainian case title;
+- short neutral Ukrainian summary;
+- people and organizations involved;
+- chronological event timeline;
+- event source popup with linked articles;
+- compact linked-articles/source section near the bottom;
+- short automatic-generation disclaimer.
+
+Case titles and summaries should be durable identity fields, not rewritten after every new article. Most change should appear through the event timeline. Regenerate title/summary only when the meaning of the case changes.
+
+Generated tone must be neutral and factual. The system should distinguish allegations, investigations, charges, court decisions, and proven facts. It must not declare guilt unless sources report a final legal finding.
+
+Suggested disclaimer:
+
+```text
+Сторінка автоматично зібрана з відкритих джерел. Події та учасники мають посилання на матеріали, на основі яких їх додано.
+```
+
+### Entity Page
+
+An entity page should contain:
+
+- canonical Ukrainian name;
+- aliases;
+- entity type;
+- short Ukrainian description;
+- related cases;
+- articles where the entity is mentioned.
+
+## Pipeline
+
+### 1. Discover and Fetch
+
+The ingestion worker starts from a small curated source list. Sources can be media, institutions, courts, NGOs, or other public sources. Source type is context and UI metadata, not an authority score.
+
+Initial discovery methods:
+
+- `sitemap.xml`;
+- manually configured source sections;
+- include/exclude URL patterns.
+
+The MVP should run a controlled one-year backfill before first public launch, then continue forward ingestion. Fetching can happen in any order, but LLM resolution during backfill should process relevant articles oldest-to-newest by `published_at`.
+
+### 2. Extract and Store
+
+The ingestion pipeline stores extracted text and raw HTML for all articles, including irrelevant ones. Raw HTML lets the project improve extraction later without re-crawling.
+
+Extraction is generic-first, with site-specific selectors only as fallback.
+
+### 3. Classify Relevance
+
+Relevance filtering is a local binary ML classifier before any LLM calls. The intended first model is a lightweight classifier such as logistic regression trained on the user's dataset.
+
+Classifier input should be:
 
 - title;
-- lead or summary;
-- source;
-- publication date;
-- short text excerpt;
-- detected names and organizations.
+- lead;
+- first fixed-size window of extracted text.
 
-This card is used instead of sending the full article everywhere. It keeps processing cheaper and makes retrieval more stable.
+The likely first feature approach is TF-IDF word ngrams plus character ngrams. DVC will be added when classifier training code and artifacts land. Real model artifacts live outside git, with metadata and training code in the repo.
 
-### 5. Case Retrieval
+Irrelevant articles remain stored with `is_relevant=false` for debugging, evaluation, and future reprocessing.
 
-Each public case has a short embedding-friendly case card.
+### 4. Create Provisional Article Card
 
-A case card usually contains:
+For relevant articles, the LLM creates a compact Ukrainian article card with structured JSON validated by Pydantic.
 
-- case title;
-- short description;
-- main actors;
-- important organizations;
-- keywords;
-- known subtopics.
+The card contains:
 
-The article card is embedded and compared with existing case cards in vector space.
+- Ukrainian title or cleaned title;
+- short Ukrainian summary;
+- provisional normalized entities;
+- provisional normalized events;
+- key terms;
+- source metadata.
 
-This gives the system a list of candidate cases that may be related to the article.
+The provisional entities and events are not final global identities yet.
 
-For example, an article about Timūr Mindich, Energoatom, bail, searches in Israel, or Quartal 95 should retrieve the large case:
+### 5. Resolve Cases
 
-Mindichgate / Midas
+The article card is embedded and used to retrieve candidate cases from Qdrant. The LLM then resolves article-case relationships:
 
-The system uses retrieval only to find candidates. It does not blindly trust vector similarity.
+- link the article to one or more existing cases;
+- create one or more new durable reader-facing cases;
+- create explicit case relations when useful.
 
-6. Person and Event Resolution
+Case titles should be broader durable dossier names, not one-off event headlines.
 
-The system also extracts people, organizations, and possible events from the article.
+### 6. Resolve Entities
 
-People are deduplicated globally. The same person should have one stable person_id even if they appear in multiple cases.
+After article-case links exist, provisional entities are embedded and compared against the Qdrant entity collection. The LLM resolves each provisional entity to an existing global entity or creates a new entity.
 
-For example:
+The resolver receives all linked cases and assigns each resolved entity only to the cases where it is relevant. The system then materializes direct `case_entities` links.
 
-Oleksiy Chernyshov
+Public entity lists must include only entities directly mentioned in at least one supporting article. Aliases can be deduplicated and stored on the entity row for MVP.
 
-may appear in several related storylines, but should still be represented as one person.
+### 7. Resolve Events
 
-Events are deduplicated more carefully. Similar court decisions, bail changes, searches, resignations, or official statements may look close semantically but still be different events.
+After article-case links exist, provisional events are embedded and compared against the Qdrant event collection. The LLM resolves each provisional event to an existing global event or creates a new event.
 
-Event matching uses not only embeddings, but also:
+The resolver receives all linked cases and assigns each resolved event only to the cases where it is relevant. The system then materializes direct `case_events` links.
 
-main actors;
-event type;
-date;
-institution;
-related case;
-source article.
-7. LLM-Based Resolution
+Event dates use best-effort extracted event date, with fallback to article publication date.
 
-After retrieval, the LLM receives a compact context:
+### 8. Update Cards and Public Data
 
-the article card;
-candidate case cards or case digests;
-candidate people;
-candidate events.
+PostgreSQL is the source of truth. Qdrant stores rebuildable vector indexes:
 
-The model then decides what should happen with the article:
+- case cards;
+- entity cards;
+- event cards.
 
-attach it to an existing case;
-create a new case;
-link existing people;
-create new people;
-link existing events;
-create new events;
-mark the article as irrelevant.
+Generated fields are overwritten in place for MVP. Store enough run metadata to debug bad generations: LLM run, prompt name/version, model, status, and raw or repaired output.
 
-It can be like 3 retrieves and 3 calls to llm
+## Data Model Direction
 
-So overall it can be four calls for one article: article extraction, case resolving, actors resolving, events resolving.
+Important MVP tables and relationships:
 
-8. Case Updating
+- `sources`;
+- `articles`;
+- `article_relevance`;
+- `article_cards`;
+- `cases`;
+- `case_articles`;
+- `case_relations`;
+- `entities`;
+- `article_entities`;
+- `article_entity_cases`;
+- `case_entities`;
+- `events`;
+- `article_events`;
+- `article_event_cases`;
+- `case_events`;
+- `llm_runs`;
+- `jobs`;
+- `case_view_counters`.
 
-When an article is attached to a case, the system updates the case data:
+`case_entities` and `case_events` are direct materialized public-page links. They are created from article-level LLM resolution plus article-case context, not from an independent manual curation step.
 
-linked articles;
-timeline events;
-involved people;
-related organizations;
-case summary;
-case card for future retrieval.
+## LLM Contracts
 
-Large cases can also have internal subtopics.
+Prompts live as plain Ukrainian files in the repo, owned by `worker-ml`.
 
-For example, a mega-case like Mindichgate may include subtopics such as:
-
-Energoatom corruption scheme;
-Timūr Mindich and Oleksandr Tsukerman;
-Herman Halushchenko and Svitlana Hrynchuk;
-Oleksiy Chernyshov;
-Quartal 95;
-government crisis;
-bail and court decisions;
-pressure on NABU;
-foreign assets of suspects.
-
-Externally, this is still one case for the reader, but internally subtopics help keep retrieval and summaries manageable.
-
-9. Human Review
-
-Not every decision should be accepted automatically.
-
-Low-confidence results are sent to a review queue.
-
-Typical review cases include:
-
-possible new case;
-ambiguous case assignment;
-possible duplicate person;
-possible duplicate event;
-article that may be relevant but lacks named actors;
-article related to a mega-case but unclear subtopic.
-
-The review interface helps prevent the database from being polluted with bad clusters, duplicate people, and useless one-off cases.
-
-10. Reader-Facing Output
-
-The final goal is to show the reader a clean case page.
-
-A case page should answer:
-
-what this case is about;
-who the main actors are;
-what happened first;
-what changed later;
-what the latest update is;
-which articles support the timeline.
-
-Instead of forcing users to search through a news feed, Shkandal provides a structured dossier for each public scandal.
+LLM outputs must be structured JSON validated by Pydantic. Invalid output should be repaired once with a repair prompt. If repair fails, mark the LLM task failed and keep it eligible for later reprocessing.
 
 ## Architecture
 
-The project is split into several main services:
+The project is split into these services:
 
-- `frontend` — user interface;
-- `backend` — main application API and business logic;
-- `worker-ingestion` — article crawling, parsing, and normalization;
-- `worker-ml` — classification, embeddings, retrieval, LLM processing, and deduplication;
-- `postgres` — main relational database;
-- `qdrant` — vector search index.
+- `frontend`: Next.js public UI for case pages, entity pages, and feed;
+- `backend`: FastAPI public API and application business boundary;
+- `worker-ingestion`: source discovery, fetching, extraction, normalization, image URL extraction;
+- `worker-ml`: relevance classifier, article cards, embeddings, Qdrant retrieval, LLM resolution, deduplication;
+- `postgres`: source-of-truth relational database and MVP job store;
+- `qdrant`: rebuildable vector index for cases, entities, and events.
 
-PostgreSQL is the source of truth. Qdrant is only a vector index and can be rebuilt from PostgreSQL if needed.
+Redis is excluded from the MVP. Background work starts with one generic PostgreSQL `jobs` table and row locking. LLM stages should be separate jobs so they can be retried and inspected independently.
 
-Redis is optional. For the MVP, background jobs can be stored directly in PostgreSQL using a `jobs` table with row locking. Redis can be added later for higher-throughput queues, caching, locks, or rate limiting.
+## Launch Approach
 
-## Main Entities
+The first public release should happen after a one-year curated-source backfill completes or reaches a manually chosen "ready enough" checkpoint. Public pages can update automatically after launch.
 
-- `Article` — a single news article.
-- `Case` — a public case or scandal.
-- `Person` — an official, suspect, victim, journalist, businessperson, or other relevant actor.
-- `Event` — a concrete development inside a case.
-- `CaseCard` — a short embedding-friendly description used for retrieval.
-- `CaseDigest` — a compact case summary used as LLM context.
+The project currently runs on servers provided by the Department of Artificial Intelligence Systems at Lviv Polytechnic National University and uses Lapatonia LLM infrastructure.
 
-## Example Cases
+## Later
 
-- Mindichgate / Midas;
-- Oleksiy Chernyshov — MinRegion, bail, Dynasty cooperative;
-- Denys Komarnytskyi — Clean City;
-- Bill No. 14057 — risks for investigative journalism.
+Planned later layers:
 
-## Infrastructure
-
-The project runs on servers provided by the Department of Artificial Intelligence Systems at Lviv Polytechnic National University and uses the LLM infrastructure of Lapatonia.
-
-## Status
-
-The project is under active development.
-
-Current focus:
-
-- building a stable ingestion pipeline;
-- improving article-to-case clustering;
-- deduplicating people and events;
-- creating a review interface for uncertain decisions;
-- generating clear case pages for readers.
+- simple "Повідомити про помилку" feedback link or form;
+- human review/correction tooling;
+- automatic merge handling for duplicate cases with redirects/aliases;
+- event relations such as appeal/reaction/correction;
+- image proxying or caching if needed;
+- richer analytics beyond anonymous aggregate counters;
+- DVC setup when classifier training artifacts exist.
