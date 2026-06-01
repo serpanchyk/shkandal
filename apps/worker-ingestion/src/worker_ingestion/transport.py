@@ -34,14 +34,20 @@ class Fetcher(Protocol):
 class HttpxFetcher:
     """Async HTTP fetcher for source pages and sitemaps."""
 
-    def __init__(self, config: IngestionConfig) -> None:
+    def __init__(
+        self,
+        config: IngestionConfig,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
         self.config = config
+        self.transport = transport
 
     async def fetch(self, url: str) -> FetchResult:
         async with httpx.AsyncClient(
             headers={"user-agent": self.config.request_user_agent},
             timeout=self.config.request_timeout_seconds,
             follow_redirects=True,
+            transport=self.transport,
         ) as client:
             try:
                 response = await client.get(url)
