@@ -4,10 +4,11 @@ from uuid import UUID, uuid4
 
 import pytest
 from worker_ingestion.config import IngestionConfig
+from worker_ingestion.extractor import extract_article
 from worker_ingestion.identity import normalize_article_url
 from worker_ingestion.service import IngestionWorker
-from worker_ingestion.sitemap import parse_sitemap
-from worker_ingestion.sources import SourceConfig
+from worker_ingestion.sitemap import discover_article_urls, parse_sitemap
+from worker_ingestion.sources import MEDIA_SOURCES, SourceConfig
 from worker_ingestion.storage import ArticleInput, SourceInput
 from worker_ingestion.transport import FetchResult
 
@@ -225,6 +226,13 @@ def test_normalize_article_url_preserves_unknown_query_params() -> None:
     )
 
 
+def test_normalize_article_url_normalizes_percent_encoding() -> None:
+    assert (
+        normalize_article_url("https://www.example.ua/news/%D1%82%D0%B5%D1%81%D1%82/")
+        == "https://example.ua/news/%D1%82%D0%B5%D1%81%D1%82"
+    )
+
+
 def test_parse_sitemap_index_and_urlset_with_namespaces() -> None:
     sitemap_index = b"""<?xml version="1.0" encoding="UTF-8"?>
     <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -255,3 +263,120 @@ def test_parse_sitemap_index_and_urlset_with_namespaces() -> None:
 
 def test_parse_sitemap_returns_empty_entries_for_invalid_xml() -> None:
     assert parse_sitemap(b"<not xml", sitemap_url="https://example.ua/bad.xml") == ([], [])
+
+
+@pytest.mark.asyncio
+async def test_discover_article_urls_recurses_filters_and_applies_date_window() -> None:
+    source = SourceConfig(
+        slug="example",
+        name="Example",
+        base_url="https://example.ua",
+        sitemap_urls=("https://example.ua/root.xml",),
+        sitemap_url_patterns=(r"https://example\.ua/articles-\d+\.xml",),
+        include_url_patterns=(r"/news/",),
+        exclude_url_patterns=(r"/ru/",),
+    )
+    root = """<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+      <sitemap><loc>https://example.ua/ignored.xml</loc></sitemap>
+      <sitemap><loc>https://example.ua/articles-1.xml</loc></sitemap>
+    </sitemapindex>"""
+    articles = """<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+      <url>
+        <loc>https://example.ua/news/in-window</loc>
+        <lastmod>2026-06-01T12:00:00+00:00</lastmod>
+      </url>
+      <url>
+        <loc>https://example.ua/news/too-old</loc>
+        <lastmod>2026-05-30T12:00:00+00:00</lastmod>
+      </url>
+      <url><loc>https://example.ua/ru/news/excluded</loc></url>
+      <url><loc>https://example.ua/about</loc></url>
+    </urlset>"""
+    assert (
+        parse_sitemap(articles.encode(), sitemap_url="https://example.ua/articles-1.xml")[1][0][0]
+        == "https://example.ua/news/in-window"
+    )
+
+    fetcher = FakeFetcher(
+        {
+            "https://example.ua/root.xml": fetch_result(
+                "https://example.ua/root.xml", root, "application/xml"
+            ),
+            "https://example.ua/articles-1.xml": fetch_result(
+                "https://example.ua/articles-1.xml", articles, "application/xml"
+            ),
+        }
+    )
+    urls = await discover_article_urls(
+        source,
+        fetcher,
+        IngestionConfig(),
+        since=datetime(2026, 5, 31, tzinfo=UTC),
+        until=datetime(2026, 6, 2, tzinfo=UTC),
+    )
+
+    assert fetcher.requested_urls == [
+        "https://example.ua/root.xml",
+        "https://example.ua/articles-1.xml",
+    ]
+    assert [url.url for url in urls] == ["https://example.ua/news/in-window"]
+
+
+@pytest.mark.asyncio
+async def test_discover_article_urls_respects_source_limit() -> None:
+    sitemap = """<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+      <url><loc>https://example.ua/news/one</loc></url>
+      <url><loc>https://example.ua/news/two</loc></url>
+      <url><loc>https://example.ua/news/three</loc></url>
+    </urlset>"""
+
+    urls = await discover_article_urls(
+        source_config(),
+        FakeFetcher(
+            {
+                "https://example.ua/sitemap.xml": fetch_result(
+                    "https://example.ua/sitemap.xml", sitemap, "application/xml"
+                ),
+            }
+        ),
+        IngestionConfig(max_sitemap_urls_per_source=2),
+    )
+
+    assert [url.url for url in urls] == [
+        "https://example.ua/news/one",
+        "https://example.ua/news/two",
+    ]
+
+
+def test_extract_article_uses_generic_fallbacks() -> None:
+    html = """<html lang="uk"><head>
+      <title>Ignored</title>
+    </head><body>
+      <article>
+        <h1>Fallback title</h1>
+        <time datetime="2026-06-01T12:00:00+00:00">1 червня</time>
+        <p>Перший абзац.</p>
+        <p>Другий абзац.</p>
+      </article>
+    </body></html>"""
+
+    article = extract_article(source_config(), url="https://example.ua/news/fallback", html=html)
+
+    assert article.title == "Fallback title"
+    assert article.published_at == datetime(2026, 6, 1, 12, tzinfo=UTC)
+    assert article.source_language == "uk"
+    assert article.extracted_text == "Перший абзац.\n\nДругий абзац."
+
+
+def test_media_source_catalog_uses_current_known_sitemap_roots() -> None:
+    sources = {source.slug: source for source in MEDIA_SOURCES}
+
+    assert sources["pravda"].sitemap_urls == ("https://www.pravda.com.ua/sitemap/sitemap.xml",)
+    assert (
+        r"https://nashigroshi\.org/post-sitemap\d*\.xml"
+        in sources["nashigroshi"].sitemap_url_patterns
+    )
+    assert sources["slovoidilo"].sitemap_urls == (
+        "https://www.slovoidilo.ua/sitemap_index_uk.xml",
+        "https://www.slovoidilo.ua/news_sitemap_uk.xml",
+    )

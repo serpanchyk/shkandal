@@ -25,8 +25,10 @@ MEDIA_SOURCES: tuple[SourceConfig, ...] = (
         slug="pravda",
         name="Українська правда",
         base_url="https://www.pravda.com.ua",
-        sitemap_urls=("https://www.pravda.com.ua/sitemap.xml",),
+        sitemap_urls=("https://www.pravda.com.ua/sitemap/sitemap.xml",),
         sitemap_url_patterns=(
+            r"https://www\.pravda\.com\.ua/sitemap/sitemap-now\.xml\.gz",
+            r"https://www\.pravda\.com\.ua/sitemap/sitemap-news\.xml",
             r"https://www\.pravda\.com\.ua/sitemap/sitemap-\d{4}-\d{2}\.xml\.gz",
         ),
         include_url_patterns=(r"https://www\.pravda\.com\.ua/news/.+",),
@@ -79,7 +81,7 @@ MEDIA_SOURCES: tuple[SourceConfig, ...] = (
         name="Наші гроші",
         base_url="https://nashigroshi.org",
         sitemap_urls=("https://nashigroshi.org/sitemap.xml",),
-        sitemap_url_patterns=(r"https://nashigroshi\.org/sitemap-pt-post-\d{4}-\d{2}\.xml",),
+        sitemap_url_patterns=(r"https://nashigroshi\.org/post-sitemap\d*\.xml",),
         body_selectors=("div.column-two-third.single.article", "article"),
     ),
     SourceConfig(
@@ -110,7 +112,10 @@ MEDIA_SOURCES: tuple[SourceConfig, ...] = (
         slug="slovoidilo",
         name="Слово і Діло",
         base_url="https://www.slovoidilo.ua",
-        sitemap_urls=("https://www.slovoidilo.ua/sitemap.xml",),
+        sitemap_urls=(
+            "https://www.slovoidilo.ua/sitemap_index_uk.xml",
+            "https://www.slovoidilo.ua/news_sitemap_uk.xml",
+        ),
         sitemap_url_patterns=(r"https://www\.slovoidilo\.ua/sitemap/monthly_\d{4}-\d{2}_uk\.xml",),
         body_selectors=("div.article-body", "article"),
     ),
