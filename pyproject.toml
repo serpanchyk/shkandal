@@ -15,6 +15,7 @@ members = [
     "apps/backend",
     "apps/worker-ingestion",
     "apps/worker-ml",
+    "packages/database",
     "packages/common",
 ]
 
@@ -46,6 +47,7 @@ mypy_path = [
     "apps/backend/src",
     "apps/worker-ingestion/src",
     "apps/worker-ml/src",
+    "packages/database/src",
     "packages/common/src",
 ]
 files = ["apps", "packages"]
@@ -74,6 +76,7 @@ pythonpath = [
     "apps/backend/src",
     "apps/worker-ingestion/src",
     "apps/worker-ml/src",
+    "packages/database/src",
     "packages/common/src",
 ]
 

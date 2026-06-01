@@ -32,8 +32,32 @@ Default ports:
 - postgres: `localhost:5432`
 - qdrant: <http://localhost:6333>
 
+## Database
+
+Start only PostgreSQL:
+
+```bash
+docker compose up -d postgres
+```
+
+PostgreSQL data is stored in the Compose `postgres-data` named volume. It
+survives container restarts and `docker compose down`. To intentionally reset
+local database state, remove volumes:
+
+```bash
+docker compose down -v
+```
+
+Run migrations from the repository root:
+
+```bash
+uv run alembic -c packages/database/alembic.ini upgrade head
+uv run alembic -c packages/database/alembic.ini current
+```
+
 ## Current Scope
 
-The repository currently starts service shells and infrastructure. It does not
-yet implement article ingestion, schema migrations, classifier inference, LLM
-resolution, Qdrant indexing, or public dossier pages.
+The repository currently starts service shells and infrastructure, and includes
+the initial PostgreSQL schema/migration layer. It does not yet implement article
+ingestion, classifier inference, LLM resolution, Qdrant indexing, or public
+dossier pages.

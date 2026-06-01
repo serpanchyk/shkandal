@@ -4,10 +4,11 @@
 
 Shkandal is scaffolded as a monorepo with Python service shells, a Next.js
 frontend boundary, Docker Compose runtime infrastructure, shared config/logging,
-and smoke tests.
+an async SQLAlchemy database package, Alembic migrations, and smoke tests.
 
 The implemented code is still foundation-only. The article pipeline, database
-schema, classifier, LLM prompts, and public case/entity pages are future work.
+classifier, LLM prompts, and public case/entity pages are future work. The MVP
+PostgreSQL schema and migration layer are implemented.
 
 ## Product Direction
 
@@ -25,13 +26,15 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - `worker-ingestion`: async worker entrypoint for future source discovery, fetching, extraction, normalization, and image URL extraction.
 - `worker-ml`: async worker entrypoint for future binary relevance classification, article cards, embeddings, Qdrant retrieval, LLM resolution, and deduplication.
 - `frontend`: Next.js TypeScript app with an API health link today; future public feed, case pages, and entity pages.
-- `postgres`: source-of-truth database and future Postgres-backed job store.
+- `postgres`: source-of-truth database and Postgres-backed job store schema.
+- `packages/database`: shared async SQLAlchemy models, session helpers, and Alembic migrations.
 - `qdrant`: rebuildable vector indexes for cases, entities, and events.
 
 ## Runtime Decisions
 
 - Docker Compose is the default runtime entrypoint.
-- PostgreSQL is the source of truth.
+- PostgreSQL is the source of truth and persists locally through the Compose
+  `postgres-data` named volume.
 - Qdrant is rebuildable from PostgreSQL-backed data.
 - Redis is excluded from MVP.
 - One generic PostgreSQL `jobs` table with row locking is the MVP background-work mechanism.
@@ -61,11 +64,10 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - `docs/run-project.md`: local runtime instructions.
 - `docs/system/README.md`: system overview.
 - `docs/system/services/`: service boundary notes.
-- `docs/system/foundation/`: config, logging, testing, and runtime foundation.
+- `docs/system/foundation/`: config, logging, database, testing, and runtime foundation.
 
 ## Known Next Work
 
-- Add database schema and migrations for sources, articles, cases, entities, events, links, LLM runs, jobs, and counters.
 - Implement curated source configuration and article extraction with raw HTML/text/image URL storage.
 - Add local binary relevance classifier interface and persistence of classifier decisions.
 - Add Ukrainian prompt files and Pydantic-validated LLM contracts.
