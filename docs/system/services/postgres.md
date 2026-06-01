@@ -1,8 +1,10 @@
 # Postgres
 
-PostgreSQL is the source of truth for all durable application data.
+PostgreSQL is the source of truth for all durable application data. The local
+runtime is the `postgres` Docker Compose service backed by the `postgres-data`
+named volume.
 
-Planned MVP data areas:
+Implemented MVP data areas:
 
 - sources and source types;
 - articles, extracted text, raw HTML, language, canonical/normalized URLs, and remote image metadata;
@@ -31,5 +33,15 @@ Generated public fields are overwritten in place for MVP. Store enough version
 metadata to debug and manually reprocess later, but do not build automatic
 snapshot/version infrastructure yet.
 
-The current scaffold only starts the database; schema and migrations are future
-work.
+The shared `packages/database` workspace package owns the async SQLAlchemy
+models, session helpers, and Alembic migrations. Run migrations from the
+repository root:
+
+```bash
+uv run alembic -c packages/database/alembic.ini upgrade head
+uv run alembic -c packages/database/alembic.ini current
+```
+
+Local database data survives container restarts and `docker compose down`.
+Use `docker compose down -v` only when intentionally deleting the local
+PostgreSQL volume.

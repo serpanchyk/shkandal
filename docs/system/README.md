@@ -26,5 +26,14 @@ analytics are later layers. The MVP publishes automatically after an initial
 curated one-year backfill reaches a ready-enough checkpoint.
 
 The current implementation is a foundation scaffold. It defines service
-boundaries and runtime wiring but does not yet implement the article pipeline,
-schema, classifier, prompts, or public dossier pages.
+boundaries, runtime wiring, the PostgreSQL schema, and migration ownership, but
+does not yet implement the article pipeline, classifier, prompts, or public
+dossier pages.
+
+Foundation notes:
+
+- [Configuration](foundation/configuration.md)
+- [Database](foundation/database.md)
+- [Logging](foundation/logging.md)
+- [Runtime](foundation/runtime.md)
+- [Testing and CI](foundation/testing-ci.md)

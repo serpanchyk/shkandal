@@ -9,10 +9,12 @@ requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.12.5",
     "shkandal-common",
+    "shkandal-database",
 ]
 
 [tool.uv.sources]
 shkandal-common = { workspace = true }
+shkandal-database = { workspace = true }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/worker_ingestion"]

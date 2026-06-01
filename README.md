@@ -209,6 +209,9 @@ Generated fields are overwritten in place for MVP. Store enough run metadata to 
 
 ## Data Model Direction
 
+The MVP PostgreSQL schema is implemented with SQLAlchemy models in
+`packages/database` and Alembic migrations owned by that package.
+
 Important MVP tables and relationships:
 
 - `sources`;
@@ -252,6 +255,11 @@ The project is split into these services:
 - `worker-ml`: relevance classifier, article cards, embeddings, Qdrant retrieval, LLM resolution, deduplication;
 - `postgres`: source-of-truth relational database and MVP job store;
 - `qdrant`: rebuildable vector index for cases, entities, and events.
+
+The shared `packages/database` workspace package owns async SQLAlchemy models,
+session helpers, and Alembic migrations. Local PostgreSQL data is stored in the
+Compose `postgres-data` named volume and survives container restarts unless
+volumes are explicitly removed.
 
 Redis is excluded from the MVP. Background work starts with one generic PostgreSQL `jobs` table and row locking. LLM stages should be separate jobs so they can be retried and inspected independently.
 
