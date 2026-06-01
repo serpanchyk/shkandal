@@ -14,6 +14,10 @@ automatic dossier-building pipeline:
 9. materialize direct case-entity and case-event links;
 10. update public case and entity pages immediately from PostgreSQL.
 
+One relevant article is enough to create a case, and one supporting article is
+enough to create an event. Source provenance must remain visible. Articles can
+also belong to cases without producing extracted timeline events.
+
 PostgreSQL is the source of truth. Qdrant has three rebuildable collections:
 case cards, entity cards, and event cards.
 

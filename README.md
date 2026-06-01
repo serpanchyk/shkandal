@@ -34,6 +34,8 @@ Examples:
 
 Cases can overlap. One article can belong to multiple cases. One event can be relevant to multiple cases. A specific case can have multiple broader parent cases.
 
+One relevant article is enough to create a public case. The system optimizes for coverage and speed, with source provenance visible to readers.
+
 Case relationships are explicit:
 
 - `parent_child` for broad/specific relationships;
@@ -43,6 +45,8 @@ Case relationships are explicit:
 ### Article
 
 An `Article` is an ingested source item. It remains the evidence source, but public case pages should query direct case links after processing.
+
+An article can be linked to a case even when it does not create a concrete extracted event. Those articles can still appear in the case source section, but the timeline should show only resolved events.
 
 Articles store:
 
@@ -191,6 +195,8 @@ The resolver receives all linked cases and assigns each resolved event only to t
 
 Event dates use best-effort extracted event date, with fallback to article publication date.
 
+One supporting article is enough for a public event, as long as the event keeps article provenance.
+
 ### 8. Update Cards and Public Data
 
 PostgreSQL is the source of truth. Qdrant stores rebuildable vector indexes:
@@ -225,6 +231,10 @@ Important MVP tables and relationships:
 - `case_view_counters`.
 
 `case_entities` and `case_events` are direct materialized public-page links. They are created from article-level LLM resolution plus article-case context, not from an independent manual curation step.
+
+`case_articles` stays simple in the MVP: it records that an article belongs to a case and why, without roles such as primary, secondary, or background. Entity and event relevance carries the more specific case-scoped meaning.
+
+There is no direct `entity_event` relationship in the MVP. Cases can show entities and events independently, with event text naturally mentioning actors when needed.
 
 ## LLM Contracts
 

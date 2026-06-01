@@ -41,11 +41,14 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 ## Domain Decisions
 
 - A `Case` is a reader-facing dossier/topic, not an exclusive article cluster.
+- One relevant article is enough to create a public case.
 - Articles, entities, and events can connect to multiple cases.
+- Articles can link to cases even when they do not create extracted events.
 - `case_entities` and `case_events` are direct materialized links for public pages, created from article-level resolution plus article-case context.
 - `Entity` is one global typed table for people, organizations, institutions, companies, political parties, informal groups, and unknown actors.
 - `Event` is a global strict real-world occurrence, shared across cases when appropriate.
 - Event relations are out of MVP.
+- Direct entity-event relations are out of MVP.
 - Public article cards link directly to original source pages; Shkandal does not publish copied full article pages.
 - Remote image URLs are stored, but images are not cached/proxied in MVP.
 - Generated public content is Ukrainian and neutral/factual.

@@ -23,6 +23,10 @@ Planned MVP data areas:
 - one generic jobs table for Postgres-backed background work;
 - anonymous aggregate case view counters.
 
+`case_articles` does not need primary/secondary/background roles in the MVP.
+`case_entities` and `case_events` carry the direct public-page links. Direct
+entity-event relationship modeling is out of scope for MVP.
+
 Generated public fields are overwritten in place for MVP. Store enough version
 metadata to debug and manually reprocess later, but do not build automatic
 snapshot/version infrastructure yet.
