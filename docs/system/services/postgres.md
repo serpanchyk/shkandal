@@ -7,7 +7,7 @@ named volume.
 Implemented MVP data areas:
 
 - sources and source types;
-- articles, extracted text, raw HTML, language, canonical/normalized URLs, and remote image metadata;
+- articles, extracted text, raw HTML, language, identity URLs, and remote image metadata;
 - binary relevance decisions and classifier versions;
 - provisional article cards;
 - reader-facing cases;

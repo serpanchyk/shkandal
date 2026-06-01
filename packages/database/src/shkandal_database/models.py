@@ -91,16 +91,15 @@ class Article(Base):
 
     __tablename__ = "articles"
     __table_args__ = (
+        UniqueConstraint("identity_url", name="uq_articles_identity_url"),
         Index("ix_articles_source_id_published_at", "source_id", "published_at"),
-        Index("ix_articles_canonical_url", "canonical_url"),
         Index("ix_articles_published_at", "published_at"),
     )
 
     id: Mapped[UUID] = uuid_pk_column()
     source_id: Mapped[UUID] = mapped_column(ForeignKey("sources.id"), nullable=False)
     url: Mapped[str] = mapped_column(Text, nullable=False)
-    canonical_url: Mapped[str] = mapped_column(Text, nullable=False)
-    normalized_url: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    identity_url: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[str | None] = mapped_column(Text)
     lead: Mapped[str | None] = mapped_column(Text)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

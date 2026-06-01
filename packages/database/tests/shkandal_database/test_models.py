@@ -1,6 +1,6 @@
 """Tests for database model metadata."""
 
-from shkandal_database.models import Base, Case, Entity, Source
+from shkandal_database.models import Article, Base, Case, Entity, Source
 from sqlalchemy import CheckConstraint, ForeignKeyConstraint, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -45,6 +45,7 @@ def test_expected_tables_are_registered() -> None:
 
 
 def test_key_constraints_are_registered() -> None:
+    assert "uq_articles_identity_url" in constraint_names("articles", UniqueConstraint)
     assert "uq_case_articles_case_id_article_id" in constraint_names(
         "case_articles",
         UniqueConstraint,
@@ -86,3 +87,9 @@ def test_metadata_columns_use_safe_python_names() -> None:
 def test_no_direct_entity_event_table_exists() -> None:
     assert "entity_events" not in Base.metadata.tables
     assert "entity_event" not in Base.metadata.tables
+
+
+def test_article_uses_identity_url_only() -> None:
+    assert Article.identity_url.property.columns[0].name == "identity_url"
+    assert "canonical_url" not in Base.metadata.tables["articles"].columns
+    assert "normalized_url" not in Base.metadata.tables["articles"].columns
