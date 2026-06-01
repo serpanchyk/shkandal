@@ -1,0 +1,172 @@
+"""Ingestion orchestration."""
+
+from __future__ import annotations
+
+import asyncio
+from dataclasses import dataclass
+from datetime import datetime
+from uuid import UUID
+
+from worker_ingestion.config import IngestionConfig
+from worker_ingestion.extractor import extract_article
+from worker_ingestion.identity import normalize_article_url
+from worker_ingestion.sitemap import SitemapArticleUrl, discover_article_urls
+from worker_ingestion.sources import MEDIA_SOURCES, SourceConfig
+from worker_ingestion.storage import ArticleInput, ArticleRepository, SourceInput
+from worker_ingestion.transport import Fetcher
+
+
+@dataclass(frozen=True)
+class IngestionStats:
+    processed_sources: int = 0
+    discovered_articles: int = 0
+    stored_articles: int = 0
+    failed_articles: int = 0
+
+
+class IngestionWorker:
+    def __init__(
+        self,
+        *,
+        config: IngestionConfig,
+        fetcher: Fetcher,
+        repository: ArticleRepository,
+        sources: tuple[SourceConfig, ...] = MEDIA_SOURCES,
+    ) -> None:
+        self.config = config
+        self.fetcher = fetcher
+        self.repository = repository
+        self.sources = sources
+
+    async def run_once(
+        self,
+        *,
+        source_slug: str | None = None,
+        limit: int | None = None,
+        since: datetime | None = None,
+        until: datetime | None = None,
+    ) -> IngestionStats:
+        selected_sources = self._selected_sources(source_slug)
+        stats = IngestionStats()
+        for source in selected_sources:
+            source_stats = await self._run_source(source, limit=limit, since=since, until=until)
+            stats = IngestionStats(
+                processed_sources=stats.processed_sources + 1,
+                discovered_articles=stats.discovered_articles + source_stats.discovered_articles,
+                stored_articles=stats.stored_articles + source_stats.stored_articles,
+                failed_articles=stats.failed_articles + source_stats.failed_articles,
+            )
+        return stats
+
+    async def _run_source(
+        self,
+        source: SourceConfig,
+        *,
+        limit: int | None,
+        since: datetime | None,
+        until: datetime | None,
+    ) -> IngestionStats:
+        source_id = await self.repository.ensure_source(
+            SourceInput(
+                slug=source.slug,
+                name=source.name,
+                source_type=source.source_type,
+                base_url=source.base_url,
+                language=source.language,
+                metadata=source.metadata,
+            )
+        )
+        urls = await discover_article_urls(
+            source,
+            self.fetcher,
+            self.config,
+            since=since,
+            until=until,
+        )
+        if limit is not None:
+            urls = urls[:limit]
+
+        semaphore = asyncio.Semaphore(self.config.request_concurrency)
+        results = await asyncio.gather(
+            *(
+                self._ingest_article(source, source_id, article_url, semaphore)
+                for article_url in urls
+            )
+        )
+        stored_articles = sum(1 for result in results if result)
+        return IngestionStats(
+            processed_sources=1,
+            discovered_articles=len(urls),
+            stored_articles=stored_articles,
+            failed_articles=len(urls) - stored_articles,
+        )
+
+    async def _ingest_article(
+        self,
+        source: SourceConfig,
+        source_id: UUID,
+        article_url: SitemapArticleUrl,
+        semaphore: asyncio.Semaphore,
+    ) -> bool:
+        async with semaphore:
+            response = await self.fetcher.fetch(article_url.url)
+        if not response.ok:
+            await self.repository.upsert_article(
+                ArticleInput(
+                    source_id=source_id,
+                    url=article_url.url,
+                    identity_url=normalize_article_url(article_url.url),
+                    title=None,
+                    lead=None,
+                    published_at=None,
+                    fetched_at=response.fetched_at,
+                    source_language=source.language,
+                    raw_html=None,
+                    extracted_text=None,
+                    remote_image_url=None,
+                    remote_image_metadata={},
+                    source_metadata={
+                        "sitemap_url": article_url.sitemap_url,
+                        "sitemap_lastmod": article_url.lastmod.isoformat()
+                        if article_url.lastmod
+                        else None,
+                        "http_status": response.status_code,
+                        "content_type": response.headers.get("content-type"),
+                        "fetch_error": response.error or "non_2xx_response",
+                    },
+                )
+            )
+            return False
+
+        extracted = extract_article(source, url=article_url.url, html=response.text)
+        await self.repository.upsert_article(
+            ArticleInput(
+                source_id=source_id,
+                url=article_url.url,
+                identity_url=extracted.identity_url,
+                title=extracted.title,
+                lead=extracted.lead,
+                published_at=extracted.published_at,
+                fetched_at=response.fetched_at,
+                source_language=extracted.source_language,
+                raw_html=response.text,
+                extracted_text=extracted.extracted_text,
+                remote_image_url=extracted.remote_image_url,
+                remote_image_metadata={},
+                source_metadata={
+                    "author": extracted.author,
+                    "sitemap_url": article_url.sitemap_url,
+                    "sitemap_lastmod": article_url.lastmod.isoformat()
+                    if article_url.lastmod
+                    else None,
+                    "http_status": response.status_code,
+                    "content_type": response.headers.get("content-type"),
+                },
+            )
+        )
+        return True
+
+    def _selected_sources(self, source_slug: str | None) -> tuple[SourceConfig, ...]:
+        if source_slug is None:
+            return self.sources
+        return tuple(source for source in self.sources if source.slug == source_slug)

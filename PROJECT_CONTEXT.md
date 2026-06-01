@@ -4,11 +4,12 @@
 
 Shkandal is scaffolded as a monorepo with Python service shells, a Next.js
 frontend boundary, Docker Compose runtime infrastructure, shared config/logging,
-an async SQLAlchemy database package, Alembic migrations, and smoke tests.
+an async SQLAlchemy database package, Alembic migrations, smoke tests, and a
+media-only sitemap ingestion worker.
 
-The implemented code is still foundation-only. The article pipeline, database
-classifier, LLM prompts, and public case/entity pages are future work. The MVP
-PostgreSQL schema and migration layer are implemented.
+The implemented code includes the MVP PostgreSQL schema and migration layer plus
+initial media article discovery/fetch/extraction/storage. The classifier, LLM
+prompts, and public case/entity pages are future work.
 
 ## Product Direction
 
@@ -23,7 +24,7 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 ## Service Map
 
 - `backend`: FastAPI service exposing `GET /healthz` today; future public API and business boundary.
-- `worker-ingestion`: async worker entrypoint for future source discovery, fetching, extraction, normalization, and image URL extraction.
+- `worker-ingestion`: media-only sitemap source discovery, fetching, extraction, URL identity normalization, image URL extraction, and PostgreSQL upsert.
 - `worker-ml`: async worker entrypoint for future binary relevance classification, article cards, embeddings, Qdrant retrieval, LLM resolution, and deduplication.
 - `frontend`: Next.js TypeScript app with an API health link today; future public feed, case pages, and entity pages.
 - `postgres`: source-of-truth database and Postgres-backed job store schema.
