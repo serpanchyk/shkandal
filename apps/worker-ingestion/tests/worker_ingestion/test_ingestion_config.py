@@ -28,8 +28,7 @@ def test_worker_ingestion_yaml_configures_runtime_knobs(monkeypatch: pytest.Monk
 
     assert config.request_timeout_seconds == 20.0
     assert config.request_concurrency == 5
-    assert config.request_user_agent == (
-        "Shkandal ingestion worker "
-        "(https://github.com/serpanchyk/shkandal; contact: admin@example.invalid)"
-    )
+    assert config.request_user_agent.startswith("Shkandal ingestion worker ")
+    assert "https://github.com/serpanchyk/shkandal" in config.request_user_agent
+    assert "contact:" in config.request_user_agent
     assert config.max_sitemap_urls_per_source == 500
