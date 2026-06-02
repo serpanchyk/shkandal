@@ -4,7 +4,7 @@ from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
-    TomlConfigSettingsSource,
+    YamlConfigSettingsSource,
 )
 
 
@@ -14,7 +14,7 @@ class BaseServiceConfig(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        toml_file="config.toml",
+        yaml_file="config.yaml",
         env_ignore_empty=True,
         extra="ignore",
     )
@@ -32,6 +32,6 @@ class BaseServiceConfig(BaseSettings):
             init_settings,
             env_settings,
             dotenv_settings,
-            TomlConfigSettingsSource(settings_cls),
+            YamlConfigSettingsSource(settings_cls),
             file_secret_settings,
         )

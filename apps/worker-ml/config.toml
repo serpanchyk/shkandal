@@ -1,2 +1,0 @@
-service_name = "worker-ml"
-poll_interval_seconds = 30
