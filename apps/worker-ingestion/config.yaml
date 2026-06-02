@@ -2,5 +2,5 @@ service_name: worker-ingestion
 poll_interval_seconds: 30
 request_timeout_seconds: 20.0
 request_concurrency: 5
-request_user_agent: "Shkandal ingestion worker (https://github.com/serpanchyk/shkandal; contact: admin@example.invalid)"
+request_user_agent: "Shkandal ingestion worker (https://github.com/serpanchyk/shkandal; contact: anton.mykhalchuk.ua@gmail.com)"
 max_sitemap_urls_per_source: 500

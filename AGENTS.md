@@ -150,7 +150,7 @@ When starting the project:
 
 * prefer Docker Compose
 * use direct service runs only when explicitly requested or clearly necessary
-* do not switch Docker contexts
+* switch docker contexts, if needed
 
 When debugging:
 
@@ -175,6 +175,11 @@ When the user asks for a PR:
 * include summary, tests/checks, docs updates, and known limitations
 * create or open the PR only if explicitly asked and tooling is available
 * check the CI workflow and resolve problems if they appear
+
+GitHub MCP:
+
+* You need access to check, edit or create issues, when needed.
+* You need to answer reviews of PR.
 
 ---
 
