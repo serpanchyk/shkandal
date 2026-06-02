@@ -64,7 +64,7 @@ async def run_once(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run Shkandal media ingestion.")
+    parser = argparse.ArgumentParser(description="Run Shkandal source ingestion.")
     parser.add_argument("--source", dest="source_slug")
     parser.add_argument("--limit", type=int)
     parser.add_argument("--since", type=_parse_datetime)

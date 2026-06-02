@@ -60,7 +60,10 @@ class Source(Base):
     __tablename__ = "sources"
     __table_args__ = (
         CheckConstraint(
-            "source_type in ('media', 'institution', 'court', 'ngo', 'other')",
+            "source_type in ("
+            "'media', 'institution', 'court', 'ngo', 'other', "
+            "'government', 'parliament', 'law_enforcement'"
+            ")",
             name="ck_sources_source_type",
         ),
         Index("ix_sources_source_type", "source_type"),

@@ -1,6 +1,8 @@
 from datetime import UTC, datetime
 
+import worker_ingestion.extractor as extractor
 from conftest import source_config
+from pytest import MonkeyPatch
 from worker_ingestion.extractor import extract_article
 
 
@@ -51,6 +53,33 @@ def test_extract_article_uses_generic_fallbacks() -> None:
     assert article.published_at == datetime(2026, 6, 1, 12, tzinfo=UTC)
     assert article.source_language == "uk"
     assert article.extracted_text == "Перший абзац.\n\nДругий абзац."
+
+
+def test_extract_article_prefers_generic_text_over_selector_noise(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    generic_text = (
+        "Це основний текст статті з достатньою довжиною для generic-first "
+        "екстракції. Він не містить навігаційних елементів, футера або "
+        "інших домішок з HTML-сторінки."
+    )
+
+    class FakeTrafilatura:
+        @staticmethod
+        def extract(*args: object, **kwargs: object) -> str:
+            return generic_text
+
+    monkeypatch.setattr(extractor, "trafilatura", FakeTrafilatura)
+    html = """<html lang="uk"><body>
+      <article>
+        <p>Меню</p>
+        <p>Футер</p>
+      </article>
+    </body></html>"""
+
+    article = extract_article(source_config(), url="https://example.ua/news/generic", html=html)
+
+    assert article.extracted_text == generic_text
 
 
 def test_extract_article_returns_none_for_invalid_publication_date_and_empty_body() -> None:

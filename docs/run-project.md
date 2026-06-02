@@ -57,7 +57,7 @@ uv run alembic -c packages/database/alembic.ini current
 
 ## Ingestion Worker
 
-Run all configured media sources:
+Run all configured media and institutional sources:
 
 ```bash
 docker compose run --rm worker-ingestion
@@ -69,9 +69,17 @@ Run one source with a small debug limit:
 docker compose run --rm worker-ingestion python -m worker_ingestion.main --source pravda --limit 20
 ```
 
+Validate configured discovery endpoints and sample extraction without mutating
+the database:
+
+```bash
+uv run python apps/worker-ingestion/scripts/validate_sources.py --sample 2
+```
+
 ## Current Scope
 
 The repository currently starts service shells and infrastructure, includes the
-initial PostgreSQL schema/migration layer, and implements media-only sitemap
-article ingestion. It does not yet implement institution ingestion, classifier
-inference, LLM resolution, Qdrant indexing, or public dossier pages.
+initial PostgreSQL schema/migration layer, and implements curated media and
+institutional article ingestion from configured sitemaps, RSS/Atom feeds, and
+section pages. It does not yet implement classifier inference, LLM resolution,
+Qdrant indexing, or public dossier pages.

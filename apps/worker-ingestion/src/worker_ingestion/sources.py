@@ -1,4 +1,4 @@
-"""Curated media source configuration."""
+"""Curated source configuration."""
 
 from __future__ import annotations
 
@@ -10,17 +10,21 @@ class SourceConfig:
     slug: str
     name: str
     base_url: str
-    sitemap_urls: tuple[str, ...]
+    sitemap_urls: tuple[str, ...] = ()
     sitemap_url_patterns: tuple[str, ...] = ()
+    rss_urls: tuple[str, ...] = ()
+    section_urls: tuple[str, ...] = ()
     include_url_patterns: tuple[str, ...] = ()
     exclude_url_patterns: tuple[str, ...] = ()
     body_selectors: tuple[str, ...] = ("article",)
+    crawl_delay_seconds: float | None = None
+    discovery_notes: str | None = None
     language: str = "uk"
     source_type: str = "media"
     metadata: dict[str, str] = field(default_factory=dict)
 
 
-MEDIA_SOURCES: tuple[SourceConfig, ...] = (
+CURATED_SOURCES: tuple[SourceConfig, ...] = (
     SourceConfig(
         slug="pravda",
         name="Українська правда",
@@ -135,4 +139,185 @@ MEDIA_SOURCES: tuple[SourceConfig, ...] = (
         sitemap_url_patterns=(r"https://www\.chesno\.org/sitemap-posts\.xml",),
         body_selectors=("div.publication-row", "article"),
     ),
+    SourceConfig(
+        slug="nabu",
+        name="Національне антикорупційне бюро України",
+        base_url="https://nabu.gov.ua",
+        section_urls=("https://nabu.gov.ua/news/",),
+        include_url_patterns=(r"https://nabu\.gov\.ua/news/[^/?#]+/?$",),
+        exclude_url_patterns=(
+            r"/en/",
+            r"[?&]s=",
+            r"/page/",
+            r"/rozporyadzhennya",
+            r"/povistky",
+            r"/rozshuk",
+            r"\.(?:pdf|docx?|xlsx?|zip)(?:$|\?)",
+        ),
+        source_type="law_enforcement",
+        discovery_notes="Official news section only; registry/document pages are excluded.",
+    ),
+    SourceConfig(
+        slug="hcac",
+        name="Вищий антикорупційний суд",
+        base_url="https://hcac.court.gov.ua",
+        section_urls=(
+            "https://hcac.court.gov.ua/hcac/pres-centr/news/",
+            "https://hcac.court.gov.ua/hcac/info_sud/news",
+        ),
+        include_url_patterns=(
+            r"https://hcac\.court\.gov\.ua/hcac/(?:pres-centr/news|info_sud/news)/\d+/?$",
+        ),
+        source_type="court",
+    ),
+    SourceConfig(
+        slug="dbr",
+        name="Державне бюро розслідувань",
+        base_url="https://dbr.gov.ua",
+        section_urls=("https://dbr.gov.ua/news",),
+        include_url_patterns=(r"https://dbr\.gov\.ua/news/[^/?#]+/?$",),
+        exclude_url_patterns=(
+            r"/(?:assets|admin|search)(?:/|$)",
+            r"\.(?:pdf|docx?|xlsx?|zip|jpg|jpeg|png|webp)(?:$|\?)",
+        ),
+        source_type="law_enforcement",
+    ),
+    SourceConfig(
+        slug="nazk",
+        name="Національне агентство з питань запобігання корупції",
+        base_url="https://nazk.gov.ua",
+        section_urls=("https://nazk.gov.ua/uk/novyny/",),
+        include_url_patterns=(r"https://nazk\.gov\.ua/uk/novyny/[^/?#]+/?$",),
+        exclude_url_patterns=(
+            r"/(?:declarations|dashboard|documents|uploads)(?:/|$)",
+            r"\.(?:pdf|docx?|xlsx?|zip)(?:$|\?)",
+        ),
+        source_type="institution",
+    ),
+    SourceConfig(
+        slug="arma",
+        name="АРМА",
+        base_url="https://arma.gov.ua",
+        section_urls=("https://arma.gov.ua/news",),
+        include_url_patterns=(r"https://arma\.gov\.ua/news/typical/[^/?#]+/?$",),
+        exclude_url_patterns=(r"\.(?:pdf|docx?|xlsx?|zip)(?:$|\?)",),
+        source_type="institution",
+    ),
+    SourceConfig(
+        slug="gp",
+        name="Офіс Генерального прокурора",
+        base_url="https://gp.gov.ua",
+        section_urls=("https://gp.gov.ua/ua/posts",),
+        include_url_patterns=(r"https://gp\.gov\.ua/ua/posts/[^/?#]+/?$",),
+        exclude_url_patterns=(
+            r"https://[^/]+\.gp\.gov\.ua/",
+            r"/(?:documents|search)(?:/|$)",
+            r"\.(?:pdf|docx?|xlsx?|zip)(?:$|\?)",
+        ),
+        source_type="law_enforcement",
+        discovery_notes="Official post/article paths only; regional subdomains are excluded.",
+    ),
+    SourceConfig(
+        slug="ssu",
+        name="Служба безпеки України",
+        base_url="https://ssu.gov.ua",
+        section_urls=("https://ssu.gov.ua/novyny",),
+        include_url_patterns=(r"https://ssu\.gov\.ua/novyny/[^/?#]+/?$",),
+        exclude_url_patterns=(r"/en/", r"/(?:gallery|search)(?:/|$)"),
+        source_type="law_enforcement",
+    ),
+    SourceConfig(
+        slug="npu",
+        name="Національна поліція України",
+        base_url="https://npu.gov.ua",
+        section_urls=("https://npu.gov.ua/news",),
+        include_url_patterns=(r"https://npu\.gov\.ua/news/[^/?#]+/?$",),
+        exclude_url_patterns=(
+            r"/search(?:/|$)",
+            r"\.(?:pdf|docx?|xlsx?|zip|jpg|jpeg|png|webp)(?:$|\?)",
+        ),
+        source_type="law_enforcement",
+    ),
+    SourceConfig(
+        slug="court-gov",
+        name="Судова влада України",
+        base_url="https://court.gov.ua",
+        section_urls=("https://court.gov.ua/press/news/",),
+        include_url_patterns=(r"https://court\.gov\.ua/press/news/\d+/?$",),
+        exclude_url_patterns=(r"/(?:fair|schedule|search|storage)(?:/|$)",),
+        source_type="court",
+    ),
+    SourceConfig(
+        slug="supreme-court",
+        name="Верховний Суд",
+        base_url="https://supreme.court.gov.ua",
+        section_urls=("https://supreme.court.gov.ua/supreme/pres-centr/news/",),
+        include_url_patterns=(r"https://supreme\.court\.gov\.ua/supreme/pres-centr/news/\d+/?$",),
+        source_type="court",
+    ),
+    SourceConfig(
+        slug="ccu",
+        name="Конституційний Суд України",
+        base_url="https://ccu.gov.ua",
+        section_urls=("https://ccu.gov.ua/storinka/novyny",),
+        include_url_patterns=(
+            r"https://ccu\.gov\.ua/novyna/[^/?#]+/?$",
+            r"https://ccu\.gov\.ua/.+/novyny/[^/?#]+/?$",
+        ),
+        exclude_url_patterns=(
+            r"/(?:docs|document|rishennya|akty)(?:/|$)",
+            r"\.(?:pdf|docx?|xlsx?|zip)(?:$|\?)",
+        ),
+        source_type="court",
+        discovery_notes=(
+            "Canonical news section needs live validation; document libraries are excluded."
+        ),
+    ),
+    SourceConfig(
+        slug="rada",
+        name="Верховна Рада України",
+        base_url="https://www.rada.gov.ua",
+        section_urls=(
+            "https://www.rada.gov.ua/news/Novyny/",
+            "https://www.rada.gov.ua/news/news_kom/",
+        ),
+        include_url_patterns=(r"https://www\.rada\.gov\.ua/news/(?:Novyny|news_kom)/\d+\.html$",),
+        exclude_url_patterns=(
+            r"https://zakon\.rada\.gov\.ua/",
+            r"/(?:billInfo|uploads|search)(?:/|$)",
+            r"\.(?:pdf|docx?|xlsx?|zip)(?:$|\?)",
+        ),
+        source_type="parliament",
+    ),
+    SourceConfig(
+        slug="kmu",
+        name="Кабінет Міністрів України",
+        base_url="https://www.kmu.gov.ua",
+        section_urls=("https://www.kmu.gov.ua/timeline?&type=posts",),
+        include_url_patterns=(r"https://www\.kmu\.gov\.ua/news/[^/?#]+/?$",),
+        exclude_url_patterns=(r"/(?:npas|petitions|storage|search)(?:/|$)",),
+        source_type="government",
+    ),
+    SourceConfig(
+        slug="president",
+        name="Президент України",
+        base_url="https://www.president.gov.ua",
+        section_urls=("https://www.president.gov.ua/news",),
+        include_url_patterns=(r"https://www\.president\.gov\.ua/news/[^/?#]+-\d+/?$",),
+        exclude_url_patterns=(r"/(?:documents|petitions|photos|videos)(?:/|$)",),
+        source_type="government",
+    ),
+    SourceConfig(
+        slug="rnbo",
+        name="Рада національної безпеки і оборони України",
+        base_url="https://www.rnbo.gov.ua",
+        section_urls=("https://www.rnbo.gov.ua/ua/Diialnist/",),
+        include_url_patterns=(r"https://www\.rnbo\.gov\.ua/ua/Diialnist/\d+\.html$",),
+        exclude_url_patterns=(r"/files(?:/|$)", r"\.(?:pdf|docx?|xlsx?|zip)(?:$|\?)"),
+        source_type="government",
+    ),
+)
+
+MEDIA_SOURCES: tuple[SourceConfig, ...] = tuple(
+    source for source in CURATED_SOURCES if source.source_type == "media"
 )

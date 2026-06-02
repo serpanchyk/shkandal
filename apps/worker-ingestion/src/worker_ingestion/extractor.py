@@ -10,6 +10,13 @@ from bs4 import BeautifulSoup, Tag
 from worker_ingestion.identity import identity_url_for_article, normalize_article_url
 from worker_ingestion.sources import SourceConfig
 
+try:
+    import trafilatura
+except ImportError:  # pragma: no cover - exercised only before dependency sync.
+    trafilatura = None  # type: ignore[assignment]
+
+MIN_GENERIC_TEXT_LENGTH = 120
+
 
 @dataclass(frozen=True)
 class ExtractedArticle:
@@ -34,7 +41,7 @@ def extract_article(source: SourceConfig, *, url: str, html: str) -> ExtractedAr
         author=_first_meta_by_name(soup, ("author",)),
         published_at=_published_at(soup),
         source_language=_html_language(soup) or source.language,
-        extracted_text=_body_text(soup, source.body_selectors),
+        extracted_text=_article_text(html, soup, source.body_selectors),
         remote_image_url=_normalized_image_url(
             _first_meta(soup, ("og:image", "twitter:image")),
             page_url=url,
@@ -114,6 +121,27 @@ def _body_text(soup: BeautifulSoup, selectors: tuple[str, ...]) -> str | None:
         if text:
             return text
     return None
+
+
+def _article_text(html: str, soup: BeautifulSoup, selectors: tuple[str, ...]) -> str | None:
+    generic_text = _generic_text(html)
+    if generic_text and len(generic_text) >= MIN_GENERIC_TEXT_LENGTH:
+        return generic_text
+    return _body_text(soup, selectors) or generic_text
+
+
+def _generic_text(html: str) -> str | None:
+    if trafilatura is None:
+        return None
+    text = trafilatura.extract(
+        html,
+        include_comments=False,
+        include_tables=False,
+        output_format="txt",
+    )
+    if not text:
+        return None
+    return text.strip() or None
 
 
 def _normalized_image_url(url: str | None, *, page_url: str) -> str | None:

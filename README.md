@@ -129,6 +129,7 @@ The ingestion worker starts from a small curated source list. Sources can be med
 Initial discovery methods:
 
 - `sitemap.xml`;
+- RSS/Atom feeds;
 - manually configured source sections;
 - include/exclude URL patterns.
 
@@ -251,7 +252,7 @@ The project is split into these services:
 
 - `frontend`: Next.js public UI for case pages, entity pages, and feed;
 - `backend`: FastAPI public API and application business boundary;
-- `worker-ingestion`: media sitemap discovery, fetching, extraction, URL identity normalization, image URL extraction;
+- `worker-ingestion`: curated source discovery, fetching, extraction, URL identity normalization, image URL extraction;
 - `worker-ml`: relevance classifier, article cards, embeddings, Qdrant retrieval, LLM resolution, deduplication;
 - `postgres`: source-of-truth relational database and MVP job store;
 - `qdrant`: rebuildable vector index for cases, entities, and events.

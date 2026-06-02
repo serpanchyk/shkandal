@@ -11,7 +11,7 @@ from worker_ingestion.config import IngestionConfig
 from worker_ingestion.extractor import extract_article
 from worker_ingestion.identity import normalize_article_url
 from worker_ingestion.sitemap import SitemapArticleUrl, discover_article_urls
-from worker_ingestion.sources import MEDIA_SOURCES, SourceConfig
+from worker_ingestion.sources import CURATED_SOURCES, SourceConfig
 from worker_ingestion.storage import ArticleInput, ArticleRepository, SourceInput
 from worker_ingestion.transport import Fetcher
 
@@ -31,7 +31,7 @@ class IngestionWorker:
         config: IngestionConfig,
         fetcher: Fetcher,
         repository: ArticleRepository,
-        sources: tuple[SourceConfig, ...] = MEDIA_SOURCES,
+        sources: tuple[SourceConfig, ...] = CURATED_SOURCES,
     ) -> None:
         self.config = config
         self.fetcher = fetcher
@@ -126,9 +126,14 @@ class IngestionWorker:
                     remote_image_url=None,
                     remote_image_metadata={},
                     source_metadata={
+                        "discovery_url": article_url.discovery_url,
+                        "discovery_method": article_url.discovery_method,
+                        "discovery_lastmod": article_url.lastmod.isoformat()
+                        if article_url.lastmod
+                        else None,
                         "sitemap_url": article_url.sitemap_url,
                         "sitemap_lastmod": article_url.lastmod.isoformat()
-                        if article_url.lastmod
+                        if article_url.lastmod and article_url.discovery_method == "sitemap"
                         else None,
                         "http_status": response.status_code,
                         "content_type": response.headers.get("content-type"),
@@ -155,9 +160,14 @@ class IngestionWorker:
                 remote_image_metadata={},
                 source_metadata={
                     "author": extracted.author,
+                    "discovery_url": article_url.discovery_url,
+                    "discovery_method": article_url.discovery_method,
+                    "discovery_lastmod": article_url.lastmod.isoformat()
+                    if article_url.lastmod
+                    else None,
                     "sitemap_url": article_url.sitemap_url,
                     "sitemap_lastmod": article_url.lastmod.isoformat()
-                    if article_url.lastmod
+                    if article_url.lastmod and article_url.discovery_method == "sitemap"
                     else None,
                     "http_status": response.status_code,
                     "content_type": response.headers.get("content-type"),

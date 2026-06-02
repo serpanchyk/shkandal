@@ -1,4 +1,35 @@
-from worker_ingestion.sources import MEDIA_SOURCES, SourceConfig
+from worker_ingestion.sources import CURATED_SOURCES, MEDIA_SOURCES, SourceConfig
+
+
+def test_curated_source_catalog_contains_unique_slugs_and_expected_types() -> None:
+    slugs = [source.slug for source in CURATED_SOURCES]
+
+    assert len(slugs) == len(set(slugs))
+    assert {source.source_type for source in CURATED_SOURCES} >= {
+        "media",
+        "institution",
+        "court",
+        "government",
+        "parliament",
+        "law_enforcement",
+    }
+    assert {source.slug for source in CURATED_SOURCES} >= {
+        "nabu",
+        "hcac",
+        "dbr",
+        "nazk",
+        "arma",
+        "gp",
+        "ssu",
+        "npu",
+        "court-gov",
+        "supreme-court",
+        "ccu",
+        "rada",
+        "kmu",
+        "president",
+        "rnbo",
+    }
 
 
 def test_media_source_catalog_contains_unique_slugs() -> None:
@@ -34,3 +65,17 @@ def test_source_config_defaults_to_ukrainian_media_article_selector() -> None:
     assert source.language == "uk"
     assert source.source_type == "media"
     assert source.body_selectors == ("article",)
+    assert source.rss_urls == ()
+    assert source.section_urls == ()
+    assert source.crawl_delay_seconds is None
+
+
+def test_institutional_source_filters_registry_search_and_pdf_noise() -> None:
+    sources = {source.slug: source for source in CURATED_SOURCES}
+
+    nabu = sources["nabu"]
+    assert nabu.source_type == "law_enforcement"
+    assert nabu.section_urls == ("https://nabu.gov.ua/news/",)
+    assert nabu.include_url_patterns == (r"https://nabu\.gov\.ua/news/[^/?#]+/?$",)
+    assert any("rozshuk" in pattern for pattern in nabu.exclude_url_patterns)
+    assert any("pdf" in pattern for pattern in nabu.exclude_url_patterns)

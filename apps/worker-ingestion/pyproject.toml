@@ -12,6 +12,7 @@ dependencies = [
     "pydantic>=2.12.5",
     "shkandal-common",
     "shkandal-database",
+    "trafilatura>=2.0.0",
 ]
 
 [tool.uv.sources]

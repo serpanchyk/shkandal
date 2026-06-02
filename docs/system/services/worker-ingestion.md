@@ -3,44 +3,45 @@
 The ingestion worker owns source discovery, page fetching, extraction, URL
 identity, and article persistence.
 
-Current implemented scope is media-only sitemap ingestion. Institution and
-official sources remain planned but are not configured in this slice.
+Current implemented scope is curated media and institutional source ingestion.
+Institutional sources use conservative URL patterns to avoid registry,
+document, search, and archive crawling.
 
 Implemented responsibilities:
 
-- read a curated media source list from `worker_ingestion.sources`;
-- discover URLs from `sitemap.xml`, sitemap indexes, nested sitemaps, and
-  gzipped sitemap files;
+- read a curated source list from `worker_ingestion.sources`;
+- discover URLs from `sitemap.xml`, sitemap indexes, nested sitemaps,
+  gzipped sitemap files, RSS/Atom feeds, and configured section pages;
 - apply source include/exclude URL patterns before fetching article pages;
 - fetch pages asynchronously with configured timeout, concurrency, and
   user-agent;
 - extract title, lead, author, publication date, source language, extracted
   text, remote image URL, raw HTML, and source metadata;
+- use `trafilatura` as the generic-first text extractor, with CSS selectors as
+  fallback only when generic extraction is missing or too short;
 - normalize article identity URLs and upsert by `articles.identity_url`;
 - keep the raw discovered URL unchanged in `articles.url`;
 - persist failed article fetch attempts with fetch metadata when the article
   URL can be identified.
 
-Configured media sources:
+Configured source groups:
 
-- `pravda`
-- `hromadske`
-- `radiosvoboda`
-- `suspilne`
-- `bihus`
-- `antac`
-- `nashigroshi`
-- `babel`
-- `texty`
-- `espreso`
-- `slovoidilo`
-- `tyzhden`
-- `chesno`
+- media: `pravda`, `hromadske`, `radiosvoboda`, `suspilne`, `bihus`,
+  `antac`, `nashigroshi`, `babel`, `texty`, `espreso`, `slovoidilo`,
+  `tyzhden`, `chesno`;
+- law enforcement: `nabu`, `dbr`, `gp`, `ssu`, `npu`;
+- courts: `hcac`, `court-gov`, `supreme-court`, `ccu`;
+- institutions: `nazk`, `arma`;
+- parliament: `rada`;
+- government: `kmu`, `president`, `rnbo`.
+
+See `docs/sources.md` for endpoint patterns, manual-review notes, and
+unsupported sources.
 
 ## URL Identity
 
-`articles.url` stores the raw URL discovered from the sitemap. It is not used as
-the duplicate key.
+`articles.url` stores the raw URL discovered from a sitemap, feed, or section
+page. It is not used as the duplicate key.
 
 `articles.identity_url` stores the canonical identity used for deduplication.
 The normalizer:
@@ -61,7 +62,7 @@ empty extraction results.
 
 ## Running
 
-Run all configured media sources through Docker Compose:
+Run all configured sources through Docker Compose:
 
 ```bash
 docker compose run --rm worker-ingestion
@@ -81,4 +82,11 @@ docker compose run --rm worker-ingestion python -m worker_ingestion.main --sourc
 ```
 
 Source type is stored as context and UI metadata, not as an authority score.
-Expected future source types include media, institution, court, NGO, and other.
+Supported source types include media, institution, court, NGO, government,
+parliament, law enforcement, and other.
+
+Run read-only source validation:
+
+```bash
+uv run python apps/worker-ingestion/scripts/validate_sources.py --sample 2
+```
