@@ -45,27 +45,30 @@ async def discover_article_urls(
     articles: list[SitemapArticleUrl] = []
     seen_article_urls: set[str] = set()
 
-    sitemap_articles = await _discover_sitemap_article_urls(
+    feed_articles = await _discover_feed_article_urls(
         source,
         fetcher,
-        config,
         since=since,
         until=until,
     )
     _append_unique(
-        articles, sitemap_articles, seen_article_urls, limit=config.max_sitemap_urls_per_source
+        articles,
+        feed_articles,
+        seen_article_urls,
+        limit=config.max_sitemap_urls_per_source,
     )
 
     if len(articles) < config.max_sitemap_urls_per_source:
-        feed_articles = await _discover_feed_article_urls(
+        sitemap_articles = await _discover_sitemap_article_urls(
             source,
             fetcher,
+            config,
             since=since,
             until=until,
         )
         _append_unique(
             articles,
-            feed_articles,
+            sitemap_articles,
             seen_article_urls,
             limit=config.max_sitemap_urls_per_source,
         )

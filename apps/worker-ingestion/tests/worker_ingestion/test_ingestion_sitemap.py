@@ -239,6 +239,45 @@ async def test_discover_article_urls_respects_source_limit() -> None:
 
 
 @pytest.mark.asyncio
+async def test_discover_article_urls_prefers_feeds_for_daily_discovery() -> None:
+    source = SourceConfig(
+        slug="example",
+        name="Example",
+        base_url="https://example.ua",
+        sitemap_urls=("https://example.ua/sitemap.xml",),
+        rss_urls=("https://example.ua/feed.xml",),
+        include_url_patterns=(r"https://example\.ua/news/[^/?#]+/?$",),
+    )
+    feed = """<rss version="2.0"><channel>
+      <item><link>https://example.ua/news/from-feed</link></item>
+    </channel></rss>"""
+    sitemap = """<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+      <url><loc>https://example.ua/news/from-sitemap</loc></url>
+    </urlset>"""
+    fetcher = FakeFetcher(
+        {
+            "https://example.ua/feed.xml": fetch_result(
+                "https://example.ua/feed.xml", feed, "application/rss+xml"
+            ),
+            "https://example.ua/sitemap.xml": fetch_result(
+                "https://example.ua/sitemap.xml", sitemap, "application/xml"
+            ),
+        }
+    )
+
+    urls = await discover_article_urls(
+        source,
+        fetcher,
+        IngestionConfig(max_sitemap_urls_per_source=1),
+    )
+
+    assert fetcher.requested_urls == ["https://example.ua/feed.xml"]
+    assert [(url.url, url.discovery_method) for url in urls] == [
+        ("https://example.ua/news/from-feed", "feed"),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_discover_article_urls_uses_feeds_and_section_pages() -> None:
     source = SourceConfig(
         slug="example",

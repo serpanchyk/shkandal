@@ -54,6 +54,22 @@ def test_media_source_catalog_uses_current_known_sitemap_roots() -> None:
     )
 
 
+def test_source_catalog_configures_verified_rss_feeds() -> None:
+    sources = {source.slug: source for source in CURATED_SOURCES}
+
+    assert sources["pravda"].rss_urls == ("https://www.pravda.com.ua/rss/view_news/",)
+    assert sources["radiosvoboda"].rss_urls == ("https://www.radiosvoboda.org/rss/",)
+    assert sources["bihus"].rss_urls == ("https://bihus.info/feed/",)
+    assert sources["antac"].rss_urls == ("https://antac.org.ua/feed/",)
+    assert sources["nashigroshi"].rss_urls == ("https://nashigroshi.org/feed/",)
+    assert sources["babel"].rss_urls == ("https://babel.ua/rss.xml",)
+    assert sources["texty"].rss_urls == ("https://texty.org.ua/feed.xml",)
+    assert sources["espreso"].rss_urls == ("https://espreso.tv/rss",)
+    assert sources["tyzhden"].rss_urls == ("https://tyzhden.ua/feed/",)
+    assert sources["ccu"].rss_urls == ("https://ccu.gov.ua/rss.xml",)
+    assert sources["rada"].rss_urls == ("https://www.rada.gov.ua/rss/",)
+
+
 def test_source_config_defaults_to_ukrainian_media_article_selector() -> None:
     source = SourceConfig(
         slug="example",
