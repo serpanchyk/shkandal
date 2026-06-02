@@ -73,6 +73,37 @@ def test_parse_feed_supports_rss_and_atom() -> None:
     ]
 
 
+def test_parsers_normalize_naive_dates_to_utc() -> None:
+    sitemap = b"""<?xml version="1.0" encoding="UTF-8"?>
+    <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+      <url>
+        <loc>https://example.ua/news/item</loc>
+        <lastmod>2026-06-01T10:00:00</lastmod>
+      </url>
+    </urlset>
+    """
+    rss = b"""<?xml version="1.0" encoding="UTF-8"?>
+    <rss version="2.0">
+      <channel>
+        <item>
+          <link>https://example.ua/news/rss</link>
+          <pubDate>Mon, 01 Jun 2026 12:00:00</pubDate>
+        </item>
+      </channel>
+    </rss>
+    """
+
+    _, sitemap_urls = parse_sitemap(sitemap, sitemap_url="https://example.ua/sitemap.xml")
+    feed_urls = parse_feed(rss, feed_url="https://example.ua/feed.xml")
+
+    assert sitemap_urls == [
+        ("https://example.ua/news/item", datetime(2026, 6, 1, 10, tzinfo=UTC))
+    ]
+    assert feed_urls == [
+        ("https://example.ua/news/rss", datetime(2026, 6, 1, 12, tzinfo=UTC))
+    ]
+
+
 def test_parse_section_article_links_normalizes_and_deduplicates_links() -> None:
     html = """<html><body>
       <a href="/news/one#comments">One</a>
@@ -138,6 +169,31 @@ async def test_discover_article_urls_recurses_filters_and_applies_date_window() 
     ]
     assert [url.url for url in urls] == ["https://example.ua/news/in-window"]
     assert [url.discovery_method for url in urls] == ["sitemap"]
+
+
+@pytest.mark.asyncio
+async def test_discover_article_urls_compares_naive_lastmod_with_aware_window() -> None:
+    articles = """<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+      <url>
+        <loc>https://example.ua/news/in-window</loc>
+        <lastmod>2026-06-01T12:00:00</lastmod>
+      </url>
+    </urlset>"""
+
+    urls = await discover_article_urls(
+        source_config(),
+        FakeFetcher(
+            {
+                "https://example.ua/sitemap.xml": fetch_result(
+                    "https://example.ua/sitemap.xml", articles, "application/xml"
+                ),
+            }
+        ),
+        IngestionConfig(),
+        since=datetime(2026, 5, 31, tzinfo=UTC),
+    )
+
+    assert [url.url for url in urls] == ["https://example.ua/news/in-window"]
 
 
 @pytest.mark.asyncio

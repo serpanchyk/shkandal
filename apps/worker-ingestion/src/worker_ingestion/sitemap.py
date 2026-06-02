@@ -7,7 +7,7 @@ import re
 import xml.etree.ElementTree as ET
 from collections import deque
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup, Tag
@@ -300,7 +300,7 @@ def _parse_datetime(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return _as_utc(datetime.fromisoformat(value.replace("Z", "+00:00")))
     except ValueError:
         return _parse_rfc2822_datetime(value)
 
@@ -309,7 +309,7 @@ def _parse_rfc2822_datetime(value: str) -> datetime | None:
     from email.utils import parsedate_to_datetime
 
     try:
-        return parsedate_to_datetime(value)
+        return _as_utc(parsedate_to_datetime(value))
     except (TypeError, ValueError):
         return None
 
@@ -322,9 +322,18 @@ def _in_window(
 ) -> bool:
     if lastmod is None:
         return True
+    lastmod = _as_utc(lastmod)
+    since = _as_utc(since) if since else None
+    until = _as_utc(until) if until else None
     if since and lastmod < since:
         return False
     return not (until and lastmod > until)
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 def _is_allowed_article_url(url: str, source: SourceConfig) -> bool:
