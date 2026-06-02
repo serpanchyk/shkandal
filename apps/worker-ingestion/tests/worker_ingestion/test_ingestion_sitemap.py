@@ -96,12 +96,8 @@ def test_parsers_normalize_naive_dates_to_utc() -> None:
     _, sitemap_urls = parse_sitemap(sitemap, sitemap_url="https://example.ua/sitemap.xml")
     feed_urls = parse_feed(rss, feed_url="https://example.ua/feed.xml")
 
-    assert sitemap_urls == [
-        ("https://example.ua/news/item", datetime(2026, 6, 1, 10, tzinfo=UTC))
-    ]
-    assert feed_urls == [
-        ("https://example.ua/news/rss", datetime(2026, 6, 1, 12, tzinfo=UTC))
-    ]
+    assert sitemap_urls == [("https://example.ua/news/item", datetime(2026, 6, 1, 10, tzinfo=UTC))]
+    assert feed_urls == [("https://example.ua/news/rss", datetime(2026, 6, 1, 12, tzinfo=UTC))]
 
 
 def test_parse_section_article_links_normalizes_and_deduplicates_links() -> None:
@@ -114,6 +110,26 @@ def test_parse_section_article_links_normalizes_and_deduplicates_links() -> None
 
     assert parse_section_article_links(html, section_url="https://example.ua/news/") == [
         "https://example.ua/news/one",
+    ]
+
+
+def test_parse_section_article_links_extracts_same_host_json_urls() -> None:
+    payload = """
+    {
+      "data": {
+        "2026-06-02": [
+          {"url": "https://example.ua/news/item", "image": "https://example.ua/img/item.jpg"},
+          {"url": "/news/other"},
+          {"url": "https://other.example/news/ignored"}
+        ]
+      }
+    }
+    """
+
+    assert parse_section_article_links(payload, section_url="https://example.ua/api/timeline") == [
+        "https://example.ua/news/item",
+        "https://example.ua/img/item.jpg",
+        "https://example.ua/news/other",
     ]
 
 

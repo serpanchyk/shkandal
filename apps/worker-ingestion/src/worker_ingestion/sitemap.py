@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gzip
+import json
 import re
 import xml.etree.ElementTree as ET
 from collections import deque
@@ -256,6 +257,9 @@ def parse_feed(content: bytes, *, feed_url: str) -> list[tuple[str, datetime | N
 def parse_section_article_links(html: str, *, section_url: str) -> list[str]:
     """Extract same-page article links from a source section page."""
 
+    if json_urls := _parse_json_article_links(html, section_url=section_url):
+        return json_urls
+
     soup = BeautifulSoup(html, "html.parser")
     section_host = urlparse(section_url).netloc
     urls: list[str] = []
@@ -264,6 +268,7 @@ def parse_section_article_links(html: str, *, section_url: str) -> list[str]:
         if not isinstance(link, Tag):
             continue
         href = link.get("href")
+        href = href.strip() if isinstance(href, str) else href
         if not isinstance(href, str) or href.startswith(("#", "mailto:", "tel:", "javascript:")):
             continue
         url = urljoin(section_url, href).split("#", 1)[0]
@@ -274,6 +279,44 @@ def parse_section_article_links(html: str, *, section_url: str) -> list[str]:
         seen.add(url)
         urls.append(url)
     return urls
+
+
+def _parse_json_article_links(content: str, *, section_url: str) -> list[str]:
+    try:
+        payload = json.loads(content)
+    except json.JSONDecodeError:
+        return []
+
+    section_host = urlparse(section_url).netloc
+    urls: list[str] = []
+    seen: set[str] = set()
+    for value in _iter_json_strings(payload):
+        if not value.startswith(("http://", "https://", "/")):
+            continue
+        url = urljoin(section_url, value).split("#", 1)[0]
+        if urlparse(url).netloc != section_host:
+            continue
+        if url in seen:
+            continue
+        seen.add(url)
+        urls.append(url)
+    return urls
+
+
+def _iter_json_strings(value: object) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        strings: list[str] = []
+        for item in value:
+            strings.extend(_iter_json_strings(item))
+        return strings
+    if isinstance(value, dict):
+        strings = []
+        for item in value.values():
+            strings.extend(_iter_json_strings(item))
+        return strings
+    return []
 
 
 def _maybe_decompress(content: bytes) -> bytes:

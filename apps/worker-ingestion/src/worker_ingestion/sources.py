@@ -1,4 +1,26 @@
-"""Curated source configuration."""
+"""Curated source configuration.
+
+Live ingestion validation, 2026-06-02:
+
+Works: pravda, hromadske, radiosvoboda, suspilne, bihus, antac,
+nashigroshi, babel, texty, espreso, slovoidilo, tyzhden, chesno, hcac,
+nazk, arma, gp, npu, court-gov, supreme-court, ccu, rada, rnbo.
+
+Broken after repair attempt: nabu, dbr, ssu, kmu, president.
+
+Broken-source reasons:
+- nabu blocks the configured transparent project user-agent with HTTP 403.
+- dbr has an incomplete TLS certificate chain in this runtime; it works only
+  with certificate verification disabled, which ingestion should not do by
+  default.
+- ssu and president return Akamai-style HTTP 403 Access Denied for project and
+  browser user-agents from this environment.
+- kmu exposes discoverable sitemap URLs but article and API fetches are
+  redirected to a Radware captcha page, so extracted text is captcha content.
+
+Robots-only 404/403 is not treated as ingestion failure when section/article
+discovery and extraction work.
+"""
 
 from __future__ import annotations
 
@@ -207,15 +229,18 @@ CURATED_SOURCES: tuple[SourceConfig, ...] = (
         slug="gp",
         name="Офіс Генерального прокурора",
         base_url="https://gp.gov.ua",
-        section_urls=("https://gp.gov.ua/ua/posts",),
+        section_urls=("https://gp.gov.ua/ua/categories/novini",),
         include_url_patterns=(r"https://gp\.gov\.ua/ua/posts/[^/?#]+/?$",),
         exclude_url_patterns=(
             r"https://[^/]+\.gp\.gov\.ua/",
+            r"/ua/posts/(?:kontakti-dlya-zmi|sajti-oblasnih-prokuratur)/?$",
             r"/(?:documents|search)(?:/|$)",
             r"\.(?:pdf|docx?|xlsx?|zip)(?:$|\?)",
         ),
         source_type="law_enforcement",
-        discovery_notes="Official post/article paths only; regional subdomains are excluded.",
+        discovery_notes=(
+            "Official news category and post/article paths only; regional subdomains are excluded."
+        ),
     ),
     SourceConfig(
         slug="ssu",
@@ -230,13 +255,14 @@ CURATED_SOURCES: tuple[SourceConfig, ...] = (
         slug="npu",
         name="Національна поліція України",
         base_url="https://npu.gov.ua",
-        section_urls=("https://npu.gov.ua/news",),
+        section_urls=("https://npu.gov.ua/api/timeline?type=posts&category_id=35&page=1",),
         include_url_patterns=(r"https://npu\.gov\.ua/news/[^/?#]+/?$",),
         exclude_url_patterns=(
             r"/search(?:/|$)",
             r"\.(?:pdf|docx?|xlsx?|zip|jpg|jpeg|png|webp)(?:$|\?)",
         ),
         source_type="law_enforcement",
+        discovery_notes="Official news timeline is JSON/API-backed, not server-rendered HTML.",
     ),
     SourceConfig(
         slug="court-gov",
