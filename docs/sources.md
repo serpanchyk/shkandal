@@ -9,6 +9,38 @@ Extraction is generic-first through `trafilatura`; configured CSS
 `body_selectors` are fallback-only selectors when generic extraction is missing
 or too short.
 
+## Backfill Run Notes
+
+### 2026-06-03 12-month ingestion observation
+
+Started the current `worker-ingestion` Docker image for an all-source backfill
+covering `2025-06-03T00:00:00+00:00` through
+`2026-06-03T23:59:59+00:00`.
+
+Command:
+
+```bash
+docker compose run -d --name shkandal-ingestion-backfill-20260603-12mo worker-ingestion python -m worker_ingestion.main --since 2025-06-03T00:00:00+00:00 --until 2026-06-03T23:59:59+00:00
+```
+
+Five-minute observation result:
+
+| Source | Observed status |
+| --- | --- |
+| `pravda` | Completed first. Discovered 20 feed URLs, stored 19 HTML articles, and recorded 1 fetch failure for `https://www.pravda.com.ua/news/2026/06/03/8037513/` with HTTP 403. |
+| `hromadske` | Started second. Discovery hit the date-bounded cap of 10,000 URLs. After the five-minute check the container was still running in this source; article fetches were progressing but several transport failures were logged. |
+
+Database snapshot after the observation window:
+
+| Source | Rows fetched in this run | Rows with raw HTML | Failure records |
+| --- | ---: | ---: | ---: |
+| `pravda` | 20 | 19 | 1 |
+| `hromadske` | 4,145 | 4,133 | 12 |
+
+The backfill container was left running after the observation window. The main
+early risk is `hromadske` throughput/reliability: logged failures included
+`non_2xx_response` with status `0` and `All connection attempts failed`.
+
 ## Supported Sources
 
 | Source | Type | Robots | RSS | Sitemap | Section URL | Include / exclude summary | Notes |
