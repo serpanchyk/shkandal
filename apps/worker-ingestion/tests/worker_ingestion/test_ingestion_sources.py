@@ -48,6 +48,7 @@ def test_media_source_catalog_uses_current_known_sitemap_roots() -> None:
         r"https://www\.pravda\.com\.ua/sitemap/sitemap-archive\.xml"
         in sources["pravda"].sitemap_url_patterns
     )
+    assert sources["pravda"].crawl_delay_seconds == 0.5
     assert (
         r"https://nashigroshi\.org/post-sitemap\d*\.xml"
         in sources["nashigroshi"].sitemap_url_patterns

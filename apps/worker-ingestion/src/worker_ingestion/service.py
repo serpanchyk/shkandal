@@ -129,7 +129,10 @@ class IngestionWorker:
                 },
             )
 
-        semaphore = asyncio.Semaphore(self.config.request_concurrency)
+        request_concurrency = (
+            1 if source.crawl_delay_seconds is not None else self.config.request_concurrency
+        )
+        semaphore = asyncio.Semaphore(request_concurrency)
         results = await asyncio.gather(
             *(
                 self._ingest_article(source, source_id, article_url, semaphore)
@@ -164,6 +167,8 @@ class IngestionWorker:
         semaphore: asyncio.Semaphore,
     ) -> bool:
         async with semaphore:
+            if source.crawl_delay_seconds is not None:
+                await asyncio.sleep(source.crawl_delay_seconds)
             response = await self.fetcher.fetch(article_url.url)
         if not response.ok:
             self.logger.warning(

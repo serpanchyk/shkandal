@@ -96,10 +96,13 @@ class SqlAlchemyArticleRepository:
         if not identity_urls:
             return set()
 
+        existing_identity_urls: set[str] = set()
         async with self.session_factory() as session:
-            statement = select(Article.identity_url).where(Article.identity_url.in_(identity_urls))
-            result = await session.execute(statement)
-            return set(result.scalars())
+            for chunk in _chunks(tuple(identity_urls), size=10_000):
+                statement = select(Article.identity_url).where(Article.identity_url.in_(chunk))
+                result = await session.execute(statement)
+                existing_identity_urls.update(result.scalars())
+        return existing_identity_urls
 
     async def iter_articles_missing_published_at(
         self,
@@ -196,3 +199,7 @@ class SqlAlchemyArticleRepository:
             )
             await session.execute(statement)
             await session.commit()
+
+
+def _chunks(values: tuple[str, ...], *, size: int) -> tuple[tuple[str, ...], ...]:
+    return tuple(values[index : index + size] for index in range(0, len(values), size))

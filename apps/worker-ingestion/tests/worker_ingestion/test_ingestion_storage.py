@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from worker_ingestion.storage import ArticleInput, SourceInput, SqlAlchemyArticleRepository
+from worker_ingestion.storage import ArticleInput, SourceInput, SqlAlchemyArticleRepository, _chunks
 
 
 def test_source_input_preserves_source_contract_fields() -> None:
@@ -47,3 +47,11 @@ def test_sqlalchemy_repository_keeps_session_factory() -> None:
     repository = SqlAlchemyArticleRepository(session_factory)  # type: ignore[arg-type]
 
     assert repository.session_factory is session_factory
+
+
+def test_chunks_splits_large_identity_lookup_inputs() -> None:
+    assert _chunks(("a", "b", "c", "d", "e"), size=2) == (
+        ("a", "b"),
+        ("c", "d"),
+        ("e",),
+    )

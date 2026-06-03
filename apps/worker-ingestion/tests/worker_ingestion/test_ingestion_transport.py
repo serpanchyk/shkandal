@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 import httpx
 import pytest
 from worker_ingestion.config import IngestionConfig
-from worker_ingestion.transport import FetchResult, HttpxFetcher
+from worker_ingestion.transport import FetchResult, HttpxFetcher, _requires_browser_impersonation
 
 
 def test_fetch_result_ok_reflects_status_and_error() -> None:
@@ -27,6 +27,13 @@ def test_fetch_result_ok_reflects_status_and_error() -> None:
 
     assert success.ok
     assert not failure.ok
+
+
+def test_pravda_sitemap_uses_browser_impersonation() -> None:
+    assert _requires_browser_impersonation("https://www.pravda.com.ua/sitemap/sitemap.xml")
+    assert _requires_browser_impersonation("https://pravda.com.ua/sitemap/sitemap-2025-06.xml.gz")
+    assert _requires_browser_impersonation("https://www.pravda.com.ua/news/2026/06/03/1/")
+    assert not _requires_browser_impersonation("https://example.ua/sitemap/sitemap.xml")
 
 
 @pytest.mark.asyncio

@@ -69,6 +69,7 @@ CURATED_SOURCES: tuple[SourceConfig, ...] = (
         include_url_patterns=(r"https://www\.pravda\.com\.ua/news/.+",),
         exclude_url_patterns=(r"/rus/", r"/eng/"),
         body_selectors=("div.post_news_text", "article"),
+        crawl_delay_seconds=0.5,
     ),
     SourceConfig(
         slug="hromadske",

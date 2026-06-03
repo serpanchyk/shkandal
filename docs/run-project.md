@@ -214,6 +214,10 @@ For dense sources, raise the cap explicitly:
 docker compose run --rm worker-ingestion python -m worker_ingestion.main --source pravda --since 2025-01-01 --until 2026-06-03 --max-backfill-urls-per-source 80000
 ```
 
+`pravda` sitemap and article requests use browser TLS impersonation in the
+worker because Cloudflare blocks the default Python HTTP client from Docker.
+`pravda` also runs with a source-level crawl delay to avoid 429 rate limits.
+
 Repair missing `published_at` values from stored `raw_html` without refetching.
 This command is a dry run unless `--apply` is included:
 

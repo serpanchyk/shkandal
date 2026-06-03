@@ -115,6 +115,10 @@ cap is 10,000 discovered article URLs per source.
 Date-only `--until` values are treated as the end of that calendar day. Dense
 sources can override the date-bounded discovery cap with
 `--max-backfill-urls-per-source`.
+Pravda uses a browser-impersonated fetch path for all requests from Docker,
+because Cloudflare challenges the default Python HTTP client on sitemap and
+some article URLs. It also uses a source-level crawl delay and single in-flight
+fetch to avoid 429 rate limits.
 
 Repair missing publication dates from already-stored raw HTML without refetching
 articles. Repair mode is a dry run unless `--apply` is passed:
