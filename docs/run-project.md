@@ -208,6 +208,11 @@ docker compose run --rm worker-ingestion python -m worker_ingestion.main --since
 
 Date-bounded runs use a higher backfill discovery cap by default so source
 archive traversal is not truncated at the daily discovery limit.
+For dense sources, raise the cap explicitly:
+
+```bash
+docker compose run --rm worker-ingestion python -m worker_ingestion.main --source pravda --since 2025-01-01 --until 2026-06-03 --max-backfill-urls-per-source 80000
+```
 
 Repair missing `published_at` values from stored `raw_html` without refetching.
 This command is a dry run unless `--apply` is included:

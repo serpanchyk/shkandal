@@ -11,7 +11,11 @@ from uuid import UUID
 from worker_ingestion.config import IngestionConfig
 from worker_ingestion.extractor import extract_article
 from worker_ingestion.identity import normalize_article_url
-from worker_ingestion.sitemap import SitemapArticleUrl, discover_article_urls
+from worker_ingestion.sitemap import (
+    SitemapArticleUrl,
+    discover_article_urls,
+    effective_discovery_limit,
+)
 from worker_ingestion.sources import CURATED_SOURCES, SourceConfig
 from worker_ingestion.storage import ArticleInput, ArticleRepository, SourceInput
 from worker_ingestion.transport import Fetcher
@@ -94,12 +98,13 @@ class IngestionWorker:
             since=since,
             until=until,
         )
+        discovery_limit = effective_discovery_limit(self.config, since=since, until=until)
         self.logger.info(
             "worker_ingestion_source_discovered",
             extra={
                 "source_slug": source.slug,
                 "discovered_articles": len(urls),
-                "max_sitemap_urls_per_source": self.config.max_sitemap_urls_per_source,
+                "discovery_limit": discovery_limit,
             },
         )
         if limit is not None:

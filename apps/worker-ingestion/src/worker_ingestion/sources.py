@@ -60,6 +60,7 @@ CURATED_SOURCES: tuple[SourceConfig, ...] = (
         base_url="https://www.pravda.com.ua",
         sitemap_urls=("https://www.pravda.com.ua/sitemap/sitemap.xml",),
         sitemap_url_patterns=(
+            r"https://www\.pravda\.com\.ua/sitemap/sitemap-archive\.xml",
             r"https://www\.pravda\.com\.ua/sitemap/sitemap-now\.xml\.gz",
             r"https://www\.pravda\.com\.ua/sitemap/sitemap-news\.xml",
             r"https://www\.pravda\.com\.ua/sitemap/sitemap-\d{4}-\d{2}\.xml\.gz",

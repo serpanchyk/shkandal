@@ -112,6 +112,9 @@ docker compose run --rm worker-ingestion python -m worker_ingestion.main --sourc
 Date-bounded runs use `max_backfill_urls_per_source` as the effective discovery
 cap when it is higher than `max_sitemap_urls_per_source`. The default backfill
 cap is 10,000 discovered article URLs per source.
+Date-only `--until` values are treated as the end of that calendar day. Dense
+sources can override the date-bounded discovery cap with
+`--max-backfill-urls-per-source`.
 
 Repair missing publication dates from already-stored raw HTML without refetching
 articles. Repair mode is a dry run unless `--apply` is passed:

@@ -2,7 +2,7 @@
 
 import argparse
 import asyncio
-from datetime import datetime
+from datetime import datetime, time
 
 from shkandal_common.logging import setup_logger
 from shkandal_database.config import DatabaseConfig
@@ -22,8 +22,11 @@ async def run_once(
     limit: int | None = None,
     since: datetime | None = None,
     until: datetime | None = None,
+    max_backfill_urls_per_source: int | None = None,
 ) -> IngestionStats:
     settings = config or IngestionConfig()
+    if max_backfill_urls_per_source is not None:
+        settings.max_backfill_urls_per_source = max_backfill_urls_per_source
     logger = setup_logger(settings.service_name)
     logger.info(
         "worker_ingestion_started",
@@ -114,8 +117,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run Shkandal source ingestion.")
     parser.add_argument("--source", dest="source_slug")
     parser.add_argument("--limit", type=int)
-    parser.add_argument("--since", type=_parse_datetime)
-    parser.add_argument("--until", type=_parse_datetime)
+    parser.add_argument("--since", type=_parse_since_datetime)
+    parser.add_argument("--until", type=_parse_until_datetime)
+    parser.add_argument(
+        "--max-backfill-urls-per-source",
+        type=int,
+        help="Override date-bounded discovery cap for dense source backfills.",
+    )
     parser.add_argument(
         "--repair-missing-published-at",
         action="store_true",
@@ -145,12 +153,23 @@ def main() -> None:
             limit=args.limit,
             since=args.since,
             until=args.until,
+            max_backfill_urls_per_source=args.max_backfill_urls_per_source,
         )
     )
 
 
 def _parse_datetime(value: str) -> datetime:
     return datetime.fromisoformat(value)
+
+
+def _parse_since_datetime(value: str) -> datetime:
+    return _parse_datetime(value)
+
+
+def _parse_until_datetime(value: str) -> datetime:
+    if "T" in value:
+        return _parse_datetime(value)
+    return datetime.combine(datetime.fromisoformat(value).date(), time.max)
 
 
 if __name__ == "__main__":
