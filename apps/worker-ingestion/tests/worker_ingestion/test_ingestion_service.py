@@ -12,6 +12,7 @@ from conftest import (
 )
 from worker_ingestion.config import IngestionConfig
 from worker_ingestion.service import IngestionWorker
+from worker_ingestion.sources import SourceConfig
 from worker_ingestion.storage import ArticleInput
 
 
@@ -183,6 +184,57 @@ async def test_failed_article_fetch_is_persisted_without_aborting_source() -> No
     failed = repository.articles["https://example.ua/news/fails"]
     assert failed.raw_html is None
     assert failed.source_metadata["fetch_error"] == "server_error"
+
+
+@pytest.mark.asyncio
+async def test_date_bounded_section_article_outside_extracted_window_is_skipped() -> None:
+    section_url = "https://example.ua/news/"
+    article_url = "https://example.ua/news/current"
+    section = f"""<html><body><a href="{article_url}">Current section item</a></body></html>"""
+    article_html = """<!doctype html>
+    <html lang="uk">
+      <head>
+        <meta property="og:title" content="Поточна новина">
+        <meta property="article:published_time" content="2025-02-15T12:00:00+00:00">
+      </head>
+      <body><article><p>Текст поза запитаним вікном.</p></article></body>
+    </html>
+    """
+    repository = FakeArticleRepository()
+    fetcher = FakeFetcher(
+        {
+            section_url: fetch_result(section_url, section),
+            article_url: fetch_result(article_url, article_html),
+        }
+    )
+    worker = IngestionWorker(
+        config=IngestionConfig(),
+        fetcher=fetcher,
+        repository=repository,
+        sources=(
+            SourceConfig(
+                slug="example",
+                name="Example Institution",
+                base_url="https://example.ua",
+                section_urls=(section_url,),
+                include_url_patterns=(r"https://example\.ua/news/.+",),
+                source_type="institution",
+            ),
+        ),
+    )
+
+    stats = await worker.run_once(
+        source_slug="example",
+        since=datetime(2025, 1, 1, tzinfo=UTC),
+        until=datetime(2025, 1, 31, 23, 59, 59, tzinfo=UTC),
+    )
+
+    assert stats.discovered_articles == 1
+    assert stats.stored_articles == 0
+    assert stats.failed_articles == 0
+    assert stats.skipped_out_of_window_articles == 1
+    assert repository.articles == {}
+    assert fetcher.requested_urls == [section_url, article_url]
 
 
 @pytest.mark.asyncio

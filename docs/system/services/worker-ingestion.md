@@ -115,6 +115,9 @@ cap is 10,000 discovered article URLs per source.
 Date-only `--until` values are treated as the end of that calendar day. Dense
 sources can override the date-bounded discovery cap with
 `--max-backfill-urls-per-source`.
+When a date-bounded run fetches a candidate whose discovery metadata did not
+include a usable date, the worker checks the extracted article `published_at`
+before storage and skips articles outside the requested window.
 Pravda uses a browser-impersonated fetch path for all requests from Docker,
 because Cloudflare challenges the default Python HTTP client on sitemap and
 some article URLs. It also uses a source-level crawl delay and single in-flight

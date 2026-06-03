@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
+from typing import Literal
 from uuid import UUID
 
 from worker_ingestion.config import IngestionConfig
@@ -20,12 +21,15 @@ from worker_ingestion.sources import CURATED_SOURCES, SourceConfig
 from worker_ingestion.storage import ArticleInput, ArticleRepository, SourceInput
 from worker_ingestion.transport import Fetcher
 
+ArticleIngestionResult = Literal["stored", "failed", "skipped_out_of_window"]
+
 
 @dataclass(frozen=True)
 class IngestionStats:
     processed_sources: int = 0
     discovered_articles: int = 0
     skipped_existing_articles: int = 0
+    skipped_out_of_window_articles: int = 0
     stored_articles: int = 0
     failed_articles: int = 0
 
@@ -63,6 +67,10 @@ class IngestionWorker:
                 discovered_articles=stats.discovered_articles + source_stats.discovered_articles,
                 skipped_existing_articles=(
                     stats.skipped_existing_articles + source_stats.skipped_existing_articles
+                ),
+                skipped_out_of_window_articles=(
+                    stats.skipped_out_of_window_articles
+                    + source_stats.skipped_out_of_window_articles
                 ),
                 stored_articles=stats.stored_articles + source_stats.stored_articles,
                 failed_articles=stats.failed_articles + source_stats.failed_articles,
@@ -135,17 +143,29 @@ class IngestionWorker:
         semaphore = asyncio.Semaphore(request_concurrency)
         results = await asyncio.gather(
             *(
-                self._ingest_article(source, source_id, article_url, semaphore)
+                self._ingest_article(
+                    source,
+                    source_id,
+                    article_url,
+                    semaphore,
+                    since=since,
+                    until=until,
+                )
                 for article_url in urls
             )
         )
-        stored_articles = sum(1 for result in results if result)
+        stored_articles = sum(1 for result in results if result == "stored")
+        failed_articles = sum(1 for result in results if result == "failed")
+        skipped_out_of_window_articles = sum(
+            1 for result in results if result == "skipped_out_of_window"
+        )
         stats = IngestionStats(
             processed_sources=1,
             discovered_articles=discovered_articles,
             skipped_existing_articles=discovered_articles - len(urls),
+            skipped_out_of_window_articles=skipped_out_of_window_articles,
             stored_articles=stored_articles,
-            failed_articles=len(urls) - stored_articles,
+            failed_articles=failed_articles,
         )
         self.logger.info(
             "worker_ingestion_source_finished",
@@ -153,6 +173,7 @@ class IngestionWorker:
                 "source_slug": source.slug,
                 "discovered_articles": stats.discovered_articles,
                 "skipped_existing_articles": stats.skipped_existing_articles,
+                "skipped_out_of_window_articles": stats.skipped_out_of_window_articles,
                 "stored_articles": stats.stored_articles,
                 "failed_articles": stats.failed_articles,
             },
@@ -165,7 +186,10 @@ class IngestionWorker:
         source_id: UUID,
         article_url: SitemapArticleUrl,
         semaphore: asyncio.Semaphore,
-    ) -> bool:
+        *,
+        since: datetime | None,
+        until: datetime | None,
+    ) -> ArticleIngestionResult:
         async with semaphore:
             if source.crawl_delay_seconds is not None:
                 await asyncio.sleep(source.crawl_delay_seconds)
@@ -213,9 +237,26 @@ class IngestionWorker:
                     },
                 )
             )
-            return False
+            return "failed"
 
         extracted = extract_article(source, url=article_url.url, html=response.text)
+        if not _published_at_in_window(extracted.published_at, since=since, until=until):
+            self.logger.info(
+                "worker_ingestion_article_out_of_window_skipped",
+                extra={
+                    "source_slug": source.slug,
+                    "article_url": article_url.url,
+                    "published_at": extracted.published_at.isoformat()
+                    if extracted.published_at
+                    else None,
+                    "since": since.isoformat() if since else None,
+                    "until": until.isoformat() if until else None,
+                    "discovery_method": article_url.discovery_method,
+                    "discovery_url": article_url.discovery_url,
+                },
+            )
+            return "skipped_out_of_window"
+
         await self.repository.upsert_article(
             ArticleInput(
                 source_id=source_id,
@@ -246,9 +287,31 @@ class IngestionWorker:
                 },
             )
         )
-        return True
+        return "stored"
 
     def _selected_sources(self, source_slug: str | None) -> tuple[SourceConfig, ...]:
         if source_slug is None:
             return self.sources
         return tuple(source for source in self.sources if source.slug == source_slug)
+
+
+def _published_at_in_window(
+    published_at: datetime | None,
+    *,
+    since: datetime | None,
+    until: datetime | None,
+) -> bool:
+    if published_at is None:
+        return True
+    published_at = _as_utc(published_at)
+    since = _as_utc(since) if since else None
+    until = _as_utc(until) if until else None
+    if since and published_at < since:
+        return False
+    return not (until and published_at > until)
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
