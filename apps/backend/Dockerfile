@@ -20,7 +20,7 @@ WORKDIR /app
 
 COPY --from=builder /opt/venv /app/.venv
 COPY apps/backend/src ./src
-COPY apps/backend/config.toml ./config.toml
+COPY apps/backend/config.yaml ./config.yaml
 
 ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONPATH="/app/src"

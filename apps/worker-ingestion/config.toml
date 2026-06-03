@@ -1,2 +1,0 @@
-service_name = "worker-ingestion"
-poll_interval_seconds = 30

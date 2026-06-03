@@ -16,6 +16,10 @@ build/
 __pycache__/
 *.py[cod]
 
+artifacts/models/**
+!artifacts/models/**/
+!artifacts/models/**/manifest.json
+
 node_modules/
 .next/
 out/

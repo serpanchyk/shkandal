@@ -7,7 +7,7 @@ Source priority:
 1. explicit initialization arguments;
 2. OS environment;
 3. local `.env`;
-4. service `config.toml`;
+4. service `config.yaml`;
 5. file secrets;
 6. class defaults.
 

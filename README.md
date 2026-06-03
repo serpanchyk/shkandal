@@ -129,16 +129,19 @@ The ingestion worker starts from a small curated source list. Sources can be med
 Initial discovery methods:
 
 - `sitemap.xml`;
+- RSS/Atom feeds;
 - manually configured source sections;
 - include/exclude URL patterns.
 
-The MVP should run a controlled one-year backfill before first public launch, then continue forward ingestion. Fetching can happen in any order, but LLM resolution during backfill should process relevant articles oldest-to-newest by `published_at`.
+The MVP should run a controlled one-year backfill before first public launch, then continue forward ingestion. Date-bounded backfills use a higher source discovery cap than daily runs so archive traversal is not truncated too early. Fetching can happen in any order, but LLM resolution during backfill should process relevant articles oldest-to-newest by `published_at`.
 
 ### 2. Extract and Store
 
 The ingestion pipeline stores extracted text and raw HTML for all articles, including irrelevant ones. Raw HTML lets the project improve extraction later without re-crawling.
 
 Extraction is generic-first, with site-specific selectors only as fallback.
+Publication dates are extracted from article HTML metadata and can be repaired
+later from stored raw HTML without refetching articles.
 
 ### 3. Classify Relevance
 
@@ -251,7 +254,7 @@ The project is split into these services:
 
 - `frontend`: Next.js public UI for case pages, entity pages, and feed;
 - `backend`: FastAPI public API and application business boundary;
-- `worker-ingestion`: source discovery, fetching, extraction, normalization, image URL extraction;
+- `worker-ingestion`: curated source discovery, fetching, extraction, URL identity normalization, image URL extraction;
 - `worker-ml`: relevance classifier, article cards, embeddings, Qdrant retrieval, LLM resolution, deduplication;
 - `postgres`: source-of-truth relational database and MVP job store;
 - `qdrant`: rebuildable vector index for cases, entities, and events.

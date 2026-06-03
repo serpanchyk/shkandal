@@ -215,7 +215,10 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.CheckConstraint(
-            "source_type in ('media', 'institution', 'court', 'ngo', 'other')",
+            "source_type in ("
+            "'media', 'institution', 'court', 'ngo', 'other', "
+            "'government', 'parliament', 'law_enforcement'"
+            ")",
             name="ck_sources_source_type",
         ),
         sa.PrimaryKeyConstraint("id"),

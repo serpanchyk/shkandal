@@ -60,7 +60,10 @@ class Source(Base):
     __tablename__ = "sources"
     __table_args__ = (
         CheckConstraint(
-            "source_type in ('media', 'institution', 'court', 'ngo', 'other')",
+            "source_type in ("
+            "'media', 'institution', 'court', 'ngo', 'other', "
+            "'government', 'parliament', 'law_enforcement'"
+            ")",
             name="ck_sources_source_type",
         ),
         Index("ix_sources_source_type", "source_type"),
@@ -91,16 +94,15 @@ class Article(Base):
 
     __tablename__ = "articles"
     __table_args__ = (
+        UniqueConstraint("identity_url", name="uq_articles_identity_url"),
         Index("ix_articles_source_id_published_at", "source_id", "published_at"),
-        Index("ix_articles_canonical_url", "canonical_url"),
         Index("ix_articles_published_at", "published_at"),
     )
 
     id: Mapped[UUID] = uuid_pk_column()
     source_id: Mapped[UUID] = mapped_column(ForeignKey("sources.id"), nullable=False)
     url: Mapped[str] = mapped_column(Text, nullable=False)
-    canonical_url: Mapped[str] = mapped_column(Text, nullable=False)
-    normalized_url: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    identity_url: Mapped[str] = mapped_column(Text, nullable=False)
     title: Mapped[str | None] = mapped_column(Text)
     lead: Mapped[str | None] = mapped_column(Text)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

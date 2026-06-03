@@ -4,11 +4,13 @@
 
 Shkandal is scaffolded as a monorepo with Python service shells, a Next.js
 frontend boundary, Docker Compose runtime infrastructure, shared config/logging,
-an async SQLAlchemy database package, Alembic migrations, and smoke tests.
+an async SQLAlchemy database package, Alembic migrations, smoke tests, and a
+curated source ingestion worker.
 
-The implemented code is still foundation-only. The article pipeline, database
-classifier, LLM prompts, and public case/entity pages are future work. The MVP
-PostgreSQL schema and migration layer are implemented.
+The implemented code includes the MVP PostgreSQL schema and migration layer plus
+initial media and institutional article discovery/fetch/extraction/storage,
+date-bounded high-cap backfills, and stored-HTML publication-date repair. The
+classifier, LLM prompts, and public case/entity pages are future work.
 
 ## Product Direction
 
@@ -23,7 +25,7 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 ## Service Map
 
 - `backend`: FastAPI service exposing `GET /healthz` today; future public API and business boundary.
-- `worker-ingestion`: async worker entrypoint for future source discovery, fetching, extraction, normalization, and image URL extraction.
+- `worker-ingestion`: curated media and institutional source discovery from sitemaps, RSS/Atom feeds, and section pages; date-bounded backfill traversal; fetching; generic-first extraction; publication-date repair from stored raw HTML; URL identity normalization; image URL extraction; and PostgreSQL upsert.
 - `worker-ml`: async worker entrypoint for future binary relevance classification, article cards, embeddings, Qdrant retrieval, LLM resolution, and deduplication.
 - `frontend`: Next.js TypeScript app with an API health link today; future public feed, case pages, and entity pages.
 - `postgres`: source-of-truth database and Postgres-backed job store schema.
@@ -68,7 +70,6 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 
 ## Known Next Work
 
-- Implement curated source configuration and article extraction with raw HTML/text/image URL storage.
 - Add local binary relevance classifier interface and persistence of classifier decisions.
 - Add Ukrainian prompt files and Pydantic-validated LLM contracts.
 - Implement Qdrant collections for case, entity, and event cards.
