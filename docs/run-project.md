@@ -224,6 +224,13 @@ the database:
 uv run python apps/worker-ingestion/scripts/validate_sources.py --sample 2
 ```
 
+Generate a read-only article coverage report by source and month:
+
+```bash
+uv run python apps/worker-ingestion/scripts/article_coverage_report.py
+uv run python apps/worker-ingestion/scripts/article_coverage_report.py --source tyzhden --since 2026-01-01 --until 2026-06-03
+```
+
 If ingestion fails, check logs in this order:
 
 ```bash

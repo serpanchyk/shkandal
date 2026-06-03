@@ -31,6 +31,8 @@ Implemented responsibilities:
 - emit structured progress logs for worker start/finish, each source start,
   source discovery counts, skipped existing article counts, source finish
   counts, and failed article fetches.
+- provide a read-only article coverage report grouped by source and calendar
+  period for finding sources with no articles and skipped ingestion periods.
 
 Configured source groups:
 
