@@ -12,6 +12,8 @@ Implemented responsibilities:
 - read a curated source list from `worker_ingestion.sources`;
 - discover URLs from `sitemap.xml`, sitemap indexes, nested sitemaps,
   gzipped sitemap files, RSS/Atom feeds, and configured section pages;
+- use a higher per-source discovery cap for date-bounded backfills and skip
+  clearly out-of-window year/month archive sitemaps;
 - apply source include/exclude URL patterns before fetching article pages;
 - skip already-stored discovered article identities before page fetching, using
   one indexed database lookup per source pass;
@@ -19,6 +21,7 @@ Implemented responsibilities:
   user-agent;
 - extract title, lead, author, publication date, source language, extracted
   text, remote image URL, raw HTML, and source metadata;
+- repair missing publication dates from stored raw HTML without refetching;
 - use `trafilatura` as the generic-first text extractor, with CSS selectors as
   fallback only when generic extraction is missing or too short;
 - normalize article identity URLs and upsert by `articles.identity_url`;
@@ -70,6 +73,14 @@ checks which identities already exist in `articles.identity_url`. Exact matches
 are skipped before fetch and extraction. Canonical-only duplicates that can only
 be known after reading article HTML still fall back to the database upsert path.
 
+## Publication Dates
+
+Article `published_at` is extracted from article HTML, not from sitemap
+`lastmod`. The extractor checks common Open Graph/article metadata, JSON-LD
+`datePublished`, schema.org `itemprop` fields, `<time>` `content`/`datetime`
+attributes, and trafilatura metadata. Naive publisher timestamps are treated as
+Europe/Kyiv time and stored as UTC datetimes.
+
 ## Running
 
 Run all configured sources through Docker Compose:
@@ -94,6 +105,18 @@ Optional date window arguments use ISO datetime/date strings accepted by
 
 ```bash
 docker compose run --rm worker-ingestion python -m worker_ingestion.main --source hromadske --since 2026-06-01 --until 2026-06-02
+```
+
+Date-bounded runs use `max_backfill_urls_per_source` as the effective discovery
+cap when it is higher than `max_sitemap_urls_per_source`. The default backfill
+cap is 10,000 discovered article URLs per source.
+
+Repair missing publication dates from already-stored raw HTML without refetching
+articles. Repair mode is a dry run unless `--apply` is passed:
+
+```bash
+docker compose run --rm worker-ingestion python -m worker_ingestion.main --repair-missing-published-at --source espreso --limit 1000
+docker compose run --rm worker-ingestion python -m worker_ingestion.main --repair-missing-published-at --source espreso --limit 1000 --apply
 ```
 
 Source type is stored as context and UI metadata, not as an authority score.

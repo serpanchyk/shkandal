@@ -44,6 +44,7 @@ async def discover_article_urls(
 
     articles: list[SitemapArticleUrl] = []
     seen_article_urls: set[str] = set()
+    limit = effective_discovery_limit(config, since=since, until=until)
 
     feed_articles = await _discover_feed_article_urls(
         source,
@@ -55,14 +56,15 @@ async def discover_article_urls(
         articles,
         feed_articles,
         seen_article_urls,
-        limit=config.max_sitemap_urls_per_source,
+        limit=limit,
     )
 
-    if len(articles) < config.max_sitemap_urls_per_source:
+    if len(articles) < limit:
         sitemap_articles = await _discover_sitemap_article_urls(
             source,
             fetcher,
             config,
+            limit=limit,
             since=since,
             until=until,
         )
@@ -70,19 +72,32 @@ async def discover_article_urls(
             articles,
             sitemap_articles,
             seen_article_urls,
-            limit=config.max_sitemap_urls_per_source,
+            limit=limit,
         )
 
-    if len(articles) < config.max_sitemap_urls_per_source:
+    if len(articles) < limit:
         section_articles = await _discover_section_article_urls(source, fetcher)
         _append_unique(
             articles,
             section_articles,
             seen_article_urls,
-            limit=config.max_sitemap_urls_per_source,
+            limit=limit,
         )
 
     return articles
+
+
+def effective_discovery_limit(
+    config: IngestionConfig,
+    *,
+    since: datetime | None,
+    until: datetime | None,
+) -> int:
+    """Return the source article discovery cap for this run."""
+
+    if since is not None or until is not None:
+        return max(config.max_sitemap_urls_per_source, config.max_backfill_urls_per_source)
+    return config.max_sitemap_urls_per_source
 
 
 async def _discover_sitemap_article_urls(
@@ -90,13 +105,14 @@ async def _discover_sitemap_article_urls(
     fetcher: Fetcher,
     config: IngestionConfig,
     *,
+    limit: int,
     since: datetime | None,
     until: datetime | None,
 ) -> list[SitemapArticleUrl]:
     queue = deque(source.sitemap_urls)
     seen_sitemaps: set[str] = set()
     articles: list[SitemapArticleUrl] = []
-    while queue and len(articles) < config.max_sitemap_urls_per_source:
+    while queue and len(articles) < limit:
         sitemap_url = queue.popleft()
         if sitemap_url in seen_sitemaps:
             continue
@@ -106,9 +122,18 @@ async def _discover_sitemap_article_urls(
         if not response.ok:
             continue
         nested_sitemaps, urls = parse_sitemap(response.content, sitemap_url=sitemap_url)
-        for nested in nested_sitemaps:
-            if _matches_any(nested, source.sitemap_url_patterns):
-                queue.append(nested)
+        matching_nested_sitemaps = [
+            nested
+            for nested in nested_sitemaps
+            if _matches_any(nested, source.sitemap_url_patterns)
+            and _sitemap_url_may_overlap_window(nested, since=since, until=until)
+        ]
+        for nested in sorted(
+            matching_nested_sitemaps,
+            key=_sitemap_url_sort_key,
+            reverse=True,
+        ):
+            queue.append(nested)
         for url, lastmod in urls:
             if not _in_window(lastmod, since=since, until=until):
                 continue
@@ -122,7 +147,7 @@ async def _discover_sitemap_article_urls(
                     lastmod=lastmod,
                 )
             )
-            if len(articles) >= config.max_sitemap_urls_per_source:
+            if len(articles) >= limit:
                 break
 
     return articles
@@ -374,6 +399,50 @@ def _in_window(
     if since and lastmod < since:
         return False
     return not (until and lastmod > until)
+
+
+def _sitemap_url_may_overlap_window(
+    sitemap_url: str,
+    *,
+    since: datetime | None,
+    until: datetime | None,
+) -> bool:
+    if since is None and until is None:
+        return True
+    year_month = _year_month_from_url(sitemap_url)
+    if year_month is None:
+        return True
+
+    year, month = year_month
+    sitemap_start = datetime(year, month, 1, tzinfo=UTC)
+    sitemap_end_year = year + 1 if month == 12 else year
+    sitemap_end_month = 1 if month == 12 else month + 1
+    sitemap_end = datetime(sitemap_end_year, sitemap_end_month, 1, tzinfo=UTC)
+    since = _as_utc(since) if since else None
+    until = _as_utc(until) if until else None
+    if until and sitemap_start > until:
+        return False
+    return not (since and sitemap_end <= since)
+
+
+def _sitemap_url_sort_key(sitemap_url: str) -> tuple[int, int, str]:
+    year_month = _year_month_from_url(sitemap_url)
+    if year_month is None:
+        return (0, 0, sitemap_url)
+    year, month = year_month
+    return (year, month, sitemap_url)
+
+
+def _year_month_from_url(sitemap_url: str) -> tuple[int, int] | None:
+    patterns = (
+        r"(?P<year>20\d{2})[/-](?P<month>0?[1-9]|1[0-2])",
+        r"(?P<year>20\d{2})-(?P<month>0?[1-9]|1[0-2])",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, sitemap_url)
+        if match:
+            return int(match.group("year")), int(match.group("month"))
+    return None
 
 
 def _as_utc(value: datetime) -> datetime:

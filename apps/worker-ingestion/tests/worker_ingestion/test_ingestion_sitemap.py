@@ -6,6 +6,7 @@ from conftest import FakeFetcher, fetch_result, source_config
 from worker_ingestion.config import IngestionConfig
 from worker_ingestion.sitemap import (
     discover_article_urls,
+    effective_discovery_limit,
     parse_feed,
     parse_section_article_links,
     parse_sitemap,
@@ -236,6 +237,66 @@ async def test_discover_article_urls_respects_source_limit() -> None:
         "https://example.ua/news/one",
         "https://example.ua/news/two",
     ]
+
+
+def test_effective_discovery_limit_uses_high_cap_for_date_bounded_runs() -> None:
+    assert (
+        effective_discovery_limit(
+            IngestionConfig(max_sitemap_urls_per_source=500),
+            since=datetime(2025, 1, 1, tzinfo=UTC),
+            until=datetime(2025, 12, 31, tzinfo=UTC),
+        )
+        == 10_000
+    )
+
+
+@pytest.mark.asyncio
+async def test_discover_article_urls_reaches_in_window_archive_after_old_sitemaps() -> None:
+    source = SourceConfig(
+        slug="example",
+        name="Example",
+        base_url="https://example.ua",
+        sitemap_urls=("https://example.ua/root.xml",),
+        sitemap_url_patterns=(r"https://example\.ua/sitemaps/posts/\d{4}/\d{1,2}\.xml",),
+        include_url_patterns=(r"https://example\.ua/news/.+",),
+    )
+    root = """<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+      <sitemap><loc>https://example.ua/sitemaps/posts/2013/11.xml</loc></sitemap>
+      <sitemap><loc>https://example.ua/sitemaps/posts/2026/6.xml</loc></sitemap>
+    </sitemapindex>"""
+    old_articles = """<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+      <url><loc>https://example.ua/news/old</loc><lastmod>2013-11-01T12:00:00+00:00</lastmod></url>
+    </urlset>"""
+    new_articles = """<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+      <url><loc>https://example.ua/news/new</loc><lastmod>2026-06-01T12:00:00+00:00</lastmod></url>
+    </urlset>"""
+    fetcher = FakeFetcher(
+        {
+            "https://example.ua/root.xml": fetch_result(
+                "https://example.ua/root.xml", root, "application/xml"
+            ),
+            "https://example.ua/sitemaps/posts/2026/6.xml": fetch_result(
+                "https://example.ua/sitemaps/posts/2026/6.xml", new_articles, "application/xml"
+            ),
+            "https://example.ua/sitemaps/posts/2013/11.xml": fetch_result(
+                "https://example.ua/sitemaps/posts/2013/11.xml", old_articles, "application/xml"
+            ),
+        }
+    )
+
+    urls = await discover_article_urls(
+        source,
+        fetcher,
+        IngestionConfig(max_sitemap_urls_per_source=1),
+        since=datetime(2026, 1, 1, tzinfo=UTC),
+        until=datetime(2026, 12, 31, tzinfo=UTC),
+    )
+
+    assert fetcher.requested_urls == [
+        "https://example.ua/root.xml",
+        "https://example.ua/sitemaps/posts/2026/6.xml",
+    ]
+    assert [url.url for url in urls] == ["https://example.ua/news/new"]
 
 
 @pytest.mark.asyncio

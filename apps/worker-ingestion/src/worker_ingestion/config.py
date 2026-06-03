@@ -19,6 +19,7 @@ class IngestionConfig(BaseServiceConfig):
         ),
     )
     max_sitemap_urls_per_source: int = 500
+    max_backfill_urls_per_source: int = 10_000
 
     async def service_status(self) -> dict[str, str]:
         return {"service": self.service_name, "status": "ok"}

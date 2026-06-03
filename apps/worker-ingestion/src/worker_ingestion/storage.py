@@ -8,8 +8,8 @@ from typing import Any, Protocol
 from uuid import UUID
 
 from shkandal_database.models import Article, Source
-from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import cast, select, update
+from sqlalchemy.dialects.postgresql import JSONB, insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.sql import func
 
@@ -39,6 +39,14 @@ class ArticleInput:
     remote_image_url: str | None
     remote_image_metadata: dict[str, Any]
     source_metadata: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class PublishedAtRepairRow:
+    article_id: UUID
+    source_slug: str
+    url: str
+    raw_html: str
 
 
 class ArticleRepository(Protocol):
@@ -92,6 +100,52 @@ class SqlAlchemyArticleRepository:
             statement = select(Article.identity_url).where(Article.identity_url.in_(identity_urls))
             result = await session.execute(statement)
             return set(result.scalars())
+
+    async def iter_articles_missing_published_at(
+        self,
+        *,
+        source_slug: str | None = None,
+        limit: int | None = None,
+        batch_size: int = 500,
+    ) -> list[PublishedAtRepairRow]:
+        async with self.session_factory() as session:
+            statement = (
+                select(Article.id, Source.slug, Article.url, Article.raw_html)
+                .join(Source, Source.id == Article.source_id)
+                .where(Article.published_at.is_(None), Article.raw_html.is_not(None))
+                .order_by(Article.created_at)
+            )
+            if source_slug:
+                statement = statement.where(Source.slug == source_slug)
+            if limit is not None:
+                statement = statement.limit(limit)
+
+            rows = (await session.execute(statement)).all()
+            return [
+                PublishedAtRepairRow(
+                    article_id=row.id,
+                    source_slug=row.slug,
+                    url=row.url,
+                    raw_html=row.raw_html,
+                )
+                for row in rows
+                if row.raw_html
+            ]
+
+    async def update_article_published_at(self, article_id: UUID, published_at: datetime) -> None:
+        async with self.session_factory() as session:
+            statement = (
+                update(Article)
+                .where(Article.id == article_id, Article.published_at.is_(None))
+                .values(
+                    published_at=published_at,
+                    source_metadata=Article.source_metadata.op("||")(
+                        cast({"published_at_repaired": True}, JSONB)
+                    ),
+                )
+            )
+            await session.execute(statement)
+            await session.commit()
 
     async def upsert_article(self, article: ArticleInput) -> None:
         async with self.session_factory() as session:

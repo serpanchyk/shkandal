@@ -206,6 +206,17 @@ Run a bounded date range:
 docker compose run --rm worker-ingestion python -m worker_ingestion.main --since 2025-01-01 --until 2025-01-31 --limit 100
 ```
 
+Date-bounded runs use a higher backfill discovery cap by default so source
+archive traversal is not truncated at the daily discovery limit.
+
+Repair missing `published_at` values from stored `raw_html` without refetching.
+This command is a dry run unless `--apply` is included:
+
+```bash
+docker compose run --rm worker-ingestion python -m worker_ingestion.main --repair-missing-published-at --limit 1000
+docker compose run --rm worker-ingestion python -m worker_ingestion.main --repair-missing-published-at --limit 1000 --apply
+```
+
 Validate configured discovery endpoints and sample extraction without mutating
 the database:
 

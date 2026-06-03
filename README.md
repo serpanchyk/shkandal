@@ -133,13 +133,15 @@ Initial discovery methods:
 - manually configured source sections;
 - include/exclude URL patterns.
 
-The MVP should run a controlled one-year backfill before first public launch, then continue forward ingestion. Fetching can happen in any order, but LLM resolution during backfill should process relevant articles oldest-to-newest by `published_at`.
+The MVP should run a controlled one-year backfill before first public launch, then continue forward ingestion. Date-bounded backfills use a higher source discovery cap than daily runs so archive traversal is not truncated too early. Fetching can happen in any order, but LLM resolution during backfill should process relevant articles oldest-to-newest by `published_at`.
 
 ### 2. Extract and Store
 
 The ingestion pipeline stores extracted text and raw HTML for all articles, including irrelevant ones. Raw HTML lets the project improve extraction later without re-crawling.
 
 Extraction is generic-first, with site-specific selectors only as fallback.
+Publication dates are extracted from article HTML metadata and can be repaired
+later from stored raw HTML without refetching articles.
 
 ### 3. Classify Relevance
 
