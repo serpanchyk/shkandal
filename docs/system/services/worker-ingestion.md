@@ -22,7 +22,9 @@ Implemented responsibilities:
 - normalize article identity URLs and upsert by `articles.identity_url`;
 - keep the raw discovered URL unchanged in `articles.url`;
 - persist failed article fetch attempts with fetch metadata when the article
-  URL can be identified.
+  URL can be identified;
+- emit structured progress logs for worker start/finish, each source start,
+  source discovery counts, source finish counts, and failed article fetches.
 
 Configured source groups:
 
@@ -67,6 +69,11 @@ Run all configured sources through Docker Compose:
 ```bash
 docker compose run --rm worker-ingestion
 ```
+
+The worker is currently a one-shot process. It runs one ingestion pass and then
+exits; use `docker compose run --rm worker-ingestion` for a visible foreground
+run, or inspect named one-off containers with `docker logs <container>` when a
+manual backfill was started with a fixed container name.
 
 Run one source for debugging:
 

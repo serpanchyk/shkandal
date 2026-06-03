@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
@@ -32,11 +33,13 @@ class IngestionWorker:
         fetcher: Fetcher,
         repository: ArticleRepository,
         sources: tuple[SourceConfig, ...] = CURATED_SOURCES,
+        logger: logging.Logger | None = None,
     ) -> None:
         self.config = config
         self.fetcher = fetcher
         self.repository = repository
         self.sources = sources
+        self.logger = logger or logging.getLogger(config.service_name)
 
     async def run_once(
         self,
@@ -66,6 +69,10 @@ class IngestionWorker:
         since: datetime | None,
         until: datetime | None,
     ) -> IngestionStats:
+        self.logger.info(
+            "worker_ingestion_source_started",
+            extra={"source_slug": source.slug, "source_type": source.source_type},
+        )
         source_id = await self.repository.ensure_source(
             SourceInput(
                 slug=source.slug,
@@ -83,6 +90,14 @@ class IngestionWorker:
             since=since,
             until=until,
         )
+        self.logger.info(
+            "worker_ingestion_source_discovered",
+            extra={
+                "source_slug": source.slug,
+                "discovered_articles": len(urls),
+                "max_sitemap_urls_per_source": self.config.max_sitemap_urls_per_source,
+            },
+        )
         if limit is not None:
             urls = urls[:limit]
 
@@ -94,12 +109,22 @@ class IngestionWorker:
             )
         )
         stored_articles = sum(1 for result in results if result)
-        return IngestionStats(
+        stats = IngestionStats(
             processed_sources=1,
             discovered_articles=len(urls),
             stored_articles=stored_articles,
             failed_articles=len(urls) - stored_articles,
         )
+        self.logger.info(
+            "worker_ingestion_source_finished",
+            extra={
+                "source_slug": source.slug,
+                "discovered_articles": stats.discovered_articles,
+                "stored_articles": stats.stored_articles,
+                "failed_articles": stats.failed_articles,
+            },
+        )
+        return stats
 
     async def _ingest_article(
         self,
@@ -111,6 +136,18 @@ class IngestionWorker:
         async with semaphore:
             response = await self.fetcher.fetch(article_url.url)
         if not response.ok:
+            self.logger.warning(
+                "worker_ingestion_article_fetch_failed",
+                extra={
+                    "source_slug": source.slug,
+                    "article_url": article_url.url,
+                    "status_code": response.status_code,
+                    "fetch_error": response.error or "non_2xx_response",
+                    "content_type": response.headers.get("content-type"),
+                    "discovery_method": article_url.discovery_method,
+                    "discovery_url": article_url.discovery_url,
+                },
+            )
             await self.repository.upsert_article(
                 ArticleInput(
                     source_id=source_id,
