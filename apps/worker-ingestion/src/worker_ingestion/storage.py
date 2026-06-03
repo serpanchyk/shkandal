@@ -8,7 +8,7 @@ from typing import Any, Protocol
 from uuid import UUID
 
 from shkandal_database.models import Article, Source
-from sqlalchemy import cast, select, update
+from sqlalchemy import cast, select, tuple_, update
 from sqlalchemy.dialects.postgresql import JSONB, insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.sql import func
@@ -44,6 +44,7 @@ class ArticleInput:
 @dataclass(frozen=True)
 class PublishedAtRepairRow:
     article_id: UUID
+    created_at: datetime
     source_slug: str
     url: str
     raw_html: str
@@ -104,22 +105,31 @@ class SqlAlchemyArticleRepository:
                 existing_identity_urls.update(result.scalars())
         return existing_identity_urls
 
-    async def iter_articles_missing_published_at(
+    async def fetch_articles_missing_published_at_batch(
         self,
         *,
         source_slug: str | None = None,
         limit: int | None = None,
-        batch_size: int = 500,
+        after_created_at: datetime | None = None,
+        after_article_id: UUID | None = None,
     ) -> list[PublishedAtRepairRow]:
         async with self.session_factory() as session:
             statement = (
-                select(Article.id, Source.slug, Article.url, Article.raw_html)
+                select(Article.id, Article.created_at, Source.slug, Article.url, Article.raw_html)
                 .join(Source, Source.id == Article.source_id)
-                .where(Article.published_at.is_(None), Article.raw_html.is_not(None))
-                .order_by(Article.created_at)
+                .where(
+                    Article.published_at.is_(None),
+                    Article.raw_html.is_not(None),
+                    Article.raw_html != "",
+                )
+                .order_by(Article.created_at, Article.id)
             )
             if source_slug:
                 statement = statement.where(Source.slug == source_slug)
+            if after_created_at is not None and after_article_id is not None:
+                statement = statement.where(
+                    tuple_(Article.created_at, Article.id) > (after_created_at, after_article_id)
+                )
             if limit is not None:
                 statement = statement.limit(limit)
 
@@ -127,12 +137,12 @@ class SqlAlchemyArticleRepository:
             return [
                 PublishedAtRepairRow(
                     article_id=row.id,
+                    created_at=row.created_at,
                     source_slug=row.slug,
                     url=row.url,
                     raw_html=row.raw_html,
                 )
                 for row in rows
-                if row.raw_html
             ]
 
     async def update_article_published_at(self, article_id: UUID, published_at: datetime) -> None:
