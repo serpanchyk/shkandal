@@ -1,0 +1,144 @@
+{
+  "created_at_utc": "2026-06-03T08:44:12+00:00",
+  "source_notebook": "notebooks/tfidf_logistic_noise_assigned.ipynb",
+  "data": {
+    "path": "data/sample_articles.parquet",
+    "accessed_date": "2026-06-03",
+    "sha256": "fd0fac3c320ff415c8757f42f73ad77cb63fdd2313ebdbfb79f9fd37e5465497",
+    "rows_after_text_filter": 11177,
+    "label_counts": {
+      "assigned": 3276,
+      "noise": 7901
+    }
+  },
+  "artifact": {
+    "pipeline_path": "artifacts/tfidf_logistic_noise_assigned/tfidf_logistic_noise_assigned.joblib",
+    "format": "joblib",
+    "contains_steps": [
+      "tfidf",
+      "logreg"
+    ]
+  },
+  "model": {
+    "classes": [
+      "assigned",
+      "noise"
+    ],
+    "tfidf_vocabulary_size": 200000,
+    "tfidf_params": {
+      "analyzer": "word",
+      "binary": false,
+      "decode_error": "strict",
+      "dtype": "<class 'numpy.float64'>",
+      "encoding": "utf-8",
+      "input": "content",
+      "lowercase": true,
+      "max_df": 0.9,
+      "max_features": 200000,
+      "min_df": 2,
+      "ngram_range": [
+        1,
+        2
+      ],
+      "norm": "l2",
+      "preprocessor": null,
+      "smooth_idf": true,
+      "stop_words": null,
+      "strip_accents": null,
+      "sublinear_tf": true,
+      "token_pattern": "(?u)\\b\\w\\w+\\b",
+      "tokenizer": null,
+      "use_idf": true,
+      "vocabulary": null
+    },
+    "logreg_params": {
+      "C": 1.0,
+      "class_weight": "balanced",
+      "dual": false,
+      "fit_intercept": true,
+      "intercept_scaling": 1,
+      "l1_ratio": 0.0,
+      "max_iter": 1000,
+      "n_jobs": null,
+      "penalty": "deprecated",
+      "random_state": 42,
+      "solver": "lbfgs",
+      "tol": 0.0001,
+      "verbose": 0,
+      "warm_start": false
+    },
+    "logreg_n_iter": [
+      24
+    ]
+  },
+  "metrics": {
+    "accuracy": 0.9660107334525939,
+    "classification_report": {
+      "assigned": {
+        "precision": 0.9314456035767511,
+        "recall": 0.9541984732824428,
+        "f1-score": 0.942684766214178,
+        "support": 655.0
+      },
+      "noise": {
+        "precision": 0.9808306709265175,
+        "recall": 0.9709044908285895,
+        "f1-score": 0.9758423394787031,
+        "support": 1581.0
+      },
+      "accuracy": 0.9660107334525939,
+      "macro avg": {
+        "precision": 0.9561381372516343,
+        "recall": 0.9625514820555161,
+        "f1-score": 0.9592635528464406,
+        "support": 2236.0
+      },
+      "weighted avg": {
+        "precision": 0.9663641149720913,
+        "recall": 0.9660107334525939,
+        "f1-score": 0.9661293651995153,
+        "support": 2236.0
+      }
+    },
+    "confusion_matrix": {
+      "labels": [
+        "assigned",
+        "noise"
+      ],
+      "values": [
+        [
+          625,
+          30
+        ],
+        [
+          46,
+          1535
+        ]
+      ]
+    },
+    "split": {
+      "test_size": 0.2,
+      "random_state": 42,
+      "train_rows": 8941,
+      "test_rows": 2236,
+      "train_label_counts": {
+        "assigned": 2621,
+        "noise": 6320
+      },
+      "test_label_counts": {
+        "assigned": 655,
+        "noise": 1581
+      }
+    },
+    "assigned_probability_summary": {
+      "min": 0.012714690675831086,
+      "median": 0.16278744070796547,
+      "max": 0.9936858219413639,
+      "threshold": 0.5
+    }
+  },
+  "notes": [
+    "Baseline linear text classifier for assigned vs noise article status.",
+    "Text input is title, two newlines, then content, matching the source notebook."
+  ]
+}
