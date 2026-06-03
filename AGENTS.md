@@ -79,7 +79,7 @@ Never:
 * commit real `.env` files, secrets, tokens, cookies, or API keys
 * add unnecessary dependencies
 * weaken typing, linting, tests, or validation to make checks pass
-* use or switch Docker contexts
+* do things that could affect the data in the db
 * silently change public content language rules
 
 Content/product rules:
