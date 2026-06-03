@@ -8,6 +8,7 @@ from typing import Any, Protocol
 from uuid import UUID
 
 from shkandal_database.models import Article, Source
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.sql import func
@@ -44,6 +45,9 @@ class ArticleRepository(Protocol):
     async def ensure_source(self, source: SourceInput) -> UUID:
         """Create or return a source id."""
 
+    async def existing_identity_urls(self, identity_urls: set[str]) -> set[str]:
+        """Return article identity URLs already stored."""
+
     async def upsert_article(self, article: ArticleInput) -> None:
         """Insert or update one article by identity URL."""
 
@@ -79,6 +83,15 @@ class SqlAlchemyArticleRepository:
             source_id = (await session.execute(statement)).scalar_one()
             await session.commit()
             return source_id
+
+    async def existing_identity_urls(self, identity_urls: set[str]) -> set[str]:
+        if not identity_urls:
+            return set()
+
+        async with self.session_factory() as session:
+            statement = select(Article.identity_url).where(Article.identity_url.in_(identity_urls))
+            result = await session.execute(statement)
+            return set(result.scalars())
 
     async def upsert_article(self, article: ArticleInput) -> None:
         async with self.session_factory() as session:

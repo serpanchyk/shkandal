@@ -21,6 +21,7 @@ from worker_ingestion.transport import Fetcher
 class IngestionStats:
     processed_sources: int = 0
     discovered_articles: int = 0
+    skipped_existing_articles: int = 0
     stored_articles: int = 0
     failed_articles: int = 0
 
@@ -56,6 +57,9 @@ class IngestionWorker:
             stats = IngestionStats(
                 processed_sources=stats.processed_sources + 1,
                 discovered_articles=stats.discovered_articles + source_stats.discovered_articles,
+                skipped_existing_articles=(
+                    stats.skipped_existing_articles + source_stats.skipped_existing_articles
+                ),
                 stored_articles=stats.stored_articles + source_stats.stored_articles,
                 failed_articles=stats.failed_articles + source_stats.failed_articles,
             )
@@ -101,6 +105,25 @@ class IngestionWorker:
         if limit is not None:
             urls = urls[:limit]
 
+        discovered_articles = len(urls)
+        existing_identity_urls = await self.repository.existing_identity_urls(
+            {normalize_article_url(article_url.url) for article_url in urls}
+        )
+        if existing_identity_urls:
+            urls = [
+                article_url
+                for article_url in urls
+                if normalize_article_url(article_url.url) not in existing_identity_urls
+            ]
+            self.logger.info(
+                "worker_ingestion_source_existing_articles_skipped",
+                extra={
+                    "source_slug": source.slug,
+                    "skipped_existing_articles": discovered_articles - len(urls),
+                    "remaining_articles": len(urls),
+                },
+            )
+
         semaphore = asyncio.Semaphore(self.config.request_concurrency)
         results = await asyncio.gather(
             *(
@@ -111,7 +134,8 @@ class IngestionWorker:
         stored_articles = sum(1 for result in results if result)
         stats = IngestionStats(
             processed_sources=1,
-            discovered_articles=len(urls),
+            discovered_articles=discovered_articles,
+            skipped_existing_articles=discovered_articles - len(urls),
             stored_articles=stored_articles,
             failed_articles=len(urls) - stored_articles,
         )
@@ -120,6 +144,7 @@ class IngestionWorker:
             extra={
                 "source_slug": source.slug,
                 "discovered_articles": stats.discovered_articles,
+                "skipped_existing_articles": stats.skipped_existing_articles,
                 "stored_articles": stats.stored_articles,
                 "failed_articles": stats.failed_articles,
             },

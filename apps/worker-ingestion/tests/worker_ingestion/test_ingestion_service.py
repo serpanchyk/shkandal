@@ -1,4 +1,6 @@
 import logging
+from datetime import UTC, datetime
+from uuid import uuid4
 
 import pytest
 from conftest import (
@@ -10,6 +12,7 @@ from conftest import (
 )
 from worker_ingestion.config import IngestionConfig
 from worker_ingestion.service import IngestionWorker
+from worker_ingestion.storage import ArticleInput
 
 
 @pytest.mark.asyncio
@@ -71,6 +74,70 @@ async def test_duplicate_url_variants_ingest_one_article() -> None:
     assert article.url == first_url
     assert article.identity_url == "https://example.ua/news/item"
     assert article.title == "Заголовок"
+
+
+@pytest.mark.asyncio
+async def test_existing_discovered_article_is_skipped_before_fetch() -> None:
+    sitemap = """<?xml version="1.0" encoding="UTF-8"?>
+    <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+      <url><loc>http://www.example.ua/news/item/?utm_source=tg#comments</loc></url>
+      <url><loc>https://example.ua/news/new</loc></url>
+    </urlset>
+    """
+    new_article_html = """<html lang="uk"><head><meta property="og:title" content="Нова"></head>
+    <body><article><p>Текст.</p></article></body></html>
+    """
+    existing_identity_url = "https://example.ua/news/item"
+    repository = FakeArticleRepository()
+    repository.articles[existing_identity_url] = ArticleInput(
+        source_id=uuid4(),
+        url="https://example.ua/news/item",
+        identity_url=existing_identity_url,
+        title="Вже збережена",
+        lead=None,
+        published_at=datetime(2026, 6, 1, tzinfo=UTC),
+        fetched_at=datetime(2026, 6, 1, tzinfo=UTC),
+        source_language="uk",
+        raw_html="<html></html>",
+        extracted_text="Текст.",
+        remote_image_url=None,
+        remote_image_metadata={},
+        source_metadata={},
+    )
+    fetcher = FakeFetcher(
+        {
+            "https://example.ua/sitemap.xml": fetch_result(
+                "https://example.ua/sitemap.xml",
+                sitemap,
+                "application/xml",
+            ),
+            "https://example.ua/news/new": fetch_result(
+                "https://example.ua/news/new",
+                new_article_html,
+            ),
+        }
+    )
+    worker = IngestionWorker(
+        config=IngestionConfig(),
+        fetcher=fetcher,
+        repository=repository,
+        sources=(source_config(),),
+    )
+
+    stats = await worker.run_once(source_slug="example")
+
+    assert stats.discovered_articles == 2
+    assert stats.skipped_existing_articles == 1
+    assert stats.stored_articles == 1
+    assert stats.failed_articles == 0
+    assert fetcher.requested_urls == [
+        "https://example.ua/sitemap.xml",
+        "https://example.ua/news/new",
+    ]
+    assert set(repository.articles) == {
+        "https://example.ua/news/item",
+        "https://example.ua/news/new",
+    }
 
 
 @pytest.mark.asyncio

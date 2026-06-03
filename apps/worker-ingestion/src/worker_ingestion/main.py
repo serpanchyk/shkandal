@@ -54,6 +54,7 @@ async def run_once(
             extra={
                 "processed_sources": stats.processed_sources,
                 "discovered_articles": stats.discovered_articles,
+                "skipped_existing_articles": stats.skipped_existing_articles,
                 "stored_articles": stats.stored_articles,
                 "failed_articles": stats.failed_articles,
             },

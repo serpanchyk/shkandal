@@ -28,6 +28,9 @@ class FakeArticleRepository:
             self.source_ids[source.slug] = source_id
         return source_id
 
+    async def existing_identity_urls(self, identity_urls: set[str]) -> set[str]:
+        return set(self.articles).intersection(identity_urls)
+
     async def upsert_article(self, article: ArticleInput) -> None:
         existing = self.articles.get(article.identity_url)
         if existing is None:

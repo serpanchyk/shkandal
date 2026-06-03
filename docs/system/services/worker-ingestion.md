@@ -13,6 +13,8 @@ Implemented responsibilities:
 - discover URLs from `sitemap.xml`, sitemap indexes, nested sitemaps,
   gzipped sitemap files, RSS/Atom feeds, and configured section pages;
 - apply source include/exclude URL patterns before fetching article pages;
+- skip already-stored discovered article identities before page fetching, using
+  one indexed database lookup per source pass;
 - fetch pages asynchronously with configured timeout, concurrency, and
   user-agent;
 - extract title, lead, author, publication date, source language, extracted
@@ -24,7 +26,8 @@ Implemented responsibilities:
 - persist failed article fetch attempts with fetch metadata when the article
   URL can be identified;
 - emit structured progress logs for worker start/finish, each source start,
-  source discovery counts, source finish counts, and failed article fetches.
+  source discovery counts, skipped existing article counts, source finish
+  counts, and failed article fetches.
 
 Configured source groups:
 
@@ -61,6 +64,11 @@ that value after normalization. Otherwise it normalizes the raw discovered URL.
 The database uniqueness constraint on `articles.identity_url` remains the final
 duplicate authority, and upserts avoid replacing existing non-empty data with
 empty extraction results.
+
+Before fetching article pages, the worker also normalizes discovered URLs and
+checks which identities already exist in `articles.identity_url`. Exact matches
+are skipped before fetch and extraction. Canonical-only duplicates that can only
+be known after reading article HTML still fall back to the database upsert path.
 
 ## Running
 
