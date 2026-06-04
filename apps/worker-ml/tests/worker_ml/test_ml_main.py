@@ -21,3 +21,10 @@ def test_classifier_config_defaults_to_existing_artifact() -> None:
 
     assert config.relevance_model_dir.endswith("tfidf_logistic_noise_assigned")
     assert config.relevance_threshold == 0.5
+
+
+def test_embedding_config_defaults_to_e5_small_artifact() -> None:
+    config = MlConfig()
+
+    assert config.embedding_model_dir.endswith("multilingual_e5_small/model")
+    assert config.embedding_vector_size == 384

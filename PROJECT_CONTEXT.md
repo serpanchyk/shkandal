@@ -27,11 +27,11 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 
 - `backend`: FastAPI service exposing `GET /healthz` today; future public API and business boundary.
 - `worker-ingestion`: curated media and institutional source discovery from sitemaps, RSS/Atom feeds, and section pages; date-bounded backfill traversal; fetching; generic-first extraction; publication-date repair from stored raw HTML; URL identity normalization; image URL extraction; and PostgreSQL upsert.
-- `worker-ml`: async worker entrypoint with article relevance classifier job enqueueing/handling; future article cards, embeddings, Qdrant retrieval, LLM resolution, and deduplication.
+- `worker-ml`: async worker entrypoint with article relevance classifier job enqueueing/handling, E5-small embedding service, and Qdrant vector-index integration; future article cards, LLM resolution, and deduplication.
 - `frontend`: Next.js TypeScript app with an API health link today; future public feed, case pages, and entity pages.
 - `postgres`: source-of-truth database and Postgres-backed job store schema.
 - `packages/database`: shared async SQLAlchemy models, session helpers, and Alembic migrations.
-- `qdrant`: rebuildable vector indexes for cases, entities, and events.
+- `qdrant`: rebuildable 384-dimensional vector indexes for cases, entities, and events.
 
 ## Runtime Decisions
 

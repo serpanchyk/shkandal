@@ -28,4 +28,11 @@ source of truth.
   expose typed upsert, delete, and search operations for caller-supplied vectors.
 
 Embedding generation, PostgreSQL rebuild orchestration, and LLM resolution
-remain service-level responsibilities, currently planned for `worker-ml`.
+remain service-level responsibilities. `worker-ml` currently implements the
+embedding service and vector-index integration using
+`intfloat/multilingual-e5-small`, which produces 384-dimensional vectors. The
+shared vector-store default is therefore 384 dimensions with cosine distance.
+
+Existing local Qdrant collections created with an older vector size must be
+rebuilt manually before indexing E5 vectors. The bootstrap helper intentionally
+does not delete or recreate existing collections.

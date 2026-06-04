@@ -258,9 +258,9 @@ The project is split into these services:
 - `frontend`: Next.js public UI for case pages, entity pages, and feed;
 - `backend`: FastAPI public API and application business boundary;
 - `worker-ingestion`: curated source discovery, fetching, extraction, URL identity normalization, image URL extraction;
-- `worker-ml`: relevance classifier, article cards, embeddings, Qdrant retrieval, LLM resolution, deduplication;
+- `worker-ml`: relevance classifier, E5-small embeddings, Qdrant vector integration, future article cards, LLM resolution, deduplication;
 - `postgres`: source-of-truth relational database and MVP job store;
-- `qdrant`: rebuildable vector index for cases, entities, and events.
+- `qdrant`: rebuildable 384-dimensional vector index for cases, entities, and events.
 
 The shared `packages/database` workspace package owns async SQLAlchemy models,
 session helpers, and Alembic migrations. Local PostgreSQL data is stored in the

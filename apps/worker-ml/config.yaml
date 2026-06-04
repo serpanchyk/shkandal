@@ -6,3 +6,5 @@ stale_job_timeout_seconds: 1800
 job_max_attempts: 3
 relevance_model_dir: artifacts/models/relevance/tfidf_logistic_noise_assigned
 relevance_threshold: 0.5
+embedding_model_dir: artifacts/models/embeddings/multilingual_e5_small/model
+embedding_vector_size: 384

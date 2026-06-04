@@ -31,7 +31,9 @@ JSON output is repaired once, then marked failed if still invalid.
 The current implementation is a runnable async process with configuration,
 structured startup logging, a polling loop that creates idempotent
 `classify_article` jobs for articles missing `article_relevance`, and a
-classifier job handler that writes `article_relevance`.
+classifier job handler that writes `article_relevance`. It also includes an
+embedding service and vector-index integration for the future card resolution
+jobs.
 
 Local model artifacts live under `artifacts/models/` in the repository working
 tree. Binary artifacts are ignored by Git and tracked by DVC; small manifests
@@ -43,6 +45,19 @@ The current relevance model binary is tracked by
 `artifacts/models/relevance/tfidf_logistic_noise_assigned/tfidf_logistic_noise_assigned.joblib.dvc`.
 A shared DVC remote has not been configured yet, so `dvc push`/`dvc pull`
 require adding a deployment-specific remote first.
+
+The first embedding artifact path is
+`artifacts/models/embeddings/multilingual_e5_small/`. It uses
+`intfloat/multilingual-e5-small` through Sentence Transformers. The checked-in
+manifest records the Hugging Face revision, local model path, 384-dimensional
+output size, normalized embeddings, and E5 prefix policy.
+
+The worker embedding service prefixes retrieval queries with `query: ` and
+stored card/document text with `passage: ` before encoding. It validates
+non-empty text and the configured vector size. `VectorIndexService` composes
+that embedder with the shared Qdrant case, entity, and event repositories for
+typed upsert and search operations. Article-card generation and resolution jobs
+are still separate future pipeline stages.
 
 The relevance classifier loads `manifest.json` and the sibling joblib pipeline
 from the configured `relevance_model_dir`. The current artifact was produced

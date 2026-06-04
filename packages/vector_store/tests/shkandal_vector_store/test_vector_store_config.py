@@ -7,7 +7,7 @@ def test_vector_store_config_defaults() -> None:
     settings = VectorStoreConfig()
 
     assert settings.qdrant_url == "http://qdrant:6333"
-    assert settings.vector_size == 1536
+    assert settings.vector_size == 384
     assert settings.distance == "cosine"
     assert settings.case_collection_name == "case_cards"
     assert settings.entity_collection_name == "entity_cards"

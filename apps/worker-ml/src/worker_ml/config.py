@@ -14,6 +14,8 @@ class MlConfig(BaseServiceConfig):
     job_max_attempts: int = 3
     relevance_model_dir: str = "artifacts/models/relevance/tfidf_logistic_noise_assigned"
     relevance_threshold: float = 0.5
+    embedding_model_dir: str = "artifacts/models/embeddings/multilingual_e5_small/model"
+    embedding_vector_size: int = 384
     postgres_database_url: str = (
         "postgresql://shkandal:shkandal_dev_password@postgres:5432/shkandal"
     )
