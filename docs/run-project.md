@@ -271,11 +271,12 @@ docker compose logs --tail 200 postgres
 
 ## ML Worker
 
-The ML worker currently starts and reports readiness. Run it once through
-Compose:
+The ML worker runs continuously through Compose. It loads the local relevance
+classifier, enqueues `classify_article` jobs for articles missing
+`article_relevance`, and processes classification jobs in batches:
 
 ```bash
-docker compose run --rm worker-ml
+docker compose up -d worker-ml
 ```
 
 Check recent ML worker logs:

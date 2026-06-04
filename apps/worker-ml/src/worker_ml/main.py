@@ -124,8 +124,99 @@ async def process_next_job(
         await engine.dispose()
 
 
+async def run_worker(config: MlConfig | None = None) -> None:
+    """Poll for article classification work until the process is stopped."""
+
+    settings = config or MlConfig()
+    logger = setup_logger(settings.service_name)
+    model = RelevanceModel.load(
+        settings.relevance_model_dir,
+        threshold=settings.relevance_threshold,
+    )
+    engine = create_async_engine_from_config(
+        DatabaseConfig(database_url=settings.postgres_database_url)
+    )
+    try:
+        session_factory = create_async_sessionmaker(engine)
+        job_store = ArticleJobStore(
+            session_factory,
+            stale_job_timeout=settings.stale_job_timeout,
+        )
+        planner = MlJobPlanner(session_factory, job_store)
+        handler = ClassificationJobHandler(session_factory, job_store, model)
+        logger.info(
+            "worker_ml_started",
+            extra={
+                "service": settings.service_name,
+                "poll_interval_seconds": settings.poll_interval_seconds,
+                "enqueue_batch_size": settings.enqueue_batch_size,
+                "claim_batch_size": settings.claim_batch_size,
+                "relevance_model_dir": settings.relevance_model_dir,
+            },
+        )
+
+        while True:
+            stats = await planner.enqueue_missing_classification_jobs(
+                limit=settings.enqueue_batch_size,
+                max_attempts=settings.job_max_attempts,
+            )
+            if stats.ensured_jobs:
+                logger.info(
+                    "worker_ml_jobs_enqueued",
+                    extra={
+                        "scanned_articles": stats.scanned_articles,
+                        "ensured_jobs": stats.ensured_jobs,
+                        "job_type": "classify_article",
+                    },
+                )
+
+            processed_jobs = 0
+            for _ in range(settings.claim_batch_size):
+                claimed_job = await job_store.claim_next_job(
+                    worker_id=settings.service_name,
+                    job_types=(CLASSIFY_ARTICLE_JOB,),
+                )
+                if claimed_job is None:
+                    break
+
+                try:
+                    await handler.handle(claimed_job)
+                except Exception as exc:
+                    await job_store.fail_job(
+                        job_id=claimed_job.id,
+                        error_message=str(exc),
+                        attempt_count=claimed_job.attempt_count,
+                        max_attempts=claimed_job.max_attempts,
+                    )
+                    logger.exception(
+                        "worker_ml_job_failed",
+                        extra={
+                            "job_id": str(claimed_job.id),
+                            "job_type": claimed_job.job_type,
+                            "article_id": str(claimed_job.article_id),
+                        },
+                    )
+                    continue
+
+                await job_store.complete_job(job_id=claimed_job.id)
+                processed_jobs += 1
+                logger.info(
+                    "worker_ml_job_succeeded",
+                    extra={
+                        "job_id": str(claimed_job.id),
+                        "job_type": claimed_job.job_type,
+                        "article_id": str(claimed_job.article_id),
+                    },
+                )
+
+            if processed_jobs == 0 and stats.ensured_jobs == 0:
+                await asyncio.sleep(settings.poll_interval_seconds)
+    finally:
+        await engine.dispose()
+
+
 def main() -> None:
-    asyncio.run(run_once())
+    asyncio.run(run_worker())
 
 
 if __name__ == "__main__":

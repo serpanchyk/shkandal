@@ -28,8 +28,8 @@ Planned responsibilities:
 LLM prompts should live as Ukrainian plain-text files in this service. Invalid
 JSON output is repaired once, then marked failed if still invalid.
 
-The current implementation is a runnable async process shell with configuration,
-structured startup logging, an enqueue pass that creates idempotent
+The current implementation is a runnable async process with configuration,
+structured startup logging, a polling loop that creates idempotent
 `classify_article` jobs for articles missing `article_relevance`, and a
 classifier job handler that writes `article_relevance`.
 
