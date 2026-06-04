@@ -29,13 +29,19 @@ LLM prompts should live as Ukrainian plain-text files in this service. Invalid
 JSON output is repaired once, then marked failed if still invalid.
 
 The current implementation is a runnable async process shell with configuration,
-structured startup logging, and an enqueue pass that creates idempotent
-`classify_article` jobs for articles missing `article_relevance`.
+structured startup logging, an enqueue pass that creates idempotent
+`classify_article` jobs for articles missing `article_relevance`, and a
+classifier job handler that writes `article_relevance`.
 
 Local model artifacts live under `artifacts/models/` in the repository working
 tree. Binary artifacts are ignored by git; small manifests can be committed for
 metadata and reproducibility. The first relevance artifact path is
 `artifacts/models/relevance/tfidf_logistic_noise_assigned/`.
+
+The relevance classifier loads `manifest.json` and the sibling joblib pipeline
+from the configured `relevance_model_dir`. The current artifact was produced
+with scikit-learn `1.8.0`, so `worker-ml` pins that runtime version to avoid
+unsafe pickle-version drift.
 
 The worker should load and validate the configured relevance model eagerly at
 startup before consuming jobs. Missing artifacts, manifest mismatches, or missing
@@ -51,6 +57,12 @@ the stored score is the positive-class relevance score. Early model artifacts ma
 still record historical research labels such as `assigned` and `noise`; the
 worker must map those labels explicitly instead of treating the artifact labels
 as product language.
+
+The current handler maps `assigned` to positive relevance probability and
+`noise` to negative relevance. Classifier input is the article title, two
+newlines, then extracted text, matching the training notebook. Articles missing
+extracted text are stored as irrelevant with score `0` and metadata explaining
+the missing text.
 
 Below-threshold articles normally skip LLM work in the MVP, but they remain
 stored with score, classifier metadata, threshold metadata, extracted text, and

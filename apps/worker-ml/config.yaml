@@ -1,2 +1,8 @@
 service_name: worker-ml
 poll_interval_seconds: 30
+enqueue_batch_size: 500
+claim_batch_size: 1
+stale_job_timeout_seconds: 1800
+job_max_attempts: 3
+relevance_model_dir: artifacts/models/relevance/tfidf_logistic_noise_assigned
+relevance_threshold: 0.5

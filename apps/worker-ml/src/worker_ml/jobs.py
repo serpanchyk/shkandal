@@ -11,6 +11,7 @@ from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 CLASSIFY_ARTICLE_JOB = "classify_article"
+CREATE_ARTICLE_CARD_JOB = "create_article_card"
 
 
 @dataclass(frozen=True)

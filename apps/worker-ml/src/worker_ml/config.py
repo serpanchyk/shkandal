@@ -12,6 +12,8 @@ class MlConfig(BaseServiceConfig):
     claim_batch_size: int = 1
     stale_job_timeout_seconds: int = 1800
     job_max_attempts: int = 3
+    relevance_model_dir: str = "artifacts/models/relevance/tfidf_logistic_noise_assigned"
+    relevance_threshold: float = 0.5
     postgres_database_url: str = (
         "postgresql://shkandal:shkandal_dev_password@postgres:5432/shkandal"
     )

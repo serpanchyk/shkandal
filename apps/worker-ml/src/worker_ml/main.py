@@ -7,8 +7,9 @@ from shkandal_database.config import DatabaseConfig
 from shkandal_database.jobs import ArticleJobStore
 from shkandal_database.session import create_async_engine_from_config, create_async_sessionmaker
 
+from worker_ml.classifier import ClassificationJobHandler, RelevanceModel
 from worker_ml.config import MlConfig
-from worker_ml.jobs import MlJobPlanner
+from worker_ml.jobs import CLASSIFY_ARTICLE_JOB, MlJobPlanner
 
 
 async def run_once(config: MlConfig | None = None) -> dict[str, str]:
@@ -56,6 +57,69 @@ async def enqueue_missing_classification_jobs(config: MlConfig | None = None) ->
             "scanned_articles": stats.scanned_articles,
             "ensured_jobs": stats.ensured_jobs,
         }
+    finally:
+        await engine.dispose()
+
+
+async def process_next_job(
+    config: MlConfig | None = None,
+    *,
+    worker_id: str | None = None,
+) -> dict[str, str]:
+    """Claim and process one supported ML job."""
+
+    settings = config or MlConfig()
+    logger = setup_logger(settings.service_name)
+    engine = create_async_engine_from_config(
+        DatabaseConfig(database_url=settings.postgres_database_url)
+    )
+    try:
+        session_factory = create_async_sessionmaker(engine)
+        job_store = ArticleJobStore(
+            session_factory,
+            stale_job_timeout=settings.stale_job_timeout,
+        )
+        claimed_job = await job_store.claim_next_job(
+            worker_id=worker_id or settings.service_name,
+            job_types=(CLASSIFY_ARTICLE_JOB,),
+        )
+        if claimed_job is None:
+            return {"status": "idle"}
+
+        model = RelevanceModel.load(
+            settings.relevance_model_dir,
+            threshold=settings.relevance_threshold,
+        )
+        handler = ClassificationJobHandler(session_factory, job_store, model)
+        try:
+            await handler.handle(claimed_job)
+        except Exception as exc:
+            await job_store.fail_job(
+                job_id=claimed_job.id,
+                error_message=str(exc),
+                attempt_count=claimed_job.attempt_count,
+                max_attempts=claimed_job.max_attempts,
+            )
+            logger.exception(
+                "worker_ml_job_failed",
+                extra={
+                    "job_id": str(claimed_job.id),
+                    "job_type": claimed_job.job_type,
+                    "article_id": str(claimed_job.article_id),
+                },
+            )
+            return {"status": "failed", "job_type": claimed_job.job_type}
+
+        await job_store.complete_job(job_id=claimed_job.id)
+        logger.info(
+            "worker_ml_job_succeeded",
+            extra={
+                "job_id": str(claimed_job.id),
+                "job_type": claimed_job.job_type,
+                "article_id": str(claimed_job.article_id),
+            },
+        )
+        return {"status": "succeeded", "job_type": claimed_job.job_type}
     finally:
         await engine.dispose()
 

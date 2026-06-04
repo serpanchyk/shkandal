@@ -9,8 +9,9 @@ curated source ingestion worker.
 
 The implemented code includes the MVP PostgreSQL schema and migration layer plus
 initial media and institutional article discovery/fetch/extraction/storage,
-date-bounded high-cap backfills, and stored-HTML publication-date repair. The
-classifier, LLM prompts, and public case/entity pages are future work.
+date-bounded high-cap backfills, stored-HTML publication-date repair, and the
+first article relevance classifier job handler. LLM prompts and public
+case/entity pages are future work.
 
 ## Product Direction
 
@@ -26,7 +27,7 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 
 - `backend`: FastAPI service exposing `GET /healthz` today; future public API and business boundary.
 - `worker-ingestion`: curated media and institutional source discovery from sitemaps, RSS/Atom feeds, and section pages; date-bounded backfill traversal; fetching; generic-first extraction; publication-date repair from stored raw HTML; URL identity normalization; image URL extraction; and PostgreSQL upsert.
-- `worker-ml`: async worker entrypoint for future binary relevance classification, article cards, embeddings, Qdrant retrieval, LLM resolution, and deduplication.
+- `worker-ml`: async worker entrypoint with article relevance classifier job enqueueing/handling; future article cards, embeddings, Qdrant retrieval, LLM resolution, and deduplication.
 - `frontend`: Next.js TypeScript app with an API health link today; future public feed, case pages, and entity pages.
 - `postgres`: source-of-truth database and Postgres-backed job store schema.
 - `packages/database`: shared async SQLAlchemy models, session helpers, and Alembic migrations.
@@ -77,7 +78,6 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 
 ## Known Next Work
 
-- Add local binary relevance classifier interface and persistence of classifier decisions.
 - Add Ukrainian prompt files and Pydantic-validated LLM contracts.
 - Implement Qdrant collections for case, entity, and event cards.
 - Build public API and frontend for homepage feed, case pages, and entity pages.
