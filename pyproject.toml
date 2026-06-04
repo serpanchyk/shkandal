@@ -17,6 +17,7 @@ members = [
     "apps/worker-ml",
     "packages/database",
     "packages/common",
+    "packages/vector_store",
 ]
 
 [dependency-groups]
@@ -50,6 +51,7 @@ mypy_path = [
     "apps/worker-ml/src",
     "packages/database/src",
     "packages/common/src",
+    "packages/vector_store/src",
 ]
 files = ["apps", "packages"]
 
@@ -79,6 +81,7 @@ pythonpath = [
     "apps/worker-ml/src",
     "packages/database/src",
     "packages/common/src",
+    "packages/vector_store/src",
 ]
 
 [tool.coverage.run]

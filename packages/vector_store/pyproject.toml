@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "shkandal-vector-store"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.12.5",
+    "qdrant-client>=1.12.1",
+    "shkandal-common",
+]
+
+[tool.uv.sources]
+shkandal-common = { workspace = true }
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/shkandal_vector_store"]
