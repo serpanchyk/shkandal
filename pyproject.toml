@@ -21,6 +21,7 @@ members = [
 
 [dependency-groups]
 dev = [
+    "dvc>=3.67.1",
     "httpx>=0.28.1",
     "mypy>=1.19.0",
     "pre-commit>=4.5.0",

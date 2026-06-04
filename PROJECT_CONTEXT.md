@@ -49,7 +49,8 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - `running` jobs are reclaimable leases. If `locked_at` becomes older than the configured stale-job timeout, defaulting to 30 minutes, another worker may retry the job.
 - Claiming a job increments `attempt_count`; crashes count as attempts. Failed jobs with attempts remaining return to `queued` with `run_after`, and exhausted jobs become `failed`.
 - LLM infrastructure is represented by environment variables only; no secrets are committed.
-- DVC is planned when classifier training code and artifacts land, not before.
+- DVC tracks large local model binaries under `artifacts/models/`; Git tracks
+  manifests and `.dvc` pointer files. No shared DVC remote is configured yet.
 
 ## Domain Decisions
 

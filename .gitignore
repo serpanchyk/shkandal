@@ -19,6 +19,7 @@ __pycache__/
 artifacts/models/**
 !artifacts/models/**/
 !artifacts/models/**/manifest.json
+!artifacts/models/**/*.dvc
 
 node_modules/
 .next/

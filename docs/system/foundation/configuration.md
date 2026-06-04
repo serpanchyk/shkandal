@@ -13,8 +13,9 @@ Source priority:
 
 Real secrets belong in ignored `.env` files, not tracked examples.
 
-Future classifier artifacts should be configured by path/environment and kept
-outside git. DVC is planned when the training flow and model artifacts exist.
+Classifier artifacts are configured by path/environment and kept outside Git.
+DVC tracks large model binaries under `artifacts/models/`; Git tracks the small
+metadata manifests and `.dvc` pointer files.
 
 LLM prompts should be tracked as Ukrainian plain-text files in `worker-ml`.
 

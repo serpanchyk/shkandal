@@ -32,6 +32,28 @@ Validate Compose configuration:
 docker compose config
 ```
 
+## Model Artifacts
+
+DVC tracks large model binaries under `artifacts/models/`. Git tracks the small
+`manifest.json` files and `.dvc` pointer files beside the binaries.
+
+Check local artifact state:
+
+```bash
+uv run dvc status
+```
+
+After producing or replacing a model binary, update its DVC pointer:
+
+```bash
+uv run dvc add artifacts/models/relevance/tfidf_logistic_noise_assigned/tfidf_logistic_noise_assigned.joblib
+git add artifacts/models/relevance/tfidf_logistic_noise_assigned/manifest.json
+git add artifacts/models/relevance/tfidf_logistic_noise_assigned/tfidf_logistic_noise_assigned.joblib.dvc
+```
+
+No shared DVC remote is configured yet. Configure one before relying on
+`uv run dvc push` or `uv run dvc pull` across machines.
+
 ## Docker Compose
 
 Build and start the full project in the foreground:

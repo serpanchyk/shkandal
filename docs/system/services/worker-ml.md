@@ -34,9 +34,15 @@ structured startup logging, an enqueue pass that creates idempotent
 classifier job handler that writes `article_relevance`.
 
 Local model artifacts live under `artifacts/models/` in the repository working
-tree. Binary artifacts are ignored by git; small manifests can be committed for
-metadata and reproducibility. The first relevance artifact path is
+tree. Binary artifacts are ignored by Git and tracked by DVC; small manifests
+and `.dvc` pointer files are committed for metadata and reproducibility. The
+first relevance artifact path is
 `artifacts/models/relevance/tfidf_logistic_noise_assigned/`.
+
+The current relevance model binary is tracked by
+`artifacts/models/relevance/tfidf_logistic_noise_assigned/tfidf_logistic_noise_assigned.joblib.dvc`.
+A shared DVC remote has not been configured yet, so `dvc push`/`dvc pull`
+require adding a deployment-specific remote first.
 
 The relevance classifier loads `manifest.json` and the sibling joblib pipeline
 from the configured `relevance_model_dir`. The current artifact was produced

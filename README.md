@@ -153,7 +153,10 @@ Classifier input should be:
 - lead;
 - first fixed-size window of extracted text.
 
-The likely first feature approach is TF-IDF word ngrams plus character ngrams. DVC will be added when classifier training code and artifacts land. Real model artifacts live outside git, with metadata and training code in the repo.
+The likely first feature approach is TF-IDF word ngrams plus character ngrams.
+DVC tracks large model binaries under `artifacts/models/`, while Git tracks the
+small metadata manifests and DVC pointer files. Real model artifacts stay outside
+Git history.
 
 Irrelevant articles remain stored with `is_relevant=false` for debugging, evaluation, and future reprocessing.
 
@@ -281,5 +284,4 @@ Planned later layers:
 - automatic merge handling for duplicate cases with redirects/aliases;
 - event relations such as appeal/reaction/correction;
 - image proxying or caching if needed;
-- richer analytics beyond anonymous aggregate counters;
-- DVC setup when classifier training artifacts exist.
+- richer analytics beyond anonymous aggregate counters.

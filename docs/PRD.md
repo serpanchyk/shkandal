@@ -91,7 +91,7 @@ current database rows.
 - Source type is context and display metadata, not a trust score.
 - Relevance filtering uses a local binary classifier before any LLM calls.
 - The first likely classifier shape is logistic regression over title, lead, and the first fixed-size text window with TF-IDF word and character ngrams.
-- DVC is planned when classifier training code and model artifacts exist. Real artifacts stay outside git.
+- DVC tracks large model binaries under `artifacts/models/`. Real artifacts stay outside Git; manifests and `.dvc` pointers are tracked.
 - LLM article cards are provisional structured understanding, not final global identity.
 - Article-case resolution happens before entity and event resolution.
 - Entity and event resolvers receive all linked cases and assign each resolved item only to relevant cases.
@@ -130,7 +130,7 @@ current database rows.
 - Automatic reprocessing when prompts, classifiers, or extraction versions change.
 - Redis or external queue infrastructure.
 - Full archive crawling beyond the planned controlled one-year backfill.
-- Model registry or DVC setup before training artifacts exist.
+- Model registry beyond the current DVC-tracked local artifact setup.
 
 ## Further Notes
 

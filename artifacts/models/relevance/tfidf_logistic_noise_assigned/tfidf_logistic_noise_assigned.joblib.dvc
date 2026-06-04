@@ -1,0 +1,5 @@
+outs:
+- md5: 681fd9e8c24077cc89313c23694f3ab4
+  size: 4560054
+  hash: md5
+  path: tfidf_logistic_noise_assigned.joblib
