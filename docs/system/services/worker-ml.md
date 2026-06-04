@@ -4,6 +4,10 @@ The ML worker owns the semantic processing pipeline after article extraction.
 
 Planned responsibilities:
 
+- poll PostgreSQL for articles missing ML-derived state and enqueue idempotent
+  jobs for downstream processing;
+- create one `classify_article` job for each article missing
+  `article_relevance`;
 - run the local binary relevance classifier before any LLM calls;
 - store classifier decision, score, classifier name, and classifier version;
 - use a configured classifier threshold, chosen from a threshold sweep that
@@ -24,8 +28,9 @@ Planned responsibilities:
 LLM prompts should live as Ukrainian plain-text files in this service. Invalid
 JSON output is repaired once, then marked failed if still invalid.
 
-The current implementation is a runnable async process shell with configuration
-and structured startup logging.
+The current implementation is a runnable async process shell with configuration,
+structured startup logging, and an enqueue pass that creates idempotent
+`classify_article` jobs for articles missing `article_relevance`.
 
 Local model artifacts live under `artifacts/models/` in the repository working
 tree. Binary artifacts are ignored by git; small manifests can be committed for
@@ -50,3 +55,9 @@ as product language.
 Below-threshold articles normally skip LLM work in the MVP, but they remain
 stored with score, classifier metadata, threshold metadata, extracted text, and
 source data so they can be revisited later.
+
+The worker should use the shared PostgreSQL job store for article-scoped jobs.
+Jobs are unique by `(job_type, article_id)` for the lifetime of the row. Workers
+claim jobs with `FOR UPDATE SKIP LOCKED`, treat `running` rows as reclaimable
+leases after the configured stale-job timeout, and count each claim as an
+attempt.

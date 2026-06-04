@@ -39,7 +39,14 @@ review and correction tooling are later quality layers, not blocking MVP stages.
   `postgres-data` named volume.
 - Qdrant is rebuildable from PostgreSQL-backed data.
 - Redis is excluded from MVP.
-- One generic PostgreSQL `jobs` table with row locking is the MVP background-work mechanism.
+- One generic PostgreSQL `jobs` table with row locking is the MVP background-work mechanism. A job is one durable, retryable, typed pipeline work unit, not a worker process or domain object.
+- MVP jobs are article-scoped: each job works on one article, so the job store should carry an explicit `article_id` and enforce one all-time job row per `(job_type, article_id)`. Reruns reset or requeue that row rather than creating duplicates.
+- Ingestion is not queued as a job in the MVP. After historical backfill, the ingestion worker should run continuously, discover new articles, and persist them to PostgreSQL; downstream ML processing consumes stored articles through jobs.
+- `worker-ml` owns ML job creation. It should poll PostgreSQL for articles missing ML-derived state, starting with articles missing `article_relevance`, and enqueue idempotent downstream jobs such as `classify_article`.
+- Article jobs are gated by durable outputs. Each successful step enqueues the next step only after its output row/link exists; downstream jobs are not pre-enqueued.
+- Workers claim jobs with PostgreSQL `FOR UPDATE SKIP LOCKED` row locking so multiple workers do not process the same job.
+- `running` jobs are reclaimable leases. If `locked_at` becomes older than the configured stale-job timeout, defaulting to 30 minutes, another worker may retry the job.
+- Claiming a job increments `attempt_count`; crashes count as attempts. Failed jobs with attempts remaining return to `queued` with `run_after`, and exhausted jobs become `failed`.
 - LLM infrastructure is represented by environment variables only; no secrets are committed.
 - DVC is planned when classifier training code and artifacts land, not before.
 

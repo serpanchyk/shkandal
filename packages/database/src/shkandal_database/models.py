@@ -533,6 +533,7 @@ class Job(Base):
             "status in ('queued', 'running', 'succeeded', 'failed', 'cancelled')",
             name="ck_jobs_status",
         ),
+        UniqueConstraint("job_type", "article_id", name="uq_jobs_job_type_article_id"),
         Index(
             "ix_jobs_status_priority_run_after_created_at",
             "status",
@@ -545,6 +546,10 @@ class Job(Base):
 
     id: Mapped[UUID] = uuid_pk_column()
     job_type: Mapped[str] = mapped_column(Text, nullable=False)
+    article_id: Mapped[UUID] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     status: Mapped[str] = mapped_column(Text, nullable=False)
     priority: Mapped[int] = mapped_column(
         Integer,
