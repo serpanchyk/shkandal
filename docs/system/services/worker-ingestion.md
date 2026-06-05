@@ -118,10 +118,10 @@ sources can override the date-bounded discovery cap with
 When a date-bounded run fetches a candidate whose discovery metadata did not
 include a usable date, the worker checks the extracted article `published_at`
 before storage and skips articles outside the requested window.
-Pravda uses a browser-impersonated fetch path for all requests from Docker,
-because Cloudflare challenges the default Python HTTP client on sitemap and
-some article URLs. It also uses a source-level crawl delay and single in-flight
-fetch to avoid 429 rate limits.
+Pravda, NABU, DBR, SSU, KMU, and President Office requests use a
+browser-impersonated fetch path from Docker because the default Python HTTP
+client is blocked or challenged by those sites. Pravda also uses a source-level
+crawl delay and single in-flight fetch to avoid 429 rate limits.
 
 Repair missing publication dates from already-stored raw HTML without refetching
 articles. Repair mode is a dry run unless `--apply` is passed:

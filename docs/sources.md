@@ -85,17 +85,17 @@ Coverage summary:
 | `arma` | 10 | 10 | none | Stored rows are all undated. |
 | `npu` | 10 | 10 | none | Stored rows are all undated. |
 | `texty` | 560 | 560 | none | Stored rows are all undated; coverage by month is currently unusable. |
-| `dbr` | 0 | 0 | none | Not ingested in the window. Known TLS-chain blocker in this runtime. |
-| `kmu` | 0 | 0 | none | Not ingested in the window. Known Radware captcha blocker. |
-| `nabu` | 0 | 0 | none | Not ingested in the window. Known HTTP 403 blocker. |
-| `president` | 0 | 0 | none | Not ingested in the window. Known Akamai HTTP 403 blocker. |
-| `ssu` | 0 | 0 | none | Not ingested in the window. Known Akamai HTTP 403 blocker. |
+| `dbr` | 0 | 0 | none | Not ingested in the window. Prior TLS-chain blocker in this runtime; now routed through browser impersonation for validation. |
+| `kmu` | 0 | 0 | none | Not ingested in the window. Prior Radware captcha blocker; now routed through browser impersonation for validation. |
+| `nabu` | 0 | 0 | none | Not ingested in the window. Prior HTTP 403 blocker; now routed through browser impersonation for validation. |
+| `president` | 0 | 0 | none | Not ingested in the window. Prior Akamai HTTP 403 blocker; now routed through browser impersonation for validation. |
+| `ssu` | 0 | 0 | none | Not ingested in the window. Prior Akamai HTTP 403 blocker; now routed through browser impersonation for validation. |
 
 Under-ingestion priorities:
 
-1. Blocked official sources with zero articles: `nabu`, `dbr`, `ssu`, `kmu`,
-   and `president`. These need source-specific access/discovery fixes before
-   normal backfill can cover them.
+1. Previously blocked official sources with zero articles: `nabu`, `dbr`,
+   `ssu`, `kmu`, and `president`. These now use browser-impersonated requests
+   and need live validation before normal backfill can be trusted.
 2. Sources storing only or mostly undated rows: `texty`, `nashigroshi`,
    `chesno`, `arma`, `npu`, `hcac`, `rada`, `rnbo`, `nazk`, `ccu`,
    `court-gov`, `supreme-court`, and `gp`. For these, fix published-date
@@ -108,6 +108,25 @@ Under-ingestion priorities:
 4. Raw HTML gaps worth repair: `pravda` has 1,230 rows without `raw_html`,
    `antac` has 50, `hromadske` has 12, `suspilne` has 6, `court-gov` has 4,
    and `hcac` has 1.
+
+### 2026-06-05 browser impersonation validation
+
+After extending the browser-impersonated transport beyond `pravda`, read-only
+validation was run with one sample article per affected source:
+
+```bash
+uv run python apps/worker-ingestion/scripts/validate_sources.py --source <source> --sample 1 --timeout 8
+```
+
+Results:
+
+| Source | Validation result |
+| --- | --- |
+| `nabu` | Section fetch returned 200 and one discovered article extracted successfully with title, `published_at`, and 1,263 characters of text. `robots.txt` returned 404, which is not treated as an ingestion blocker when article discovery works. |
+| `ssu` | Section fetch returned 200 and one discovered article extracted successfully with title, `published_at`, and 1,542 characters of text. `robots.txt` returned 404, which is not treated as an ingestion blocker when article discovery works. |
+| `president` | `robots.txt`, section fetch, discovery, and one article extraction all succeeded. The sample article had title, `published_at`, and 2,160 characters of text. |
+| `kmu` | `robots.txt` and timeline fetch returned 200, but no article URLs were discovered. This is no longer a raw request blocker; it needs a KMU-specific discovery/parser fix. |
+| `dbr` | Still blocked by `SSL certificate problem: unable to get local issuer certificate`; browser impersonation does not fix the incomplete certificate chain. |
 
 ## Supported Sources
 

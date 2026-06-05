@@ -12,6 +12,19 @@ from curl_cffi.requests import AsyncSession as CurlAsyncSession
 
 from worker_ingestion.config import IngestionConfig
 
+_BROWSER_IMPERSONATION_HOSTS = frozenset(
+    {
+        "pravda.com.ua",
+        "www.pravda.com.ua",
+        "nabu.gov.ua",
+        "dbr.gov.ua",
+        "ssu.gov.ua",
+        "www.kmu.gov.ua",
+        "president.gov.ua",
+        "www.president.gov.ua",
+    }
+)
+
 
 @dataclass(frozen=True)
 class FetchResult:
@@ -77,10 +90,11 @@ class HttpxFetcher:
         )
 
     async def _fetch_with_browser_impersonation(self, url: str) -> FetchResult:
+        parsed = urlparse(url)
         headers = {
             "accept": "application/xml,text/xml,text/html;q=0.9,*/*;q=0.8",
             "accept-language": "uk-UA,uk;q=0.9,en-US;q=0.7,en;q=0.6",
-            "referer": "https://www.pravda.com.ua/",
+            "referer": f"{parsed.scheme}://{parsed.netloc}/",
         }
         try:
             async with CurlAsyncSession(
@@ -112,4 +126,4 @@ class HttpxFetcher:
 
 def _requires_browser_impersonation(url: str) -> bool:
     parsed = urlparse(url)
-    return parsed.netloc in {"www.pravda.com.ua", "pravda.com.ua"}
+    return parsed.netloc in _BROWSER_IMPERSONATION_HOSTS
