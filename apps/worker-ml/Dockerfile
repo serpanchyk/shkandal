@@ -10,6 +10,8 @@ COPY packages/common/pyproject.toml ./packages/common/pyproject.toml
 COPY packages/common/src ./packages/common/src
 COPY packages/database/pyproject.toml ./packages/database/pyproject.toml
 COPY packages/database/src ./packages/database/src
+COPY packages/vector_store/pyproject.toml ./packages/vector_store/pyproject.toml
+COPY packages/vector_store/src ./packages/vector_store/src
 COPY apps/worker-ml/pyproject.toml ./apps/worker-ml/pyproject.toml
 COPY apps/worker-ml/src ./apps/worker-ml/src
 
