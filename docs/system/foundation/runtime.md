@@ -24,6 +24,9 @@ step. Reruns should reset or requeue the existing job, or introduce deliberate
 versioned job semantics later, rather than accumulating duplicate job rows.
 Durable output tables such as `article_relevance`, `article_cards`, and
 `llm_runs` hold processing results and history; `jobs` coordinates work.
+LLM calls are routed through the LiteLLM proxy service in Compose. The proxy is
+infrastructure for provider access, throttling, and routing; PostgreSQL remains
+the source of truth for run history and generated data.
 Initial job types are expected to cover downstream article processing, such as
 relevance classification, article-card creation, case resolution, entity
 resolution, and event resolution.

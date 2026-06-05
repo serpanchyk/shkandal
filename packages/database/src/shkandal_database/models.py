@@ -180,6 +180,12 @@ class LlmRun(Base):
     status: Mapped[str] = mapped_column(Text, nullable=False)
     raw_output: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     repaired_output: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    metadata_: Mapped[dict[str, Any]] = mapped_column(
+        "metadata",
+        JSONB,
+        nullable=False,
+        server_default=json_object_default,
+    )
     error_message: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

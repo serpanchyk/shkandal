@@ -41,6 +41,8 @@ services:
         condition: service_healthy
       qdrant:
         condition: service_started
+      llm-proxy:
+        condition: service_started
     restart: unless-stopped
 
   frontend:
@@ -78,6 +80,17 @@ services:
       - "${QDRANT_PORT:-6333}:6333"
     volumes:
       - qdrant-data:/qdrant/storage
+    restart: unless-stopped
+
+  llm-proxy:
+    image: docker.litellm.ai/berriai/litellm:main-latest
+    command: ["--config", "/app/config.yaml"]
+    env_file:
+      - ./.env.example
+    ports:
+      - "${LITELLM_PROXY_PORT:-4000}:4000"
+    volumes:
+      - ./infra/litellm/config.yaml.example:/app/config.yaml:ro
     restart: unless-stopped
 
 volumes:

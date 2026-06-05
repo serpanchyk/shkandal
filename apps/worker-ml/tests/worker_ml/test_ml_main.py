@@ -28,3 +28,14 @@ def test_embedding_config_defaults_to_e5_small_artifact() -> None:
 
     assert config.embedding_model_dir.endswith("multilingual_e5_small/model")
     assert config.embedding_vector_size == 384
+
+
+def test_llm_config_defaults_to_litellm_proxy_aliases() -> None:
+    fields = MlConfig.model_fields
+
+    assert fields["llm_api_base"].default == "http://llm-proxy:4000/v1"
+    assert fields["llm_article_card_model"].default == "shkandal-article-card"
+    assert fields["llm_case_resolution_model"].default == "shkandal-case-resolution"
+    assert fields["llm_entity_resolution_model"].default == "shkandal-entity-resolution"
+    assert fields["llm_event_resolution_model"].default == "shkandal-event-resolution"
+    assert fields["llm_repair_model"].default == "shkandal-repair"

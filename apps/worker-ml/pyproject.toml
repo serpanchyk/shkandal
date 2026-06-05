@@ -8,6 +8,8 @@ version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
     "joblib>=1.5.2",
+    "langchain-core>=1.1.0",
+    "langchain-openai>=1.1.0",
     "pydantic>=2.12.5",
     "scikit-learn==1.8.0",
     "sentence-transformers>=5.1.2",

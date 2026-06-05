@@ -11,7 +11,9 @@ The implemented code includes the MVP PostgreSQL schema and migration layer plus
 initial media and institutional article discovery/fetch/extraction/storage,
 date-bounded high-cap backfills, stored-HTML publication-date repair, and the
 first article relevance classifier job handler. LLM prompts and public
-case/entity pages are future work.
+case/entity pages are future work. The LLM task architecture now exists in
+`worker-ml`, with LangChain prompt/chaining support and LiteLLM proxy routing,
+but downstream article-card and resolution jobs are not fully wired yet.
 
 ## Product Direction
 
@@ -27,7 +29,7 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 
 - `backend`: FastAPI service exposing `GET /healthz` today; future public API and business boundary.
 - `worker-ingestion`: curated media and institutional source discovery from sitemaps, RSS/Atom feeds, and section pages; date-bounded backfill traversal; fetching; generic-first extraction; publication-date repair from stored raw HTML; URL identity normalization; image URL extraction; and PostgreSQL upsert.
-- `worker-ml`: async worker entrypoint with article relevance classifier job enqueueing/handling, E5-small embedding service, and Qdrant vector-index integration; future article cards, LLM resolution, and deduplication.
+- `worker-ml`: async worker entrypoint with article relevance classifier job enqueueing/handling, E5-small embedding service, Qdrant vector-index integration, and the LLM task architecture for future article cards, resolution, and deduplication.
 - `frontend`: Next.js TypeScript app with an API health link today; future public feed, case pages, and entity pages.
 - `postgres`: source-of-truth database and Postgres-backed job store schema.
 - `packages/database`: shared async SQLAlchemy models, session helpers, and Alembic migrations.
@@ -48,7 +50,7 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - Workers claim jobs with PostgreSQL `FOR UPDATE SKIP LOCKED` row locking so multiple workers do not process the same job.
 - `running` jobs are reclaimable leases. If `locked_at` becomes older than the configured stale-job timeout, defaulting to 30 minutes, another worker may retry the job.
 - Claiming a job increments `attempt_count`; crashes count as attempts. Failed jobs with attempts remaining return to `queued` with `run_after`, and exhausted jobs become `failed`.
-- LLM infrastructure is represented by environment variables only; no secrets are committed.
+- LLM calls go through a LiteLLM proxy service. `worker-ml` uses logical per-stage aliases, while provider credentials, throttling, and routing belong to proxy configuration. No secrets are committed.
 - DVC tracks large local model binaries under `artifacts/models/`; Git tracks
   manifests and `.dvc` pointer files. No shared DVC remote is configured yet.
 
@@ -79,6 +81,6 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 
 ## Known Next Work
 
-- Add Ukrainian prompt files and Pydantic-validated LLM contracts.
+- Wire article-card and resolution jobs to the LLM task architecture.
 - Implement Qdrant collections for case, entity, and event cards.
 - Build public API and frontend for homepage feed, case pages, and entity pages.

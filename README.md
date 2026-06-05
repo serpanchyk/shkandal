@@ -248,8 +248,17 @@ There is no direct `entity_event` relationship in the MVP. Cases can show entiti
 ## LLM Contracts
 
 Prompts live as plain Ukrainian files in the repo, owned by `worker-ml`.
+LangChain consumes those files inside individual LLM tasks for prompt handling
+and simple chains; it does not own job orchestration, persistence, retries, or
+database mutation.
 
-LLM outputs must be structured JSON validated by Pydantic. Invalid output should be repaired once with a repair prompt. If repair fails, mark the LLM task failed and keep it eligible for later reprocessing.
+LLM outputs must be structured JSON validated by Pydantic. Invalid output should
+be repaired once with a schema-only repair prompt. If repair fails, mark the LLM
+task failed and keep it eligible for later reprocessing.
+
+All runtime LLM calls go through the LiteLLM proxy. `worker-ml` requests logical
+per-stage aliases such as `shkandal-article-card` and `shkandal-repair`; the
+proxy owns provider credentials, throttling, routing, and fallback policy.
 
 ## Architecture
 
@@ -258,9 +267,10 @@ The project is split into these services:
 - `frontend`: Next.js public UI for case pages, entity pages, and feed;
 - `backend`: FastAPI public API and application business boundary;
 - `worker-ingestion`: curated source discovery, fetching, extraction, URL identity normalization, image URL extraction;
-- `worker-ml`: relevance classifier, E5-small embeddings, Qdrant vector integration, future article cards, LLM resolution, deduplication;
+- `worker-ml`: relevance classifier, E5-small embeddings, Qdrant vector integration, LLM task contracts/prompt execution, future article cards, LLM resolution, deduplication;
 - `postgres`: source-of-truth relational database and MVP job store;
 - `qdrant`: rebuildable 384-dimensional vector index for cases, entities, and events.
+- `llm-proxy`: LiteLLM proxy for provider routing, throttling, and fallback policy.
 
 The shared `packages/database` workspace package owns async SQLAlchemy models,
 session helpers, and Alembic migrations. Local PostgreSQL data is stored in the

@@ -25,8 +25,18 @@ Planned responsibilities:
 - materialize direct `case_entities` and `case_events` links;
 - record LLM run metadata, prompt name/version, model, status, raw output, and repair attempts.
 
-LLM prompts should live as Ukrainian plain-text files in this service. Invalid
-JSON output is repaired once, then marked failed if still invalid.
+LLM prompts live as Ukrainian plain-text files in this service. LangChain loads
+those files inside each LLM task for prompt handling and simple chains, but it
+does not own worker orchestration, retries, persistence, or database mutation.
+Invalid JSON output is repaired once with a schema-only repair prompt, then
+marked failed if still invalid.
+
+All runtime LLM traffic goes through the LiteLLM proxy. `worker-ml` requests
+logical model aliases (`shkandal-article-card`, `shkandal-case-resolution`,
+`shkandal-entity-resolution`, `shkandal-event-resolution`, and
+`shkandal-repair`) through the proxy's OpenAI-compatible endpoint. Provider
+routing, provider credentials, throttling, and fallback policy belong to the
+proxy configuration, not to `worker-ml`.
 
 The current implementation is a runnable async process with configuration,
 structured startup logging, a polling loop that creates idempotent

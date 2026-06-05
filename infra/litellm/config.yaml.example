@@ -1,0 +1,29 @@
+model_list:
+  - model_name: shkandal-article-card
+    litellm_params:
+      model: openai/gpt-4.1-mini
+      api_key: os.environ/OPENAI_API_KEY
+    rpm: 60
+  - model_name: shkandal-case-resolution
+    litellm_params:
+      model: openai/gpt-4.1
+      api_key: os.environ/OPENAI_API_KEY
+    rpm: 30
+  - model_name: shkandal-entity-resolution
+    litellm_params:
+      model: openai/gpt-4.1-mini
+      api_key: os.environ/OPENAI_API_KEY
+    rpm: 60
+  - model_name: shkandal-event-resolution
+    litellm_params:
+      model: openai/gpt-4.1-mini
+      api_key: os.environ/OPENAI_API_KEY
+    rpm: 60
+  - model_name: shkandal-repair
+    litellm_params:
+      model: openai/gpt-4.1-mini
+      api_key: os.environ/OPENAI_API_KEY
+    rpm: 60
+
+litellm_settings:
+  drop_params: true

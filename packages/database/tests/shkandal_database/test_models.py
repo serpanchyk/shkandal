@@ -1,6 +1,6 @@
 """Tests for database model metadata."""
 
-from shkandal_database.models import Article, Base, Case, Entity, Job, Source
+from shkandal_database.models import Article, Base, Case, Entity, Job, LlmRun, Source
 from sqlalchemy import CheckConstraint, ForeignKeyConstraint, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -82,7 +82,9 @@ def test_metadata_columns_use_safe_python_names() -> None:
     assert Source.metadata_.property.columns[0].name == "metadata"
     assert Case.metadata_.property.columns[0].name == "metadata"
     assert Entity.metadata_.property.columns[0].name == "metadata"
+    assert LlmRun.metadata_.property.columns[0].name == "metadata"
     assert isinstance(Source.metadata_.property.columns[0].type, JSONB)
+    assert isinstance(LlmRun.metadata_.property.columns[0].type, JSONB)
 
 
 def test_no_direct_entity_event_table_exists() -> None:
