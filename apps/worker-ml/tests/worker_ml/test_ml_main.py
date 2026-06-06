@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 import worker_ml.main as entrypoint
 from shkandal_database.jobs import ArticleJobStore
-from worker_ml.classifier import ClassificationJobHandler
+from worker_ml.classifier import ClassificationJobHandler, RelevanceModel
 from worker_ml.config import MlConfig
-from worker_ml.jobs import MlJobPlanner
+from worker_ml.jobs import EnqueueStats, MlJobPlanner
 from worker_ml.main import _run_cycle
 
 
@@ -16,7 +16,13 @@ from worker_ml.main import _run_cycle
 async def test_run_cycle_enqueues_and_processes_bounded_batch() -> None:
     planner = Mock(spec=MlJobPlanner)
     planner.enqueue_missing_classification_jobs = AsyncMock(
-        return_value=SimpleNamespace(scanned_articles=10, ensured_jobs=4)
+        return_value=EnqueueStats(
+            scanned_articles=10,
+            ensured_jobs=4,
+            inserted_jobs=3,
+            requeued_jobs=1,
+            existing_jobs=6,
+        )
     )
     claimed_jobs = [
         SimpleNamespace(
@@ -58,19 +64,47 @@ async def test_run_cycle_enqueues_and_processes_bounded_batch() -> None:
     assert job_store.complete_job.await_count == 3
 
 
-def test_once_flag_dispatches_one_cycle(monkeypatch: pytest.MonkeyPatch) -> None:
-    called: list[str] = []
-
-    def run(coroutine: object) -> None:
-        called.append(coroutine.cr_code.co_name)  # type: ignore[attr-defined]
-        coroutine.close()  # type: ignore[attr-defined]
-
-    monkeypatch.setattr(sys, "argv", ["worker-ml", "--once"])
-    monkeypatch.setattr(asyncio, "run", run)
+def test_no_args_dispatches_one_cycle(monkeypatch: pytest.MonkeyPatch) -> None:
+    run_once = AsyncMock()
+    monkeypatch.setattr(sys, "argv", ["worker-ml"])
+    monkeypatch.setattr(entrypoint, "run_once", run_once)
 
     entrypoint.main()
 
-    assert called == ["run_once"]
+    run_once.assert_awaited_once_with()
+
+
+def test_loop_flag_dispatches_worker_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    run_worker = AsyncMock()
+    monkeypatch.setattr(sys, "argv", ["worker-ml", "--loop"])
+    monkeypatch.setattr(entrypoint, "run_worker", run_worker)
+
+    entrypoint.main()
+
+    run_worker.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_worker_loop_sleeps_when_cycle_is_idle(monkeypatch: pytest.MonkeyPatch) -> None:
+    engine = Mock()
+    engine.dispose = AsyncMock()
+    run_cycle = AsyncMock(
+        side_effect=[
+            {"scanned_articles": 1, "ensured_jobs": 0, "processed_jobs": 0, "failed_jobs": 0},
+            asyncio.CancelledError,
+        ]
+    )
+    sleep = AsyncMock()
+    monkeypatch.setattr(RelevanceModel, "load", Mock())
+    monkeypatch.setattr(entrypoint, "create_async_engine_from_config", Mock(return_value=engine))
+    monkeypatch.setattr(entrypoint, "create_async_sessionmaker", Mock())
+    monkeypatch.setattr(entrypoint, "_run_cycle", run_cycle)
+    monkeypatch.setattr(asyncio, "sleep", sleep)
+
+    with pytest.raises(asyncio.CancelledError):
+        await entrypoint.run_worker(MlConfig(poll_interval_seconds=17))
+
+    sleep.assert_awaited_once_with(17)
 
 
 def test_stale_job_timeout_config() -> None:

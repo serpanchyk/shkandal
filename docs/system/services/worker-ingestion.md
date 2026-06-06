@@ -111,15 +111,15 @@ hour.
 Run one explicit pass or one source for debugging:
 
 ```bash
-docker compose --profile jobs run --rm worker-ingestion python -m worker_ingestion.main --once
-docker compose --profile jobs run --rm worker-ingestion python -m worker_ingestion.main --once --source pravda --limit 20
+docker compose --profile jobs run --rm worker-ingestion python -m worker_ingestion.main
+docker compose --profile jobs run --rm worker-ingestion python -m worker_ingestion.main --source pravda --limit 20
 ```
 
 Optional date window arguments use ISO datetime/date strings accepted by
 `datetime.fromisoformat`:
 
 ```bash
-docker compose --profile jobs run --rm worker-ingestion python -m worker_ingestion.main --once --source hromadske --since 2026-06-01 --until 2026-06-02
+docker compose --profile jobs run --rm worker-ingestion python -m worker_ingestion.main --source hromadske --since 2026-06-01 --until 2026-06-02
 ```
 
 Date-bounded runs use `max_backfill_urls_per_source` as the effective discovery
@@ -135,6 +135,17 @@ Pravda, NABU, DBR, SSU, KMU, and President Office requests use a
 browser-impersonated fetch path from Docker because the default Python HTTP
 client is blocked or challenged by those sites. Pravda also uses a source-level
 crawl delay and single in-flight fetch to avoid 429 rate limits.
+
+Optional direct loop mode runs repeated passes and maintains the loop-mode
+heartbeat:
+
+```bash
+python -m worker_ingestion.main --loop
+```
+
+The heartbeat and healthcheck do not apply to the normal systemd-scheduled
+one-shot runtime. Durable retry fields track fetch retries only; extraction
+exceptions are not persisted as fetch failures.
 
 Repair missing publication dates from already-stored raw HTML without refetching
 articles. Repair mode is a dry run unless `--apply` is passed:

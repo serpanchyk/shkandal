@@ -1,4 +1,4 @@
-"""Container healthcheck for the continuous ingestion worker."""
+"""Optional healthcheck for an ingestion worker running in loop mode."""
 
 from worker_ingestion.config import IngestionConfig
 from worker_ingestion.runtime import heartbeat_is_fresh

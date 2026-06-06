@@ -20,6 +20,9 @@ class EnqueueStats:
 
     scanned_articles: int
     ensured_jobs: int
+    inserted_jobs: int = 0
+    requeued_jobs: int = 0
+    existing_jobs: int = 0
 
 
 class MlJobPlanner:
@@ -50,15 +53,30 @@ class MlJobPlanner:
                 ).all()
             )
 
+        inserted_jobs = 0
+        requeued_jobs = 0
+        existing_jobs = 0
         for article_id in article_ids:
-            await self._job_store.enqueue_article_job(
+            result = await self._job_store.enqueue_article_job(
                 job_type=CLASSIFY_ARTICLE_JOB,
                 article_id=article_id,
                 payload={"article_id": str(article_id)},
                 max_attempts=max_attempts,
             )
+            if result.state == "inserted":
+                inserted_jobs += 1
+            elif result.state == "requeued":
+                requeued_jobs += 1
+            else:
+                existing_jobs += 1
 
-        return EnqueueStats(scanned_articles=len(article_ids), ensured_jobs=len(article_ids))
+        return EnqueueStats(
+            scanned_articles=len(article_ids),
+            ensured_jobs=inserted_jobs + requeued_jobs,
+            inserted_jobs=inserted_jobs,
+            requeued_jobs=requeued_jobs,
+            existing_jobs=existing_jobs,
+        )
 
     @staticmethod
     def _articles_missing_relevance_query(*, limit: int) -> Select[tuple[UUID]]:

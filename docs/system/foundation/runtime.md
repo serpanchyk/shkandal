@@ -66,6 +66,9 @@ backfill is complete, systemd starts a one-shot full-source pass every hour.
 The pass retries failed fetches with bounded durable state and writes
 successfully fetched articles to PostgreSQL. A separate systemd timer starts a
 bounded ML pass every 10 minutes to enqueue and claim processing jobs.
+Both worker CLIs default to one-shot execution. Optional `--loop` modes remain
+available for direct/manual use. The ingestion heartbeat applies only to that
+optional loop mode, not to the scheduled systemd runtime.
 
 The ML worker owns ML job creation. Ingestion only persists article evidence; it
 does not need to know classifier, prompt, embedding, or resolution job types.

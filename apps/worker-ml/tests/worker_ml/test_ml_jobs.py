@@ -1,7 +1,12 @@
 """Tests for ML job planning."""
 
 from decimal import Decimal
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, Mock
+from uuid import uuid4
 
+import pytest
+from shkandal_database.jobs import EnqueueJobResult
 from worker_ml.classifier import RelevanceModel, build_classifier_text
 from worker_ml.jobs import (
     CLASSIFY_ARTICLE_JOB,
@@ -17,9 +22,48 @@ def test_classify_article_job_type_is_stable() -> None:
 
 
 def test_enqueue_stats_names_idempotent_job_count() -> None:
-    stats = EnqueueStats(scanned_articles=2, ensured_jobs=2)
+    stats = EnqueueStats(
+        scanned_articles=3,
+        ensured_jobs=2,
+        inserted_jobs=1,
+        requeued_jobs=1,
+        existing_jobs=1,
+    )
 
     assert stats.ensured_jobs == 2
+    assert stats.existing_jobs == 1
+
+
+@pytest.mark.asyncio
+async def test_job_planner_counts_only_inserted_and_requeued_jobs() -> None:
+    article_ids = [uuid4(), uuid4(), uuid4()]
+    session = MagicMock()
+    session.scalars = AsyncMock(return_value=SimpleNamespace(all=lambda: article_ids))
+    session_context = MagicMock()
+    session_context.__aenter__ = AsyncMock(return_value=session)
+    session_context.__aexit__ = AsyncMock(return_value=None)
+    session_factory = Mock(return_value=session_context)
+    job_store = Mock()
+    job_store.enqueue_article_job = AsyncMock(
+        side_effect=[
+            EnqueueJobResult(article_ids[0], "inserted"),
+            EnqueueJobResult(article_ids[1], "existing"),
+            EnqueueJobResult(article_ids[2], "requeued"),
+        ]
+    )
+
+    stats = await MlJobPlanner(session_factory, job_store).enqueue_missing_classification_jobs(
+        limit=3,
+        max_attempts=4,
+    )
+
+    assert stats == EnqueueStats(
+        scanned_articles=3,
+        ensured_jobs=2,
+        inserted_jobs=1,
+        requeued_jobs=1,
+        existing_jobs=1,
+    )
 
 
 def test_job_planner_only_selects_successfully_fetched_articles() -> None:

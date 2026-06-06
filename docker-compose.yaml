@@ -29,7 +29,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    command: ["python", "-m", "worker_ingestion.main", "--once"]
+    command: ["python", "-m", "worker_ingestion.main"]
     restart: "no"
 
   worker-ml:
@@ -46,7 +46,7 @@ services:
         condition: service_started
       llm-proxy:
         condition: service_started
-    command: ["python", "-m", "worker_ml.main", "--once"]
+    command: ["python", "-m", "worker_ml.main"]
     restart: "no"
 
   frontend:

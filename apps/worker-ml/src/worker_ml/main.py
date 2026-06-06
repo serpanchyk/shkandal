@@ -69,12 +69,18 @@ async def enqueue_missing_classification_jobs(config: MlConfig | None = None) ->
             extra={
                 "scanned_articles": stats.scanned_articles,
                 "ensured_jobs": stats.ensured_jobs,
+                "inserted_jobs": stats.inserted_jobs,
+                "requeued_jobs": stats.requeued_jobs,
+                "existing_jobs": stats.existing_jobs,
                 "job_type": "classify_article",
             },
         )
         return {
             "scanned_articles": stats.scanned_articles,
             "ensured_jobs": stats.ensured_jobs,
+            "inserted_jobs": stats.inserted_jobs,
+            "requeued_jobs": stats.requeued_jobs,
+            "existing_jobs": stats.existing_jobs,
         }
     finally:
         await engine.dispose()
@@ -206,6 +212,9 @@ async def _run_cycle(
             extra={
                 "scanned_articles": enqueue_stats.scanned_articles,
                 "ensured_jobs": enqueue_stats.ensured_jobs,
+                "inserted_jobs": enqueue_stats.inserted_jobs,
+                "requeued_jobs": enqueue_stats.requeued_jobs,
+                "existing_jobs": enqueue_stats.existing_jobs,
                 "job_type": "classify_article",
             },
         )
@@ -266,13 +275,18 @@ def main() -> None:
     parser.add_argument(
         "--once",
         action="store_true",
-        help="Enqueue and process one bounded batch, then exit.",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--loop",
+        action="store_true",
+        help="Poll continuously instead of exiting after one bounded cycle.",
     )
     args = parser.parse_args()
-    if args.once:
-        asyncio.run(run_once())
+    if args.loop:
+        asyncio.run(run_worker())
         return
-    asyncio.run(run_worker())
+    asyncio.run(run_once())
 
 
 if __name__ == "__main__":

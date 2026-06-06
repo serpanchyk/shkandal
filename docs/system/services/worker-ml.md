@@ -44,6 +44,17 @@ creates idempotent `classify_article` jobs for articles missing
 polling mode remains available for direct use. It also includes an embedding
 service and vector-index integration for future card resolution jobs.
 
+Run the default local one-shot pass or optional direct loop mode:
+
+```bash
+docker compose --profile jobs run --rm worker-ml
+python -m worker_ml.main --loop
+```
+
+On servers, `shkandal-ml-worker.timer` starts the one-shot container every 10
+minutes. `worker-ml` continues to depend on the Compose `llm-proxy` because
+article-card and resolution stages use its logical model aliases.
+
 Local model artifacts live under `artifacts/models/` in the repository working
 tree. Binary artifacts are ignored by Git and tracked by DVC; small manifests
 and `.dvc` pointer files are committed for metadata and reproducibility. The

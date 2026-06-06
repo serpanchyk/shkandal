@@ -1,4 +1,4 @@
-"""Continuous ingestion worker runtime."""
+"""Optional continuous-loop ingestion runtime."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ async def run_continuously(
     config: IngestionConfig,
     logger: logging.Logger,
 ) -> None:
-    """Run ingestion passes forever on a fixed start-to-start cadence."""
+    """Run optional loop-mode ingestion on a fixed start-to-start cadence."""
 
     while True:
         started_at = time.monotonic()
@@ -50,7 +50,7 @@ async def run_continuously(
 
 
 def write_heartbeat(path: str) -> None:
-    """Record the current wall-clock time for the container healthcheck."""
+    """Record a completed loop-mode pass for the optional healthcheck."""
 
     heartbeat = Path(path)
     heartbeat.parent.mkdir(parents=True, exist_ok=True)

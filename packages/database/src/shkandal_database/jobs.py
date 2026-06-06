@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from random import SystemRandom
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from sqlalchemy import Select, and_, desc, or_, select, update
@@ -39,6 +39,14 @@ class ClaimedJob:
     max_attempts: int
 
 
+@dataclass(frozen=True)
+class EnqueueJobResult:
+    """Result of ensuring one durable article job exists."""
+
+    job_id: UUID
+    state: Literal["inserted", "existing", "requeued"]
+
+
 class ArticleJobStore:
     """Store and claim durable article-scoped jobs."""
 
@@ -65,8 +73,8 @@ class ArticleJobStore:
         priority: int = 0,
         run_after: datetime | None = None,
         max_attempts: int = 3,
-    ) -> UUID:
-        """Create an article job if it does not already exist."""
+    ) -> EnqueueJobResult:
+        """Create an article job or requeue an existing failed job."""
 
         async with async_session_scope(self._session_factory) as session:
             statement = (
@@ -87,14 +95,38 @@ class ArticleJobStore:
             )
             inserted_id = await session.scalar(statement)
             if inserted_id is not None:
-                return inserted_id
+                return EnqueueJobResult(job_id=inserted_id, state="inserted")
 
-            existing_id = await session.scalar(
-                select(Job.id).where(Job.job_type == job_type, Job.article_id == article_id)
-            )
-            if existing_id is None:
+            existing_job = (
+                await session.execute(
+                    select(Job.id, Job.status)
+                    .where(Job.job_type == job_type, Job.article_id == article_id)
+                    .with_for_update()
+                )
+            ).one_or_none()
+            if existing_job is None:
                 raise RuntimeError("job insert conflicted but existing job was not found")
-            return existing_id
+            if existing_job.status != JOB_STATUS_FAILED:
+                return EnqueueJobResult(job_id=existing_job.id, state="existing")
+
+            requeued_at = datetime.now(UTC)
+            requeued_id = await session.scalar(
+                update(Job)
+                .where(Job.id == existing_job.id, Job.status == JOB_STATUS_FAILED)
+                .values(
+                    status=JOB_STATUS_QUEUED,
+                    run_after=run_after,
+                    locked_at=None,
+                    locked_by=None,
+                    last_error=None,
+                    max_attempts=max_attempts,
+                    updated_at=requeued_at,
+                )
+                .returning(Job.id)
+            )
+            if requeued_id is None:
+                return EnqueueJobResult(job_id=existing_job.id, state="existing")
+            return EnqueueJobResult(job_id=requeued_id, state="requeued")
 
     async def claim_next_job(
         self,

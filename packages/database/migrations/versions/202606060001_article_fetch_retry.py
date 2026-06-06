@@ -49,9 +49,12 @@ def upgrade() -> None:
         UPDATE articles
         SET fetch_status = 'failed',
             next_fetch_at = now(),
-            last_fetch_error = source_metadata ->> 'fetch_error'
+            last_fetch_error = coalesce(
+                source_metadata ->> 'fetch_error',
+                'missing_raw_html_and_extracted_text'
+            )
         WHERE raw_html IS NULL
-          AND source_metadata ? 'fetch_error'
+          AND extracted_text IS NULL
         """
     )
 

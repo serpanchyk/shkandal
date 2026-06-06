@@ -9,7 +9,8 @@ Long-lived services are:
 - backend;
 - frontend;
 - PostgreSQL;
-- Qdrant.
+- Qdrant;
+- LiteLLM proxy for article-card and resolution stages in the ML pipeline.
 
 Scheduled one-shot jobs are:
 
@@ -20,6 +21,6 @@ One-shot batch processes release all process memory after each run, avoid hidden
 failures inside an in-process scheduler, and expose scheduling, exit status,
 timeouts, logs, and manual restarts through systemd and journald.
 
-The ML worker may later become a queue-based daemon if low-latency processing,
-priority scheduling, more granular retries, or parallel workers become
-necessary. That change should be driven by a documented product need.
+Both workers also expose an optional direct `--loop` mode for later/manual use.
+It is not the normal server runtime. The ingestion heartbeat and healthcheck
+only apply when ingestion is explicitly started with `--loop`.

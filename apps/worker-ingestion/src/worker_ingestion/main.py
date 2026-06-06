@@ -121,7 +121,12 @@ def main() -> None:
     parser.add_argument(
         "--once",
         action="store_true",
-        help="Run one ingestion pass and exit. Required for targeted runs and backfills.",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--loop",
+        action="store_true",
+        help="Run ingestion continuously instead of exiting after one pass.",
     )
     parser.add_argument("--source", dest="source_slug")
     parser.add_argument("--limit", type=int)
@@ -155,17 +160,7 @@ def main() -> None:
         )
         return
 
-    targeted_arguments = (
-        args.source_slug,
-        args.limit,
-        args.since,
-        args.until,
-        args.max_backfill_urls_per_source,
-    )
-    if any(value is not None for value in targeted_arguments) and not args.once:
-        parser.error("targeted ingestion and backfill arguments require --once")
-
-    if not args.once:
+    if args.loop:
         settings = IngestionConfig()
         logger = setup_logger(settings.service_name)
         asyncio.run(

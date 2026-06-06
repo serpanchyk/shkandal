@@ -213,13 +213,13 @@ docker compose --profile jobs run --rm worker-ingestion
 Run one source with a small debug limit:
 
 ```bash
-docker compose --profile jobs run --rm worker-ingestion python -m worker_ingestion.main --once --source pravda --limit 20
+docker compose --profile jobs run --rm worker-ingestion python -m worker_ingestion.main --source pravda --limit 20
 ```
 
 Run a bounded date range:
 
 ```bash
-docker compose --profile jobs run --rm worker-ingestion python -m worker_ingestion.main --once --since 2025-01-01 --until 2025-01-31 --limit 100
+docker compose --profile jobs run --rm worker-ingestion python -m worker_ingestion.main --since 2025-01-01 --until 2025-01-31 --limit 100
 ```
 
 Date-bounded runs use a higher backfill discovery cap by default so source
@@ -227,7 +227,7 @@ archive traversal is not truncated at the daily discovery limit.
 For dense sources, raise the cap explicitly:
 
 ```bash
-docker compose --profile jobs run --rm worker-ingestion python -m worker_ingestion.main --once --source pravda --since 2025-01-01 --until 2026-06-03 --max-backfill-urls-per-source 80000
+docker compose --profile jobs run --rm worker-ingestion python -m worker_ingestion.main --source pravda --since 2025-01-01 --until 2026-06-03 --max-backfill-urls-per-source 80000
 ```
 
 `pravda`, `nabu`, `dbr`, `ssu`, `kmu`, and `president` requests use browser TLS
@@ -277,11 +277,21 @@ The ML worker is also a one-shot job. Each run enqueues missing
 docker compose --profile jobs run --rm worker-ml
 ```
 
+For optional direct loop mode, bypass the scheduled one-shot runtime:
+
+```bash
+python -m worker_ingestion.main --loop
+python -m worker_ml.main --loop
+```
+
+The ingestion heartbeat and healthcheck apply only to optional loop mode, not
+to normal systemd-scheduled one-shot runs.
+
 ## Server Scheduling
 
-On a Linux server, keep backend, frontend, PostgreSQL, Qdrant, and supporting
-infrastructure running as long-lived Compose services. Systemd starts the
-one-shot workers with `docker compose run --rm`.
+On a Linux server, keep backend, frontend, PostgreSQL, Qdrant, the LiteLLM
+proxy, and supporting infrastructure running as long-lived Compose services.
+Systemd starts the one-shot workers with `docker compose run --rm`.
 
 Install and start the timers from a checkout deployed at `/opt/shkandal`:
 
@@ -290,7 +300,9 @@ Install and start the timers from a checkout deployed at `/opt/shkandal`:
 systemctl list-timers "shkandal-*"
 ```
 
-Ingestion runs hourly. ML runs every 10 minutes. Manually trigger either job:
+Ingestion runs hourly. ML runs every 10 minutes. `llm-proxy` remains in Compose
+because the ML pipeline uses it for article-card and resolution stages.
+Manually trigger either job:
 
 ```bash
 sudo systemctl start shkandal-ingestion.service
