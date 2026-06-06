@@ -1,3 +1,4 @@
+import asyncio
 import sys
 from datetime import datetime
 
@@ -31,3 +32,18 @@ def test_targeted_run_requires_once(monkeypatch: pytest.MonkeyPatch) -> None:
         entrypoint.main()
 
     assert exc_info.value.code == 2
+
+
+def test_once_flag_dispatches_one_pass(monkeypatch: pytest.MonkeyPatch) -> None:
+    called: list[str] = []
+
+    def run(coroutine: object) -> None:
+        called.append(coroutine.cr_code.co_name)  # type: ignore[attr-defined]
+        coroutine.close()  # type: ignore[attr-defined]
+
+    monkeypatch.setattr(sys, "argv", ["worker-ingestion", "--once"])
+    monkeypatch.setattr(asyncio, "run", run)
+
+    entrypoint.main()
+
+    assert called == ["run_once"]

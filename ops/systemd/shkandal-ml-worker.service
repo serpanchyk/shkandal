@@ -1,0 +1,11 @@
+[Unit]
+Description=Run one Shkandal ML worker pass
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/shkandal
+ExecStart=/usr/bin/docker compose --profile jobs run --rm worker-ml
+TimeoutStartSec=30min

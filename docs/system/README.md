@@ -36,4 +36,5 @@ Foundation notes:
 - [Database](foundation/database.md)
 - [Logging](foundation/logging.md)
 - [Runtime](foundation/runtime.md)
+- [Scheduling](foundation/scheduling.md)
 - [Testing and CI](foundation/testing-ci.md)

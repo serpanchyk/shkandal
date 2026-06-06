@@ -56,13 +56,13 @@ No shared DVC remote is configured yet. Configure one before relying on
 
 ## Docker Compose
 
-Build and start the full project in the foreground:
+Build and start the long-lived services in the foreground:
 
 ```bash
 docker compose up --build
 ```
 
-Start the full project in the background:
+Start the long-lived services in the background:
 
 ```bash
 docker compose up -d --build
@@ -85,8 +85,6 @@ Restart one service after a config or code change:
 ```bash
 docker compose restart backend
 docker compose restart frontend
-docker compose restart worker-ingestion
-docker compose restart worker-ml
 ```
 
 Default ports:
@@ -115,8 +113,6 @@ Follow one service:
 ```bash
 docker compose logs --follow backend
 docker compose logs --follow frontend
-docker compose logs --follow worker-ingestion
-docker compose logs --follow worker-ml
 docker compose logs --follow postgres
 docker compose logs --follow qdrant
 ```
@@ -125,7 +121,6 @@ Show logs since a recent time window:
 
 ```bash
 docker compose logs --since 10m backend
-docker compose logs --since 1h worker-ingestion
 ```
 
 Useful debugging pattern:
@@ -133,7 +128,6 @@ Useful debugging pattern:
 ```bash
 docker compose ps
 docker compose logs --tail 200 backend
-docker compose logs --tail 200 worker-ingestion
 docker compose logs --tail 200 postgres
 ```
 
@@ -210,28 +204,22 @@ uv run alembic -c packages/database/alembic.ini revision --autogenerate -m "desc
 
 ## Ingestion Worker
 
-Start the continuous hourly ingestion worker:
+The ingestion worker is a one-shot job. Run one full ingestion pass locally:
 
 ```bash
-docker compose up -d worker-ingestion
-```
-
-Run one explicit pass:
-
-```bash
-docker compose run --rm worker-ingestion python -m worker_ingestion.main --once
+docker compose --profile jobs run --rm worker-ingestion
 ```
 
 Run one source with a small debug limit:
 
 ```bash
-docker compose run --rm worker-ingestion python -m worker_ingestion.main --once --source pravda --limit 20
+docker compose --profile jobs run --rm worker-ingestion python -m worker_ingestion.main --once --source pravda --limit 20
 ```
 
 Run a bounded date range:
 
 ```bash
-docker compose run --rm worker-ingestion python -m worker_ingestion.main --once --since 2025-01-01 --until 2025-01-31 --limit 100
+docker compose --profile jobs run --rm worker-ingestion python -m worker_ingestion.main --once --since 2025-01-01 --until 2025-01-31 --limit 100
 ```
 
 Date-bounded runs use a higher backfill discovery cap by default so source
@@ -239,7 +227,7 @@ archive traversal is not truncated at the daily discovery limit.
 For dense sources, raise the cap explicitly:
 
 ```bash
-docker compose run --rm worker-ingestion python -m worker_ingestion.main --once --source pravda --since 2025-01-01 --until 2026-06-03 --max-backfill-urls-per-source 80000
+docker compose --profile jobs run --rm worker-ingestion python -m worker_ingestion.main --once --source pravda --since 2025-01-01 --until 2026-06-03 --max-backfill-urls-per-source 80000
 ```
 
 `pravda`, `nabu`, `dbr`, `ssu`, `kmu`, and `president` requests use browser TLS
@@ -251,8 +239,8 @@ Repair missing `published_at` values from stored `raw_html` without refetching.
 This command is a dry run unless `--apply` is included:
 
 ```bash
-docker compose run --rm worker-ingestion python -m worker_ingestion.main --repair-missing-published-at --limit 1000
-docker compose run --rm worker-ingestion python -m worker_ingestion.main --repair-missing-published-at --limit 1000 --apply
+docker compose --profile jobs run --rm worker-ingestion python -m worker_ingestion.main --repair-missing-published-at --limit 1000
+docker compose --profile jobs run --rm worker-ingestion python -m worker_ingestion.main --repair-missing-published-at --limit 1000 --apply
 ```
 
 Validate configured discovery endpoints and sample extraction without mutating
@@ -280,31 +268,40 @@ uv run python apps/worker-ingestion/scripts/reset_failed_fetches.py --source pra
 uv run python apps/worker-ingestion/scripts/reset_failed_fetches.py --source pravda --apply
 ```
 
-The Compose healthcheck becomes unhealthy after three hours without a completed
-ingestion pass. Compose reports unhealthy containers but does not restart them
-solely because of health status.
-
-If ingestion fails, check logs in this order:
-
-```bash
-docker compose logs --tail 200 worker-ingestion
-docker compose logs --tail 200 postgres
-```
-
 ## ML Worker
 
-The ML worker runs continuously through Compose. It loads the local relevance
-classifier, enqueues `classify_article` jobs for articles missing
-`article_relevance`, and processes classification jobs in batches:
+The ML worker is also a one-shot job. Each run enqueues missing
+`classify_article` jobs and processes one bounded batch:
 
 ```bash
-docker compose up -d worker-ml
+docker compose --profile jobs run --rm worker-ml
 ```
 
-Check recent ML worker logs:
+## Server Scheduling
+
+On a Linux server, keep backend, frontend, PostgreSQL, Qdrant, and supporting
+infrastructure running as long-lived Compose services. Systemd starts the
+one-shot workers with `docker compose run --rm`.
+
+Install and start the timers from a checkout deployed at `/opt/shkandal`:
 
 ```bash
-docker compose logs --tail 200 worker-ml
+./ops/install-systemd.sh
+systemctl list-timers "shkandal-*"
+```
+
+Ingestion runs hourly. ML runs every 10 minutes. Manually trigger either job:
+
+```bash
+sudo systemctl start shkandal-ingestion.service
+sudo systemctl start shkandal-ml-worker.service
+```
+
+Inspect recent job logs:
+
+```bash
+journalctl -u shkandal-ingestion.service -n 100 --no-pager
+journalctl -u shkandal-ml-worker.service -n 100 --no-pager
 ```
 
 ## Frontend

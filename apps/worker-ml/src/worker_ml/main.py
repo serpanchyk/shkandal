@@ -1,6 +1,8 @@
 """ML worker process entrypoint."""
 
+import argparse
 import asyncio
+import logging
 
 from shkandal_common.logging import setup_logger
 from shkandal_database.config import DatabaseConfig
@@ -12,18 +14,35 @@ from worker_ml.config import MlConfig
 from worker_ml.jobs import CLASSIFY_ARTICLE_JOB, MlJobPlanner
 
 
-async def run_once(config: MlConfig | None = None) -> dict[str, str]:
+async def run_once(config: MlConfig | None = None) -> dict[str, int]:
+    """Enqueue and process one bounded batch of ML jobs."""
+
     settings = config or MlConfig()
     logger = setup_logger(settings.service_name)
-    logger.info(
-        "worker_ready",
-        extra={
-            "service": settings.service_name,
-            "poll_interval_seconds": settings.poll_interval_seconds,
-            "qdrant_url": settings.qdrant_url,
-        },
+    model = RelevanceModel.load(
+        settings.relevance_model_dir,
+        threshold=settings.relevance_threshold,
     )
-    return {"service": settings.service_name, "status": "ok"}
+    engine = create_async_engine_from_config(
+        DatabaseConfig(database_url=settings.postgres_database_url)
+    )
+    try:
+        session_factory = create_async_sessionmaker(engine)
+        job_store = ArticleJobStore(
+            session_factory,
+            stale_job_timeout=settings.stale_job_timeout,
+        )
+        planner = MlJobPlanner(session_factory, job_store)
+        handler = ClassificationJobHandler(session_factory, job_store, model)
+        return await _run_cycle(
+            settings=settings,
+            logger=logger,
+            planner=planner,
+            job_store=job_store,
+            handler=handler,
+        )
+    finally:
+        await engine.dispose()
 
 
 async def enqueue_missing_classification_jobs(config: MlConfig | None = None) -> dict[str, int]:
@@ -156,66 +175,103 @@ async def run_worker(config: MlConfig | None = None) -> None:
         )
 
         while True:
-            stats = await planner.enqueue_missing_classification_jobs(
-                limit=settings.enqueue_batch_size,
-                max_attempts=settings.job_max_attempts,
+            stats = await _run_cycle(
+                settings=settings,
+                logger=logger,
+                planner=planner,
+                job_store=job_store,
+                handler=handler,
             )
-            if stats.ensured_jobs:
-                logger.info(
-                    "worker_ml_jobs_enqueued",
-                    extra={
-                        "scanned_articles": stats.scanned_articles,
-                        "ensured_jobs": stats.ensured_jobs,
-                        "job_type": "classify_article",
-                    },
-                )
-
-            processed_jobs = 0
-            for _ in range(settings.claim_batch_size):
-                claimed_job = await job_store.claim_next_job(
-                    worker_id=settings.service_name,
-                    job_types=(CLASSIFY_ARTICLE_JOB,),
-                )
-                if claimed_job is None:
-                    break
-
-                try:
-                    await handler.handle(claimed_job)
-                except Exception as exc:
-                    await job_store.fail_job(
-                        job_id=claimed_job.id,
-                        error_message=str(exc),
-                        attempt_count=claimed_job.attempt_count,
-                        max_attempts=claimed_job.max_attempts,
-                    )
-                    logger.exception(
-                        "worker_ml_job_failed",
-                        extra={
-                            "job_id": str(claimed_job.id),
-                            "job_type": claimed_job.job_type,
-                            "article_id": str(claimed_job.article_id),
-                        },
-                    )
-                    continue
-
-                await job_store.complete_job(job_id=claimed_job.id)
-                processed_jobs += 1
-                logger.info(
-                    "worker_ml_job_succeeded",
-                    extra={
-                        "job_id": str(claimed_job.id),
-                        "job_type": claimed_job.job_type,
-                        "article_id": str(claimed_job.article_id),
-                    },
-                )
-
-            if processed_jobs == 0 and stats.ensured_jobs == 0:
+            if stats["processed_jobs"] == 0 and stats["ensured_jobs"] == 0:
                 await asyncio.sleep(settings.poll_interval_seconds)
     finally:
         await engine.dispose()
 
 
+async def _run_cycle(
+    *,
+    settings: MlConfig,
+    logger: logging.Logger,
+    planner: MlJobPlanner,
+    job_store: ArticleJobStore,
+    handler: ClassificationJobHandler,
+) -> dict[str, int]:
+    enqueue_stats = await planner.enqueue_missing_classification_jobs(
+        limit=settings.enqueue_batch_size,
+        max_attempts=settings.job_max_attempts,
+    )
+    if enqueue_stats.ensured_jobs:
+        logger.info(
+            "worker_ml_jobs_enqueued",
+            extra={
+                "scanned_articles": enqueue_stats.scanned_articles,
+                "ensured_jobs": enqueue_stats.ensured_jobs,
+                "job_type": "classify_article",
+            },
+        )
+
+    processed_jobs = 0
+    failed_jobs = 0
+    for _ in range(settings.claim_batch_size):
+        claimed_job = await job_store.claim_next_job(
+            worker_id=settings.service_name,
+            job_types=(CLASSIFY_ARTICLE_JOB,),
+        )
+        if claimed_job is None:
+            break
+
+        try:
+            await handler.handle(claimed_job)
+        except Exception as exc:
+            await job_store.fail_job(
+                job_id=claimed_job.id,
+                error_message=str(exc),
+                attempt_count=claimed_job.attempt_count,
+                max_attempts=claimed_job.max_attempts,
+            )
+            failed_jobs += 1
+            logger.exception(
+                "worker_ml_job_failed",
+                extra={
+                    "job_id": str(claimed_job.id),
+                    "job_type": claimed_job.job_type,
+                    "article_id": str(claimed_job.article_id),
+                },
+            )
+            continue
+
+        await job_store.complete_job(job_id=claimed_job.id)
+        processed_jobs += 1
+        logger.info(
+            "worker_ml_job_succeeded",
+            extra={
+                "job_id": str(claimed_job.id),
+                "job_type": claimed_job.job_type,
+                "article_id": str(claimed_job.article_id),
+            },
+        )
+
+    stats = {
+        "scanned_articles": enqueue_stats.scanned_articles,
+        "ensured_jobs": enqueue_stats.ensured_jobs,
+        "processed_jobs": processed_jobs,
+        "failed_jobs": failed_jobs,
+    }
+    logger.info("worker_ml_cycle_finished", extra=stats)
+    return stats
+
+
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Run Shkandal ML processing.")
+    parser.add_argument(
+        "--once",
+        action="store_true",
+        help="Enqueue and process one bounded batch, then exit.",
+    )
+    args = parser.parse_args()
+    if args.once:
+        asyncio.run(run_once())
+        return
     asyncio.run(run_worker())
 
 

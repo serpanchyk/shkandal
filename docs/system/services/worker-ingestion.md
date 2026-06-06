@@ -7,9 +7,9 @@ Current implemented scope is curated media and institutional source ingestion.
 Institutional sources use conservative URL patterns to avoid registry,
 document, search, and archive crawling.
 
-The Compose worker runs continuously. It starts one full curated-source pass
-every hour and records a heartbeat after each completed pass. Unexpected source
-failures are logged without preventing later sources from running.
+The Compose worker is a one-shot job scheduled hourly by systemd on servers.
+Unexpected source failures are logged without preventing later sources from
+running.
 
 Implemented responsibilities:
 
@@ -99,28 +99,27 @@ Europe/Kyiv time and stored as UTC datetimes.
 
 ## Running
 
-Start the continuous worker through Docker Compose:
+Run one full pass through Docker Compose:
 
 ```bash
-docker compose up -d worker-ingestion
+docker compose --profile jobs run --rm worker-ingestion
 ```
 
-The worker starts one full pass every hour. Its container becomes unhealthy
-after three hours without a completed pass. Docker Compose reports this health
-state but does not restart a process solely because it is unhealthy.
+On servers, the `shkandal-ingestion.timer` systemd unit starts one pass every
+hour.
 
 Run one explicit pass or one source for debugging:
 
 ```bash
-docker compose run --rm worker-ingestion python -m worker_ingestion.main --once
-docker compose run --rm worker-ingestion python -m worker_ingestion.main --once --source pravda --limit 20
+docker compose --profile jobs run --rm worker-ingestion python -m worker_ingestion.main --once
+docker compose --profile jobs run --rm worker-ingestion python -m worker_ingestion.main --once --source pravda --limit 20
 ```
 
 Optional date window arguments use ISO datetime/date strings accepted by
 `datetime.fromisoformat`:
 
 ```bash
-docker compose run --rm worker-ingestion python -m worker_ingestion.main --once --source hromadske --since 2026-06-01 --until 2026-06-02
+docker compose --profile jobs run --rm worker-ingestion python -m worker_ingestion.main --once --source hromadske --since 2026-06-01 --until 2026-06-02
 ```
 
 Date-bounded runs use `max_backfill_urls_per_source` as the effective discovery
@@ -141,8 +140,8 @@ Repair missing publication dates from already-stored raw HTML without refetching
 articles. Repair mode is a dry run unless `--apply` is passed:
 
 ```bash
-docker compose run --rm worker-ingestion python -m worker_ingestion.main --repair-missing-published-at --source espreso --limit 1000
-docker compose run --rm worker-ingestion python -m worker_ingestion.main --repair-missing-published-at --source espreso --limit 1000 --apply
+docker compose --profile jobs run --rm worker-ingestion python -m worker_ingestion.main --repair-missing-published-at --source espreso --limit 1000
+docker compose --profile jobs run --rm worker-ingestion python -m worker_ingestion.main --repair-missing-published-at --source espreso --limit 1000 --apply
 ```
 
 Source type is stored as context and UI metadata, not as an authority score.

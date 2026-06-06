@@ -20,6 +20,7 @@ services:
     restart: unless-stopped
 
   worker-ingestion:
+    profiles: ["jobs"]
     build:
       context: .
       dockerfile: apps/worker-ingestion/Dockerfile
@@ -28,15 +29,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "python", "-m", "worker_ingestion.healthcheck"]
-      interval: 5m
-      timeout: 10s
-      retries: 1
-      start_period: 3h
-    restart: unless-stopped
+    command: ["python", "-m", "worker_ingestion.main", "--once"]
+    restart: "no"
 
   worker-ml:
+    profiles: ["jobs"]
     build:
       context: .
       dockerfile: apps/worker-ml/Dockerfile
@@ -49,7 +46,8 @@ services:
         condition: service_started
       llm-proxy:
         condition: service_started
-    restart: unless-stopped
+    command: ["python", "-m", "worker_ml.main", "--once"]
+    restart: "no"
 
   frontend:
     build:

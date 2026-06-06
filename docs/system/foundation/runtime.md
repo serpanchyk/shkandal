@@ -1,6 +1,7 @@
 # Runtime
 
-Docker Compose is the default runtime boundary.
+Docker Compose is the default runtime boundary. On servers, systemd timers
+schedule the one-shot ingestion and ML worker containers.
 
 Runtime dependencies:
 
@@ -61,10 +62,10 @@ Retries use exponential-style backoff with jitter, starting from 1 minute, then
 job is marked `failed`.
 
 Ingestion is not modeled as a queued job for the MVP. After the historical
-backfill is complete, the ingestion worker runs continuously, starts a
-full-source pass every hour, retries failed fetches with bounded durable state,
-and writes successfully fetched articles to PostgreSQL. Downstream workers then
-enqueue or claim processing jobs for stored articles.
+backfill is complete, systemd starts a one-shot full-source pass every hour.
+The pass retries failed fetches with bounded durable state and writes
+successfully fetched articles to PostgreSQL. A separate systemd timer starts a
+bounded ML pass every 10 minutes to enqueue and claim processing jobs.
 
 The ML worker owns ML job creation. Ingestion only persists article evidence; it
 does not need to know classifier, prompt, embedding, or resolution job types.

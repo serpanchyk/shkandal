@@ -38,12 +38,11 @@ logical model aliases (`shkandal-article-card`, `shkandal-case-resolution`,
 routing, provider credentials, throttling, and fallback policy belong to the
 proxy configuration, not to `worker-ml`.
 
-The current implementation is a runnable async process with configuration,
-structured startup logging, a polling loop that creates idempotent
-`classify_article` jobs for articles missing `article_relevance`, and a
-classifier job handler that writes `article_relevance`. It also includes an
-embedding service and vector-index integration for the future card resolution
-jobs.
+The current implementation supports a systemd-scheduled bounded pass that
+creates idempotent `classify_article` jobs for articles missing
+`article_relevance` and processes one configured batch. An explicit continuous
+polling mode remains available for direct use. It also includes an embedding
+service and vector-index integration for future card resolution jobs.
 
 Local model artifacts live under `artifacts/models/` in the repository working
 tree. Binary artifacts are ignored by Git and tracked by DVC; small manifests
