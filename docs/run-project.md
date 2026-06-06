@@ -5,17 +5,24 @@ healthy, watching logs, and handling common development operations.
 
 ## Local Environment
 
-Docker Compose runs with tracked safe defaults. Copy the example env files when
-you need local overrides:
+Create the three ignored runtime env files from their tracked examples before
+running Docker Compose:
 
 ```bash
 cp .env.example .env
 cp infra/postgres/.env.example infra/postgres/.env
+cp infra/litellm/.env.example infra/litellm/.env
 ```
 
-The Compose file reads safe defaults from `.env.example` and
-`infra/postgres/.env.example`. Local `.env` files are optional and should stay
-out of git.
+The root `.env` contains shared application and Compose configuration, including
+the application database URL, LiteLLM proxy access, and optional LangSmith
+tracing settings. `infra/postgres/.env` contains PostgreSQL bootstrap
+credentials. `infra/litellm/.env` contains external provider API keys.
+
+Keep `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` in the PostgreSQL
+env consistent with the credentials embedded in root `POSTGRES_DATABASE_URL`.
+Generate a unique root `LLM_API_KEY`; Compose also supplies it to LiteLLM as
+`LITELLM_MASTER_KEY`.
 
 ## Python Checks
 
@@ -280,12 +287,12 @@ docker compose --profile jobs run --rm worker-ml
 
 ### Smoke-test 10 article cards
 
-Put a real OpenAI key in the ignored root `.env` file. The tracked LiteLLM
+Put a real OpenAI key in the ignored LiteLLM env file. The tracked LiteLLM
 configuration currently routes all aliases through OpenAI:
 
 ```bash
-cp .env.example .env
-# Edit .env and set OPENAI_API_KEY=...
+cp infra/litellm/.env.example infra/litellm/.env
+# Edit infra/litellm/.env and set OPENAI_API_KEY=...
 ```
 
 Start the required infrastructure and run migrations:
@@ -362,9 +369,10 @@ docker compose exec postgres psql -U shkandal -d shkandal -c \
   "SELECT id, run_type, model_name, status, metadata, raw_output, repaired_output, error_message, created_at FROM llm_runs ORDER BY created_at DESC LIMIT 10;"
 ```
 
-To route through Anthropic instead, add `ANTHROPIC_API_KEY` to `.env` and change
-the local LiteLLM model entries in `infra/litellm/config.yaml.example` to
-Anthropic model identifiers before starting `llm-proxy`.
+To route through Anthropic instead, set `ANTHROPIC_API_KEY` in
+`infra/litellm/.env` and change the local LiteLLM model entries in
+`infra/litellm/config.yaml.example` to Anthropic model identifiers before
+starting `llm-proxy`.
 
 For optional direct loop mode, bypass the scheduled one-shot runtime:
 

@@ -2,12 +2,16 @@
 
 PostgreSQL is Shkandal's source of truth. Qdrant is rebuildable from this data.
 
-For local Compose runs, copy `infra/postgres/.env.example` to `infra/postgres/.env`.
+For local Compose runs, copy `infra/postgres/.env.example` to
+`infra/postgres/.env`.
+
+This env file owns only PostgreSQL bootstrap credentials. Keep them consistent
+with the credentials embedded in root `POSTGRES_DATABASE_URL`.
 
 The root `docker-compose.yaml` starts PostgreSQL with:
 
 - image `postgres:16-alpine`;
-- env defaults from `infra/postgres/.env.example`;
+- bootstrap credentials from ignored `infra/postgres/.env`;
 - named volume `postgres-data:/var/lib/postgresql/data`;
 - init scripts from `infra/postgres/init`.
 

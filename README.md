@@ -18,6 +18,11 @@ Shkandal should show readers a living case page that answers:
 
 The first public version is automatic. The system should ingest articles, classify relevance, resolve cases, entities, and events, then update public pages without a mandatory human review queue. Later review and correction tools can be added, but they are not part of the MVP control flow.
 
+Local Docker Compose configuration uses three ignored env files copied from
+tracked examples: root `.env` for shared application settings,
+`infra/postgres/.env` for database bootstrap credentials, and
+`infra/litellm/.env` for provider API keys. See `docs/run-project.md` for setup.
+
 ## Core Concepts
 
 ### Case

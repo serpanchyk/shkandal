@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: apps/backend/Dockerfile
     env_file:
-      - ./.env.example
+      - ./.env
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:
@@ -25,7 +25,7 @@ services:
       context: .
       dockerfile: apps/worker-ingestion/Dockerfile
     env_file:
-      - ./.env.example
+      - ./.env
     depends_on:
       postgres:
         condition: service_healthy
@@ -38,7 +38,7 @@ services:
       context: .
       dockerfile: apps/worker-ml/Dockerfile
     env_file:
-      - ./.env.example
+      - ./.env
     depends_on:
       postgres:
         condition: service_healthy
@@ -65,7 +65,7 @@ services:
   postgres:
     image: postgres:16-alpine
     env_file:
-      - ./infra/postgres/.env.example
+      - ./infra/postgres/.env
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
@@ -90,10 +90,9 @@ services:
     image: docker.litellm.ai/berriai/litellm:main-latest
     command: ["--config", "/app/config.yaml"]
     env_file:
-      - ./.env.example
+      - ./infra/litellm/.env
     environment:
-      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
-      OPENAI_API_KEY: "${OPENAI_API_KEY:-replace-me}"
+      LITELLM_MASTER_KEY: "${LLM_API_KEY:?Set LLM_API_KEY in .env}"
     ports:
       - "${LITELLM_PROXY_PORT:-4000}:4000"
     volumes:
