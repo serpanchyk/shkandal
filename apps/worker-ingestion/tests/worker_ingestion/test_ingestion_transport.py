@@ -29,10 +29,15 @@ def test_fetch_result_ok_reflects_status_and_error() -> None:
     assert not failure.ok
 
 
-def test_pravda_sitemap_uses_browser_impersonation() -> None:
+def test_blocked_sources_use_browser_impersonation() -> None:
     assert _requires_browser_impersonation("https://www.pravda.com.ua/sitemap/sitemap.xml")
     assert _requires_browser_impersonation("https://pravda.com.ua/sitemap/sitemap-2025-06.xml.gz")
     assert _requires_browser_impersonation("https://www.pravda.com.ua/news/2026/06/03/1/")
+    assert _requires_browser_impersonation("https://nabu.gov.ua/news/")
+    assert _requires_browser_impersonation("https://dbr.gov.ua/news")
+    assert _requires_browser_impersonation("https://ssu.gov.ua/novyny")
+    assert _requires_browser_impersonation("https://www.kmu.gov.ua/timeline?&type=posts")
+    assert _requires_browser_impersonation("https://www.president.gov.ua/news")
     assert not _requires_browser_impersonation("https://example.ua/sitemap/sitemap.xml")
 
 

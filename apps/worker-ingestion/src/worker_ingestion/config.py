@@ -6,7 +6,10 @@ from shkandal_common.config import BaseServiceConfig
 
 class IngestionConfig(BaseServiceConfig):
     service_name: str = "worker-ingestion"
-    poll_interval_seconds: int = 30
+    poll_interval_seconds: int = 3600
+    heartbeat_path: str = "/tmp/worker-ingestion-heartbeat"
+    heartbeat_max_age_seconds: int = 10_800
+    fetch_max_attempts: int = 5
     postgres_database_url: str = (
         "postgresql://shkandal:shkandal_dev_password@postgres:5432/shkandal"
     )

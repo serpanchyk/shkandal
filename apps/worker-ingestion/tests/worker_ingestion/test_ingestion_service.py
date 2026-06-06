@@ -11,9 +11,9 @@ from conftest import (
     source_config,
 )
 from worker_ingestion.config import IngestionConfig
+from worker_ingestion.discovery.sources import SourceConfig
+from worker_ingestion.persistence.articles import ArticleInput
 from worker_ingestion.service import IngestionWorker
-from worker_ingestion.sources import SourceConfig
-from worker_ingestion.storage import ArticleInput
 
 
 @pytest.mark.asyncio
@@ -183,7 +183,96 @@ async def test_failed_article_fetch_is_persisted_without_aborting_source() -> No
     assert len(repository.articles) == 2
     failed = repository.articles["https://example.ua/news/fails"]
     assert failed.raw_html is None
+    assert failed.fetch_status == "failed"
+    assert failed.fetch_attempt_count == 1
+    assert failed.next_fetch_at is not None
+    assert failed.last_fetch_error == "server_error"
     assert failed.source_metadata["fetch_error"] == "server_error"
+
+
+@pytest.mark.asyncio
+async def test_due_failed_article_is_retried_and_becomes_successful() -> None:
+    article_url = "https://example.ua/news/retry"
+    sitemap = f"""<urlset><url><loc>{article_url}</loc></url></urlset>"""
+    fetcher = FakeFetcher(
+        {
+            "https://example.ua/sitemap.xml": fetch_result(
+                "https://example.ua/sitemap.xml",
+                sitemap,
+                "application/xml",
+            ),
+            article_url: failed_fetch_result(article_url),
+        }
+    )
+    repository = FakeArticleRepository()
+    worker = IngestionWorker(
+        config=IngestionConfig(),
+        fetcher=fetcher,
+        repository=repository,
+        sources=(source_config(),),
+    )
+
+    first_stats = await worker.run_once(source_slug="example")
+    fetcher.responses["https://example.ua/sitemap.xml"] = fetch_result(
+        "https://example.ua/sitemap.xml",
+        "<urlset></urlset>",
+        "application/xml",
+    )
+    fetcher.responses[article_url] = fetch_result(
+        article_url,
+        "<html><body><article><p>Recovered.</p></article></body></html>",
+    )
+    second_stats = await worker.run_once(source_slug="example")
+
+    assert first_stats.failed_articles == 1
+    assert second_stats.stored_articles == 1
+    assert repository.articles[article_url].fetch_status == "succeeded"
+    assert repository.articles[article_url].fetch_attempt_count == 2
+
+
+@pytest.mark.asyncio
+async def test_source_failure_does_not_abort_later_sources() -> None:
+    good_section_url = "https://good.example/news"
+    good_article_url = "https://good.example/news/item"
+    fetcher = FakeFetcher(
+        {
+            good_section_url: fetch_result(
+                good_section_url,
+                f'<a href="{good_article_url}">item</a>',
+            ),
+            good_article_url: fetch_result(
+                good_article_url,
+                "<html><body><article><p>Stored.</p></article></body></html>",
+            ),
+        }
+    )
+    repository = FakeArticleRepository()
+    worker = IngestionWorker(
+        config=IngestionConfig(),
+        fetcher=fetcher,
+        repository=repository,
+        sources=(
+            SourceConfig(
+                slug="bad",
+                name="Bad",
+                base_url="https://bad.example",
+                section_urls=("https://bad.example/news",),
+            ),
+            SourceConfig(
+                slug="good",
+                name="Good",
+                base_url="https://good.example",
+                section_urls=(good_section_url,),
+                include_url_patterns=(r"https://good\.example/news/.+",),
+            ),
+        ),
+    )
+
+    stats = await worker.run_once()
+
+    assert stats.processed_sources == 2
+    assert stats.failed_sources == 1
+    assert stats.stored_articles == 1
 
 
 @pytest.mark.asyncio

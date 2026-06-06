@@ -1,9 +1,9 @@
 from datetime import UTC, datetime
 
-import worker_ingestion.extractor as extractor
+import worker_ingestion.articles.extractor as extractor
 from conftest import source_config
 from pytest import MonkeyPatch
-from worker_ingestion.extractor import extract_article
+from worker_ingestion.articles.extractor import extract_article
 
 
 def test_extract_article_uses_generic_metadata_and_body_selectors() -> None:

@@ -9,8 +9,11 @@ curated source ingestion worker.
 
 The implemented code includes the MVP PostgreSQL schema and migration layer plus
 initial media and institutional article discovery/fetch/extraction/storage,
-date-bounded high-cap backfills, and stored-HTML publication-date repair. The
-classifier, LLM prompts, and public case/entity pages are future work.
+date-bounded high-cap backfills, stored-HTML publication-date repair, and the
+first article relevance classifier job handler. LLM prompts and public
+case/entity pages are future work. The LLM task architecture now exists in
+`worker-ml`, with LangChain prompt/chaining support and LiteLLM proxy routing,
+but downstream article-card and resolution jobs are not fully wired yet.
 
 ## Product Direction
 
@@ -25,23 +28,32 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 ## Service Map
 
 - `backend`: FastAPI service exposing `GET /healthz` today; future public API and business boundary.
-- `worker-ingestion`: curated media and institutional source discovery from sitemaps, RSS/Atom feeds, and section pages; date-bounded backfill traversal; fetching; generic-first extraction; publication-date repair from stored raw HTML; URL identity normalization; image URL extraction; and PostgreSQL upsert.
-- `worker-ml`: async worker entrypoint for future binary relevance classification, article cards, embeddings, Qdrant retrieval, LLM resolution, and deduplication.
+- `worker-ingestion`: hourly systemd-scheduled one-shot curated-source discovery from sitemaps, RSS/Atom feeds, and section pages; bounded fetch retries; date-bounded backfill traversal; fetching; generic-first extraction; publication-date repair from stored raw HTML; URL identity normalization; image URL extraction; and PostgreSQL upsert.
+- `worker-ml`: async worker entrypoint with article relevance classifier job enqueueing/handling, E5-small embedding service, Qdrant vector-index integration, and the LLM task architecture for future article cards, resolution, and deduplication.
 - `frontend`: Next.js TypeScript app with an API health link today; future public feed, case pages, and entity pages.
 - `postgres`: source-of-truth database and Postgres-backed job store schema.
 - `packages/database`: shared async SQLAlchemy models, session helpers, and Alembic migrations.
-- `qdrant`: rebuildable vector indexes for cases, entities, and events.
+- `qdrant`: rebuildable 384-dimensional vector indexes for cases, entities, and events.
 
 ## Runtime Decisions
 
 - Docker Compose is the default runtime entrypoint.
+- Systemd timers schedule one-shot ingestion and ML worker containers on servers.
 - PostgreSQL is the source of truth and persists locally through the Compose
   `postgres-data` named volume.
 - Qdrant is rebuildable from PostgreSQL-backed data.
 - Redis is excluded from MVP.
-- One generic PostgreSQL `jobs` table with row locking is the MVP background-work mechanism.
-- LLM infrastructure is represented by environment variables only; no secrets are committed.
-- DVC is planned when classifier training code and artifacts land, not before.
+- One generic PostgreSQL `jobs` table with row locking is the MVP background-work mechanism. A job is one durable, retryable, typed pipeline work unit, not a worker process or domain object.
+- MVP jobs are article-scoped: each job works on one article, so the job store should carry an explicit `article_id` and enforce one all-time job row per `(job_type, article_id)`. Reruns reset or requeue that row rather than creating duplicates.
+- Ingestion is not queued as a job in the MVP. After historical backfill, systemd starts an hourly one-shot full-source pass that persists new articles to PostgreSQL and retries failed fetches up to five attempts.
+- `worker-ml` owns ML job creation. It should poll PostgreSQL for articles missing ML-derived state, starting with articles missing `article_relevance`, and enqueue idempotent downstream jobs such as `classify_article`.
+- Article jobs are gated by durable outputs. Each successful step enqueues the next step only after its output row/link exists; downstream jobs are not pre-enqueued.
+- Workers claim jobs with PostgreSQL `FOR UPDATE SKIP LOCKED` row locking so multiple workers do not process the same job.
+- `running` jobs are reclaimable leases. If `locked_at` becomes older than the configured stale-job timeout, defaulting to 30 minutes, another worker may retry the job.
+- Claiming a job increments `attempt_count`; crashes count as attempts. Failed jobs with attempts remaining return to `queued` with `run_after`, and exhausted jobs become `failed`.
+- LLM calls go through a LiteLLM proxy service. `worker-ml` uses logical per-stage aliases, while provider credentials, throttling, and routing belong to proxy configuration. No secrets are committed.
+- DVC tracks large local model binaries under `artifacts/models/`; Git tracks
+  manifests and `.dvc` pointer files. No shared DVC remote is configured yet.
 
 ## Domain Decisions
 
@@ -70,7 +82,6 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 
 ## Known Next Work
 
-- Add local binary relevance classifier interface and persistence of classifier decisions.
-- Add Ukrainian prompt files and Pydantic-validated LLM contracts.
+- Wire article-card and resolution jobs to the LLM task architecture.
 - Implement Qdrant collections for case, entity, and event cards.
 - Build public API and frontend for homepage feed, case pages, and entity pages.

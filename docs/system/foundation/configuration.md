@@ -13,9 +13,24 @@ Source priority:
 
 Real secrets belong in ignored `.env` files, not tracked examples.
 
-Future classifier artifacts should be configured by path/environment and kept
-outside git. DVC is planned when the training flow and model artifacts exist.
+Classifier artifacts are configured by path/environment and kept outside Git.
+DVC tracks large model binaries under `artifacts/models/`; Git tracks the small
+metadata manifests and `.dvc` pointer files.
 
-LLM prompts should be tracked as Ukrainian plain-text files in `worker-ml`.
+LLM prompts are tracked as Ukrainian plain-text files in `worker-ml`. Runtime
+LLM calls go through the LiteLLM proxy, so provider keys and routing policy are
+configured for the proxy rather than application packages.
+
+`worker-ml` relevance classifier settings:
+
+- `RELEVANCE_MODEL_DIR`: path to a local relevance model artifact directory with
+  `manifest.json` and a joblib pipeline.
+- `RELEVANCE_THRESHOLD`: positive-class probability threshold for accepting an
+  article as a relevance candidate.
+- `STALE_JOB_TIMEOUT_SECONDS`, `JOB_MAX_ATTEMPTS`, `ENQUEUE_BATCH_SIZE`, and
+  `CLAIM_BATCH_SIZE`: job-store runtime controls for article-scoped ML jobs.
 Runtime settings should select model endpoints and secrets through environment
-variables or file secrets, never committed values.
+variables or file secrets, never committed values. `worker-ml` uses
+`LLM_API_BASE`, `LLM_API_KEY`, and logical model aliases such as
+`LLM_ARTICLE_CARD_MODEL`; the LiteLLM proxy consumes provider credentials such
+as `OPENAI_API_KEY`.

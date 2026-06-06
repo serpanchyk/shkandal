@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Shkandal ML worker every 10 minutes
+
+[Timer]
+OnBootSec=2min
+OnCalendar=*:0/10
+Persistent=true
+Unit=shkandal-ml-worker.service
+
+[Install]
+WantedBy=timers.target

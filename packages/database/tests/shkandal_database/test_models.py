@@ -1,6 +1,6 @@
 """Tests for database model metadata."""
 
-from shkandal_database.models import Article, Base, Case, Entity, Source
+from shkandal_database.models import Article, Base, Case, Entity, Job, LlmRun, Source
 from sqlalchemy import CheckConstraint, ForeignKeyConstraint, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -53,6 +53,7 @@ def test_key_constraints_are_registered() -> None:
     assert "ck_case_relations_not_self" in constraint_names("case_relations", CheckConstraint)
     assert "ck_entities_entity_type" in constraint_names("entities", CheckConstraint)
     assert "ck_jobs_status" in constraint_names("jobs", CheckConstraint)
+    assert "uq_jobs_job_type_article_id" in constraint_names("jobs", UniqueConstraint)
 
 
 def test_key_indexes_are_registered() -> None:
@@ -81,7 +82,9 @@ def test_metadata_columns_use_safe_python_names() -> None:
     assert Source.metadata_.property.columns[0].name == "metadata"
     assert Case.metadata_.property.columns[0].name == "metadata"
     assert Entity.metadata_.property.columns[0].name == "metadata"
+    assert LlmRun.metadata_.property.columns[0].name == "metadata"
     assert isinstance(Source.metadata_.property.columns[0].type, JSONB)
+    assert isinstance(LlmRun.metadata_.property.columns[0].type, JSONB)
 
 
 def test_no_direct_entity_event_table_exists() -> None:
@@ -93,3 +96,11 @@ def test_article_uses_identity_url_only() -> None:
     assert Article.identity_url.property.columns[0].name == "identity_url"
     assert "canonical_url" not in Base.metadata.tables["articles"].columns
     assert "normalized_url" not in Base.metadata.tables["articles"].columns
+
+
+def test_jobs_are_article_scoped() -> None:
+    assert Job.article_id.property.columns[0].nullable is False
+    assert any(
+        isinstance(constraint, ForeignKeyConstraint)
+        for constraint in Base.metadata.tables["jobs"].constraints
+    )

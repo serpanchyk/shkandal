@@ -1,7 +1,12 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from worker_ingestion.storage import ArticleInput, SourceInput, SqlAlchemyArticleRepository, _chunks
+from worker_ingestion.persistence.articles import (
+    ArticleInput,
+    SourceInput,
+    SqlAlchemyArticleRepository,
+    _chunks,
+)
 
 
 def test_source_input_preserves_source_contract_fields() -> None:

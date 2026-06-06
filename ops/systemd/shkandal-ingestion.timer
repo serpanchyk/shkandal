@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Shkandal ingestion hourly
+
+[Timer]
+OnBootSec=5min
+OnCalendar=hourly
+Persistent=true
+Unit=shkandal-ingestion.service
+
+[Install]
+WantedBy=timers.target

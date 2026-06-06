@@ -133,7 +133,7 @@ Initial discovery methods:
 - manually configured source sections;
 - include/exclude URL patterns.
 
-The MVP should run a controlled one-year backfill before first public launch, then continue forward ingestion. Date-bounded backfills use a higher source discovery cap than daily runs so archive traversal is not truncated too early. Fetching can happen in any order, but LLM resolution during backfill should process relevant articles oldest-to-newest by `published_at`.
+The MVP runs a controlled one-year backfill before first public launch, then continues forward ingestion with an hourly full-source pass. Date-bounded backfills use a higher source discovery cap than daily runs so archive traversal is not truncated too early. Fetching can happen in any order, but LLM resolution during backfill should process relevant articles oldest-to-newest by `published_at`.
 
 ### 2. Extract and Store
 
@@ -153,7 +153,10 @@ Classifier input should be:
 - lead;
 - first fixed-size window of extracted text.
 
-The likely first feature approach is TF-IDF word ngrams plus character ngrams. DVC will be added when classifier training code and artifacts land. Real model artifacts live outside git, with metadata and training code in the repo.
+The likely first feature approach is TF-IDF word ngrams plus character ngrams.
+DVC tracks large model binaries under `artifacts/models/`, while Git tracks the
+small metadata manifests and DVC pointer files. Real model artifacts stay outside
+Git history.
 
 Irrelevant articles remain stored with `is_relevant=false` for debugging, evaluation, and future reprocessing.
 
@@ -245,8 +248,17 @@ There is no direct `entity_event` relationship in the MVP. Cases can show entiti
 ## LLM Contracts
 
 Prompts live as plain Ukrainian files in the repo, owned by `worker-ml`.
+LangChain consumes those files inside individual LLM tasks for prompt handling
+and simple chains; it does not own job orchestration, persistence, retries, or
+database mutation.
 
-LLM outputs must be structured JSON validated by Pydantic. Invalid output should be repaired once with a repair prompt. If repair fails, mark the LLM task failed and keep it eligible for later reprocessing.
+LLM outputs must be structured JSON validated by Pydantic. Invalid output should
+be repaired once with a schema-only repair prompt. If repair fails, mark the LLM
+task failed and keep it eligible for later reprocessing.
+
+All runtime LLM calls go through the LiteLLM proxy. `worker-ml` requests logical
+per-stage aliases such as `shkandal-article-card` and `shkandal-repair`; the
+proxy owns provider credentials, throttling, routing, and fallback policy.
 
 ## Architecture
 
@@ -255,9 +267,10 @@ The project is split into these services:
 - `frontend`: Next.js public UI for case pages, entity pages, and feed;
 - `backend`: FastAPI public API and application business boundary;
 - `worker-ingestion`: curated source discovery, fetching, extraction, URL identity normalization, image URL extraction;
-- `worker-ml`: relevance classifier, article cards, embeddings, Qdrant retrieval, LLM resolution, deduplication;
+- `worker-ml`: relevance classifier, E5-small embeddings, Qdrant vector integration, LLM task contracts/prompt execution, future article cards, LLM resolution, deduplication;
 - `postgres`: source-of-truth relational database and MVP job store;
-- `qdrant`: rebuildable vector index for cases, entities, and events.
+- `qdrant`: rebuildable 384-dimensional vector index for cases, entities, and events.
+- `llm-proxy`: LiteLLM proxy for provider routing, throttling, and fallback policy.
 
 The shared `packages/database` workspace package owns async SQLAlchemy models,
 session helpers, and Alembic migrations. Local PostgreSQL data is stored in the
@@ -281,5 +294,4 @@ Planned later layers:
 - automatic merge handling for duplicate cases with redirects/aliases;
 - event relations such as appeal/reaction/correction;
 - image proxying or caching if needed;
-- richer analytics beyond anonymous aggregate counters;
-- DVC setup when classifier training artifacts exist.
+- richer analytics beyond anonymous aggregate counters.

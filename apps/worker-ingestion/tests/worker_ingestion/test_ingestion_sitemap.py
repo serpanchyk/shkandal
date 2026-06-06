@@ -4,14 +4,14 @@ from datetime import UTC, datetime
 import pytest
 from conftest import FakeFetcher, fetch_result, source_config
 from worker_ingestion.config import IngestionConfig
-from worker_ingestion.sitemap import (
+from worker_ingestion.discovery.sitemap import (
     discover_article_urls,
     effective_discovery_limit,
     parse_feed,
     parse_section_article_links,
     parse_sitemap,
 )
-from worker_ingestion.sources import SourceConfig
+from worker_ingestion.discovery.sources import SourceConfig
 
 
 def test_parse_sitemap_index_and_urlset_with_namespaces() -> None:

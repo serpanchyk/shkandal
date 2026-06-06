@@ -1,12 +1,12 @@
 from datetime import date
 
-from worker_ingestion.article_coverage import (
+from article_coverage import (
     ArticleCoverageRow,
     CoverageGroupBy,
     build_article_coverage_report,
     render_article_coverage_markdown,
 )
-from worker_ingestion.sources import SourceConfig
+from worker_ingestion.discovery.sources import SourceConfig
 
 
 def test_report_lists_curated_sources_without_articles() -> None:

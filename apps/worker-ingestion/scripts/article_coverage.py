@@ -9,8 +9,7 @@ from enum import StrEnum
 from shkandal_database.models import Article, Source
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
-from worker_ingestion.sources import CURATED_SOURCES, SourceConfig
+from worker_ingestion.discovery.sources import CURATED_SOURCES, SourceConfig
 
 
 class CoverageGroupBy(StrEnum):

@@ -5,20 +5,20 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 from uuid import UUID
 
+from worker_ingestion.articles.extractor import extract_article
+from worker_ingestion.articles.identity import normalize_article_url
 from worker_ingestion.config import IngestionConfig
-from worker_ingestion.extractor import extract_article
-from worker_ingestion.identity import normalize_article_url
-from worker_ingestion.sitemap import (
+from worker_ingestion.discovery.sitemap import (
     SitemapArticleUrl,
     discover_article_urls,
     effective_discovery_limit,
 )
-from worker_ingestion.sources import CURATED_SOURCES, SourceConfig
-from worker_ingestion.storage import ArticleInput, ArticleRepository, SourceInput
+from worker_ingestion.discovery.sources import CURATED_SOURCES, SourceConfig
+from worker_ingestion.persistence.articles import ArticleInput, ArticleRepository, SourceInput
 from worker_ingestion.transport import Fetcher
 
 ArticleIngestionResult = Literal["stored", "failed", "skipped_out_of_window"]
@@ -27,6 +27,7 @@ ArticleIngestionResult = Literal["stored", "failed", "skipped_out_of_window"]
 @dataclass(frozen=True)
 class IngestionStats:
     processed_sources: int = 0
+    failed_sources: int = 0
     discovered_articles: int = 0
     skipped_existing_articles: int = 0
     skipped_out_of_window_articles: int = 0
@@ -61,9 +62,31 @@ class IngestionWorker:
         selected_sources = self._selected_sources(source_slug)
         stats = IngestionStats()
         for source in selected_sources:
-            source_stats = await self._run_source(source, limit=limit, since=since, until=until)
+            try:
+                source_stats = await self._run_source(
+                    source,
+                    limit=limit,
+                    since=since,
+                    until=until,
+                )
+            except Exception:
+                self.logger.exception(
+                    "worker_ingestion_source_failed",
+                    extra={"source_slug": source.slug},
+                )
+                stats = IngestionStats(
+                    processed_sources=stats.processed_sources + 1,
+                    failed_sources=stats.failed_sources + 1,
+                    discovered_articles=stats.discovered_articles,
+                    skipped_existing_articles=stats.skipped_existing_articles,
+                    skipped_out_of_window_articles=stats.skipped_out_of_window_articles,
+                    stored_articles=stats.stored_articles,
+                    failed_articles=stats.failed_articles,
+                )
+                continue
             stats = IngestionStats(
                 processed_sources=stats.processed_sources + 1,
+                failed_sources=stats.failed_sources,
                 discovered_articles=stats.discovered_articles + source_stats.discovered_articles,
                 skipped_existing_articles=(
                     stats.skipped_existing_articles + source_stats.skipped_existing_articles
@@ -107,6 +130,23 @@ class IngestionWorker:
             until=until,
         )
         discovery_limit = effective_discovery_limit(self.config, since=since, until=until)
+        due_failed_urls = await self.repository.due_failed_article_urls(
+            source_id,
+            max_attempts=self.config.fetch_max_attempts,
+            limit=discovery_limit,
+        )
+        discovered_identity_values = {
+            normalize_article_url(article_url.url) for article_url in urls
+        }
+        urls.extend(
+            SitemapArticleUrl(
+                url=url,
+                discovery_url=url,
+                discovery_method="retry",
+            )
+            for url in due_failed_urls
+            if normalize_article_url(url) not in discovered_identity_values
+        )
         self.logger.info(
             "worker_ingestion_source_discovered",
             extra={
@@ -119,14 +159,15 @@ class IngestionWorker:
             urls = urls[:limit]
 
         discovered_articles = len(urls)
-        existing_identity_urls = await self.repository.existing_identity_urls(
-            {normalize_article_url(article_url.url) for article_url in urls}
+        skippable_identity_urls = await self.repository.skippable_identity_urls(
+            {normalize_article_url(article_url.url) for article_url in urls},
+            max_attempts=self.config.fetch_max_attempts,
         )
-        if existing_identity_urls:
+        if skippable_identity_urls:
             urls = [
                 article_url
                 for article_url in urls
-                if normalize_article_url(article_url.url) not in existing_identity_urls
+                if normalize_article_url(article_url.url) not in skippable_identity_urls
             ]
             self.logger.info(
                 "worker_ingestion_source_existing_articles_skipped",
@@ -152,10 +193,24 @@ class IngestionWorker:
                     until=until,
                 )
                 for article_url in urls
-            )
+            ),
+            return_exceptions=True,
         )
+        for article_url, result in zip(urls, results, strict=True):
+            if isinstance(result, BaseException):
+                self.logger.error(
+                    "worker_ingestion_article_failed",
+                    extra={
+                        "source_slug": source.slug,
+                        "article_url": article_url.url,
+                        "error": str(result),
+                    },
+                    exc_info=(type(result), result, result.__traceback__),
+                )
         stored_articles = sum(1 for result in results if result == "stored")
-        failed_articles = sum(1 for result in results if result == "failed")
+        failed_articles = sum(
+            1 for result in results if result == "failed" or isinstance(result, BaseException)
+        )
         skipped_out_of_window_articles = sum(
             1 for result in results if result == "skipped_out_of_window"
         )
@@ -235,6 +290,9 @@ class IngestionWorker:
                         "content_type": response.headers.get("content-type"),
                         "fetch_error": response.error or "non_2xx_response",
                     },
+                    fetch_status="failed",
+                    next_fetch_at=response.fetched_at + timedelta(hours=1),
+                    last_fetch_error=response.error or "non_2xx_response",
                 )
             )
             return "failed"

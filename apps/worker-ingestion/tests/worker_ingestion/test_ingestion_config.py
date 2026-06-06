@@ -14,6 +14,9 @@ async def test_service_status_uses_configured_service_name() -> None:
 def test_request_defaults_are_production_bounded() -> None:
     config = IngestionConfig()
 
+    assert config.poll_interval_seconds == 3600
+    assert config.heartbeat_max_age_seconds == 10_800
+    assert config.fetch_max_attempts == 5
     assert config.request_timeout_seconds > 0
     assert config.request_concurrency > 0
     assert "Shkandal ingestion worker" in config.request_user_agent
@@ -32,3 +35,4 @@ def test_worker_ingestion_yaml_configures_runtime_knobs(monkeypatch: pytest.Monk
     assert "https://github.com/serpanchyk/shkandal" in config.request_user_agent
     assert "contact:" in config.request_user_agent
     assert config.max_sitemap_urls_per_source == 500
+    assert config.poll_interval_seconds == 3600

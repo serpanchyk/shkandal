@@ -32,15 +32,37 @@ Validate Compose configuration:
 docker compose config
 ```
 
+## Model Artifacts
+
+DVC tracks large model binaries under `artifacts/models/`. Git tracks the small
+`manifest.json` files and `.dvc` pointer files beside the binaries.
+
+Check local artifact state:
+
+```bash
+uv run dvc status
+```
+
+After producing or replacing a model binary, update its DVC pointer:
+
+```bash
+uv run dvc add artifacts/models/relevance/tfidf_logistic_noise_assigned/tfidf_logistic_noise_assigned.joblib
+git add artifacts/models/relevance/tfidf_logistic_noise_assigned/manifest.json
+git add artifacts/models/relevance/tfidf_logistic_noise_assigned/tfidf_logistic_noise_assigned.joblib.dvc
+```
+
+No shared DVC remote is configured yet. Configure one before relying on
+`uv run dvc push` or `uv run dvc pull` across machines.
+
 ## Docker Compose
 
-Build and start the full project in the foreground:
+Build and start the long-lived services in the foreground:
 
 ```bash
 docker compose up --build
 ```
 
-Start the full project in the background:
+Start the long-lived services in the background:
 
 ```bash
 docker compose up -d --build
@@ -63,8 +85,6 @@ Restart one service after a config or code change:
 ```bash
 docker compose restart backend
 docker compose restart frontend
-docker compose restart worker-ingestion
-docker compose restart worker-ml
 ```
 
 Default ports:
@@ -93,8 +113,6 @@ Follow one service:
 ```bash
 docker compose logs --follow backend
 docker compose logs --follow frontend
-docker compose logs --follow worker-ingestion
-docker compose logs --follow worker-ml
 docker compose logs --follow postgres
 docker compose logs --follow qdrant
 ```
@@ -103,7 +121,6 @@ Show logs since a recent time window:
 
 ```bash
 docker compose logs --since 10m backend
-docker compose logs --since 1h worker-ingestion
 ```
 
 Useful debugging pattern:
@@ -111,7 +128,6 @@ Useful debugging pattern:
 ```bash
 docker compose ps
 docker compose logs --tail 200 backend
-docker compose logs --tail 200 worker-ingestion
 docker compose logs --tail 200 postgres
 ```
 
@@ -188,22 +204,22 @@ uv run alembic -c packages/database/alembic.ini revision --autogenerate -m "desc
 
 ## Ingestion Worker
 
-Run all configured media and institutional sources:
+The ingestion worker is a one-shot job. Run one full ingestion pass locally:
 
 ```bash
-docker compose run --rm worker-ingestion
+docker compose --profile jobs run --rm worker-ingestion
 ```
 
 Run one source with a small debug limit:
 
 ```bash
-docker compose run --rm worker-ingestion python -m worker_ingestion.main --source pravda --limit 20
+docker compose --profile jobs run --rm worker-ingestion python -m worker_ingestion.main --source pravda --limit 20
 ```
 
 Run a bounded date range:
 
 ```bash
-docker compose run --rm worker-ingestion python -m worker_ingestion.main --since 2025-01-01 --until 2025-01-31 --limit 100
+docker compose --profile jobs run --rm worker-ingestion python -m worker_ingestion.main --since 2025-01-01 --until 2025-01-31 --limit 100
 ```
 
 Date-bounded runs use a higher backfill discovery cap by default so source
@@ -211,19 +227,20 @@ archive traversal is not truncated at the daily discovery limit.
 For dense sources, raise the cap explicitly:
 
 ```bash
-docker compose run --rm worker-ingestion python -m worker_ingestion.main --source pravda --since 2025-01-01 --until 2026-06-03 --max-backfill-urls-per-source 80000
+docker compose --profile jobs run --rm worker-ingestion python -m worker_ingestion.main --source pravda --since 2025-01-01 --until 2026-06-03 --max-backfill-urls-per-source 80000
 ```
 
-`pravda` sitemap and article requests use browser TLS impersonation in the
-worker because Cloudflare blocks the default Python HTTP client from Docker.
-`pravda` also runs with a source-level crawl delay to avoid 429 rate limits.
+`pravda`, `nabu`, `dbr`, `ssu`, `kmu`, and `president` requests use browser TLS
+impersonation in the worker because the default Python HTTP client is blocked
+or challenged by those sites from Docker. `pravda` also runs with a source-level
+crawl delay to avoid 429 rate limits.
 
 Repair missing `published_at` values from stored `raw_html` without refetching.
 This command is a dry run unless `--apply` is included:
 
 ```bash
-docker compose run --rm worker-ingestion python -m worker_ingestion.main --repair-missing-published-at --limit 1000
-docker compose run --rm worker-ingestion python -m worker_ingestion.main --repair-missing-published-at --limit 1000 --apply
+docker compose --profile jobs run --rm worker-ingestion python -m worker_ingestion.main --repair-missing-published-at --limit 1000
+docker compose --profile jobs run --rm worker-ingestion python -m worker_ingestion.main --repair-missing-published-at --limit 1000 --apply
 ```
 
 Validate configured discovery endpoints and sample extraction without mutating
@@ -233,33 +250,70 @@ the database:
 uv run python apps/worker-ingestion/scripts/validate_sources.py --sample 2
 ```
 
-Generate a read-only article coverage report by source and month:
+Generate a read-only article coverage report by source and month. Coverage
+reporting is local scripts-only tooling and is not copied into the production
+worker image:
 
 ```bash
 uv run python apps/worker-ingestion/scripts/article_coverage_report.py
 uv run python apps/worker-ingestion/scripts/article_coverage_report.py --source tyzhden --since 2026-01-01 --until 2026-06-03
 ```
 
-If ingestion fails, check logs in this order:
+Failed article fetches retry after 1 hour, 6 hours, and then daily, stopping
+after five total attempts. Inspect exhausted rows or explicitly reset them for
+another retry sequence:
 
 ```bash
-docker compose logs --tail 200 worker-ingestion
-docker compose logs --tail 200 postgres
+uv run python apps/worker-ingestion/scripts/reset_failed_fetches.py --source pravda
+uv run python apps/worker-ingestion/scripts/reset_failed_fetches.py --source pravda --apply
 ```
 
 ## ML Worker
 
-The ML worker currently starts and reports readiness. Run it once through
-Compose:
+The ML worker is also a one-shot job. Each run enqueues missing
+`classify_article` jobs and processes one bounded batch:
 
 ```bash
-docker compose run --rm worker-ml
+docker compose --profile jobs run --rm worker-ml
 ```
 
-Check recent ML worker logs:
+For optional direct loop mode, bypass the scheduled one-shot runtime:
 
 ```bash
-docker compose logs --tail 200 worker-ml
+python -m worker_ingestion.main --loop
+python -m worker_ml.main --loop
+```
+
+The ingestion heartbeat and healthcheck apply only to optional loop mode, not
+to normal systemd-scheduled one-shot runs.
+
+## Server Scheduling
+
+On a Linux server, keep backend, frontend, PostgreSQL, Qdrant, the LiteLLM
+proxy, and supporting infrastructure running as long-lived Compose services.
+Systemd starts the one-shot workers with `docker compose run --rm`.
+
+Install and start the timers from a checkout deployed at `/opt/shkandal`:
+
+```bash
+./ops/install-systemd.sh
+systemctl list-timers "shkandal-*"
+```
+
+Ingestion runs hourly. ML runs every 10 minutes. `llm-proxy` remains in Compose
+because the ML pipeline uses it for article-card and resolution stages.
+Manually trigger either job:
+
+```bash
+sudo systemctl start shkandal-ingestion.service
+sudo systemctl start shkandal-ml-worker.service
+```
+
+Inspect recent job logs:
+
+```bash
+journalctl -u shkandal-ingestion.service -n 100 --no-pager
+journalctl -u shkandal-ml-worker.service -n 100 --no-pager
 ```
 
 ## Frontend

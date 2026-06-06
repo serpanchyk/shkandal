@@ -6,9 +6,9 @@ Works: pravda, hromadske, radiosvoboda, suspilne, bihus, antac,
 nashigroshi, babel, texty, espreso, slovoidilo, tyzhden, chesno, hcac,
 nazk, arma, gp, npu, court-gov, supreme-court, ccu, rada, rnbo.
 
-Broken after repair attempt: nabu, dbr, ssu, kmu, president.
+Retry with browser impersonation: nabu, dbr, ssu, kmu, president.
 
-Broken-source reasons:
+Prior broken-source reasons:
 - nabu blocks the configured transparent project user-agent with HTTP 403.
 - dbr has an incomplete TLS certificate chain in this runtime; it works only
   with certificate verification disabled, which ingestion should not do by
@@ -17,6 +17,10 @@ Broken-source reasons:
   browser user-agents from this environment.
 - kmu exposes discoverable sitemap URLs but article and API fetches are
   redirected to a Radware captcha page, so extracted text is captcha content.
+These sources now use the same browser-impersonated transport as pravda.
+Validation on 2026-06-05 showed nabu, ssu, and president can fetch and extract
+sample articles; dbr still fails on its TLS chain, and kmu needs a discovery
+fix after its timeline endpoint returns 200 without discovered article URLs.
 
 Robots-only 404/403 is not treated as ingestion failure when section/article
 discovery and extraction work.

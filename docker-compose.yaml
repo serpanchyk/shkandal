@@ -20,6 +20,7 @@ services:
     restart: unless-stopped
 
   worker-ingestion:
+    profiles: ["jobs"]
     build:
       context: .
       dockerfile: apps/worker-ingestion/Dockerfile
@@ -28,9 +29,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    restart: unless-stopped
+    command: ["python", "-m", "worker_ingestion.main"]
+    restart: "no"
 
   worker-ml:
+    profiles: ["jobs"]
     build:
       context: .
       dockerfile: apps/worker-ml/Dockerfile
@@ -41,7 +44,10 @@ services:
         condition: service_healthy
       qdrant:
         condition: service_started
-    restart: unless-stopped
+      llm-proxy:
+        condition: service_started
+    command: ["python", "-m", "worker_ml.main"]
+    restart: "no"
 
   frontend:
     build:
@@ -78,6 +84,17 @@ services:
       - "${QDRANT_PORT:-6333}:6333"
     volumes:
       - qdrant-data:/qdrant/storage
+    restart: unless-stopped
+
+  llm-proxy:
+    image: docker.litellm.ai/berriai/litellm:main-latest
+    command: ["--config", "/app/config.yaml"]
+    env_file:
+      - ./.env.example
+    ports:
+      - "${LITELLM_PROXY_PORT:-4000}:4000"
+    volumes:
+      - ./infra/litellm/config.yaml.example:/app/config.yaml:ro
     restart: unless-stopped
 
 volumes:

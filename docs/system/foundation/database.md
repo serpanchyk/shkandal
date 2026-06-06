@@ -14,6 +14,11 @@ Runtime services should import database primitives from this package rather than
 defining service-local ORM models. `infra/postgres` owns only the local
 PostgreSQL container runtime.
 
+`articles` carries durable ingestion fetch state through `fetch_status`,
+`fetch_attempt_count`, `next_fetch_at`, and `last_fetch_error`. PostgreSQL is
+therefore the source of truth for bounded article-fetch retries; the ingestion
+worker does not rely on a URL remaining in a current feed to retry it.
+
 ## Session Usage
 
 Create an async engine and session factory from settings:
