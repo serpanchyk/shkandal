@@ -6,13 +6,13 @@ import argparse
 import asyncio
 from datetime import date
 
-from shkandal_database.config import DatabaseConfig
-from shkandal_database.session import create_async_engine_from_config, create_async_sessionmaker
-from worker_ingestion.article_coverage import (
+from article_coverage import (
     CoverageGroupBy,
     load_article_coverage_report,
     render_article_coverage_markdown,
 )
+from shkandal_database.config import DatabaseConfig
+from shkandal_database.session import create_async_engine_from_config, create_async_sessionmaker
 
 
 def main() -> None:

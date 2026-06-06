@@ -28,7 +28,7 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 ## Service Map
 
 - `backend`: FastAPI service exposing `GET /healthz` today; future public API and business boundary.
-- `worker-ingestion`: curated media and institutional source discovery from sitemaps, RSS/Atom feeds, and section pages; date-bounded backfill traversal; fetching; generic-first extraction; publication-date repair from stored raw HTML; URL identity normalization; image URL extraction; and PostgreSQL upsert.
+- `worker-ingestion`: continuous hourly curated-source discovery from sitemaps, RSS/Atom feeds, and section pages; bounded fetch retries; date-bounded backfill traversal; fetching; generic-first extraction; publication-date repair from stored raw HTML; URL identity normalization; image URL extraction; and PostgreSQL upsert.
 - `worker-ml`: async worker entrypoint with article relevance classifier job enqueueing/handling, E5-small embedding service, Qdrant vector-index integration, and the LLM task architecture for future article cards, resolution, and deduplication.
 - `frontend`: Next.js TypeScript app with an API health link today; future public feed, case pages, and entity pages.
 - `postgres`: source-of-truth database and Postgres-backed job store schema.
@@ -44,7 +44,7 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - Redis is excluded from MVP.
 - One generic PostgreSQL `jobs` table with row locking is the MVP background-work mechanism. A job is one durable, retryable, typed pipeline work unit, not a worker process or domain object.
 - MVP jobs are article-scoped: each job works on one article, so the job store should carry an explicit `article_id` and enforce one all-time job row per `(job_type, article_id)`. Reruns reset or requeue that row rather than creating duplicates.
-- Ingestion is not queued as a job in the MVP. After historical backfill, the ingestion worker should run continuously, discover new articles, and persist them to PostgreSQL; downstream ML processing consumes stored articles through jobs.
+- Ingestion is not queued as a job in the MVP. After historical backfill, the ingestion worker runs an hourly full-source pass, persists new articles to PostgreSQL, retries failed fetches up to five attempts, and exposes a completed-pass heartbeat for container health checks.
 - `worker-ml` owns ML job creation. It should poll PostgreSQL for articles missing ML-derived state, starting with articles missing `article_relevance`, and enqueue idempotent downstream jobs such as `classify_article`.
 - Article jobs are gated by durable outputs. Each successful step enqueues the next step only after its output row/link exists; downstream jobs are not pre-enqueued.
 - Workers claim jobs with PostgreSQL `FOR UPDATE SKIP LOCKED` row locking so multiple workers do not process the same job.

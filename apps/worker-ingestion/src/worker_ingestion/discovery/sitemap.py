@@ -14,7 +14,7 @@ from urllib.parse import urljoin, urlparse
 from bs4 import BeautifulSoup, Tag
 
 from worker_ingestion.config import IngestionConfig
-from worker_ingestion.sources import SourceConfig
+from worker_ingestion.discovery.sources import SourceConfig
 from worker_ingestion.transport import Fetcher
 
 

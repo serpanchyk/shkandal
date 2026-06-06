@@ -10,8 +10,8 @@ from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup, Tag
 
-from worker_ingestion.identity import identity_url_for_article, normalize_article_url
-from worker_ingestion.sources import SourceConfig
+from worker_ingestion.articles.identity import identity_url_for_article, normalize_article_url
+from worker_ingestion.discovery.sources import SourceConfig
 
 try:
     import trafilatura

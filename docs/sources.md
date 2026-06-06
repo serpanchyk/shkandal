@@ -1,7 +1,7 @@
 # Source Inventory
 
 This inventory describes the curated ingestion source catalog implemented in
-`worker_ingestion.sources`. It is not a live validation report. Run
+`worker_ingestion.discovery.sources`. It is not a live validation report. Run
 `uv run python apps/worker-ingestion/scripts/validate_sources.py --sample 2` to
 check current robots, discovery endpoints, and extraction quality.
 

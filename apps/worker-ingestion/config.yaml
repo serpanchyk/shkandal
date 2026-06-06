@@ -1,5 +1,8 @@
 service_name: worker-ingestion
-poll_interval_seconds: 30
+poll_interval_seconds: 3600
+heartbeat_path: /tmp/worker-ingestion-heartbeat
+heartbeat_max_age_seconds: 10800
+fetch_max_attempts: 5
 request_timeout_seconds: 20.0
 request_concurrency: 5
 request_user_agent: "Shkandal ingestion worker (https://github.com/serpanchyk/shkandal; contact: anton.mykhalchuk.ua@gmail.com)"

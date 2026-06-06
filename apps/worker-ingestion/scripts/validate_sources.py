@@ -10,10 +10,10 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from urllib.parse import urljoin
 
+from worker_ingestion.articles.extractor import extract_article
 from worker_ingestion.config import IngestionConfig
-from worker_ingestion.extractor import extract_article
-from worker_ingestion.sitemap import discover_article_urls
-from worker_ingestion.sources import CURATED_SOURCES, SourceConfig
+from worker_ingestion.discovery.sitemap import discover_article_urls
+from worker_ingestion.discovery.sources import CURATED_SOURCES, SourceConfig
 from worker_ingestion.transport import HttpxFetcher
 
 

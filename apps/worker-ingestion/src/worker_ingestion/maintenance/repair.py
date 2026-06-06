@@ -7,8 +7,8 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
-from worker_ingestion.extractor import published_at_from_html
-from worker_ingestion.storage import PublishedAtRepairRow
+from worker_ingestion.articles.extractor import published_at_from_html
+from worker_ingestion.persistence.articles import PublishedAtRepairRow
 
 
 class PublishedAtRepairRepository(Protocol):

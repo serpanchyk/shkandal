@@ -82,6 +82,7 @@ pythonpath = [
     "packages/database/src",
     "packages/common/src",
     "packages/vector_store/src",
+    "apps/worker-ingestion/scripts",
 ]
 
 [tool.coverage.run]

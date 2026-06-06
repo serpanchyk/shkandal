@@ -97,6 +97,11 @@ class Article(Base):
         UniqueConstraint("identity_url", name="uq_articles_identity_url"),
         Index("ix_articles_source_id_published_at", "source_id", "published_at"),
         Index("ix_articles_published_at", "published_at"),
+        Index("ix_articles_fetch_retry", "fetch_status", "next_fetch_at"),
+        CheckConstraint(
+            "fetch_status in ('succeeded', 'failed')",
+            name="ck_articles_fetch_status",
+        ),
     )
 
     id: Mapped[UUID] = uuid_pk_column()
@@ -121,6 +126,18 @@ class Article(Base):
         nullable=False,
         server_default=json_object_default,
     )
+    fetch_status: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        server_default=text("'succeeded'"),
+    )
+    fetch_attempt_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default=text("1"),
+    )
+    next_fetch_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_fetch_error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()
 

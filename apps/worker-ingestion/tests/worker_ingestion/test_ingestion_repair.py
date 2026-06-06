@@ -2,8 +2,8 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
-from worker_ingestion.repair import repair_missing_published_at
-from worker_ingestion.storage import PublishedAtRepairRow
+from worker_ingestion.maintenance.repair import repair_missing_published_at
+from worker_ingestion.persistence.articles import PublishedAtRepairRow
 
 
 class FakeRepairRepository:

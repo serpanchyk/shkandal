@@ -133,7 +133,7 @@ Initial discovery methods:
 - manually configured source sections;
 - include/exclude URL patterns.
 
-The MVP should run a controlled one-year backfill before first public launch, then continue forward ingestion. Date-bounded backfills use a higher source discovery cap than daily runs so archive traversal is not truncated too early. Fetching can happen in any order, but LLM resolution during backfill should process relevant articles oldest-to-newest by `published_at`.
+The MVP runs a controlled one-year backfill before first public launch, then continues forward ingestion with an hourly full-source pass. Date-bounded backfills use a higher source discovery cap than daily runs so archive traversal is not truncated too early. Fetching can happen in any order, but LLM resolution during backfill should process relevant articles oldest-to-newest by `published_at`.
 
 ### 2. Extract and Store
 

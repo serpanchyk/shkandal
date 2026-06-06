@@ -1,4 +1,4 @@
-from worker_ingestion.identity import (
+from worker_ingestion.articles.identity import (
     canonical_url_from_html,
     identity_url_for_article,
     normalize_article_url,

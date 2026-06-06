@@ -7,16 +7,21 @@ Current implemented scope is curated media and institutional source ingestion.
 Institutional sources use conservative URL patterns to avoid registry,
 document, search, and archive crawling.
 
+The Compose worker runs continuously. It starts one full curated-source pass
+every hour and records a heartbeat after each completed pass. Unexpected source
+failures are logged without preventing later sources from running.
+
 Implemented responsibilities:
 
-- read a curated source list from `worker_ingestion.sources`;
+- read a curated source list from `worker_ingestion.discovery.sources`;
 - discover URLs from `sitemap.xml`, sitemap indexes, nested sitemaps,
   gzipped sitemap files, RSS/Atom feeds, and configured section pages;
 - use a higher per-source discovery cap for date-bounded backfills and skip
   clearly out-of-window year/month archive sitemaps;
 - apply source include/exclude URL patterns before fetching article pages;
 - skip already-stored discovered article identities before page fetching, using
-  one indexed database lookup per source pass;
+  one indexed database lookup per source pass, while allowing due failed
+  fetches to retry;
 - fetch pages asynchronously with configured timeout, concurrency, and
   user-agent;
 - extract title, lead, author, publication date, source language, extracted
@@ -28,11 +33,20 @@ Implemented responsibilities:
 - keep the raw discovered URL unchanged in `articles.url`;
 - persist failed article fetch attempts with fetch metadata when the article
   URL can be identified;
+- retry failed article fetches after 1 hour, 6 hours, and then daily, stopping
+  after five total attempts;
 - emit structured progress logs for worker start/finish, each source start,
   source discovery counts, skipped existing article counts, source finish
   counts, and failed article fetches.
-- provide a read-only article coverage report grouped by source and calendar
-  period for finding sources with no articles and skipped ingestion periods.
+
+Production package layout:
+
+- `discovery`: curated source contracts and sitemap/feed/section discovery;
+- `articles`: URL identity and extraction;
+- `persistence`: PostgreSQL article contracts and adapter;
+- `maintenance`: explicit stored-data repair operations;
+- package root: configuration, transport, orchestration, runtime, CLI, and
+  healthcheck.
 
 Configured source groups:
 
@@ -85,28 +99,28 @@ Europe/Kyiv time and stored as UTC datetimes.
 
 ## Running
 
-Run all configured sources through Docker Compose:
+Start the continuous worker through Docker Compose:
 
 ```bash
-docker compose run --rm worker-ingestion
+docker compose up -d worker-ingestion
 ```
 
-The worker is currently a one-shot process. It runs one ingestion pass and then
-exits; use `docker compose run --rm worker-ingestion` for a visible foreground
-run, or inspect named one-off containers with `docker logs <container>` when a
-manual backfill was started with a fixed container name.
+The worker starts one full pass every hour. Its container becomes unhealthy
+after three hours without a completed pass. Docker Compose reports this health
+state but does not restart a process solely because it is unhealthy.
 
-Run one source for debugging:
+Run one explicit pass or one source for debugging:
 
 ```bash
-docker compose run --rm worker-ingestion python -m worker_ingestion.main --source pravda --limit 20
+docker compose run --rm worker-ingestion python -m worker_ingestion.main --once
+docker compose run --rm worker-ingestion python -m worker_ingestion.main --once --source pravda --limit 20
 ```
 
 Optional date window arguments use ISO datetime/date strings accepted by
 `datetime.fromisoformat`:
 
 ```bash
-docker compose run --rm worker-ingestion python -m worker_ingestion.main --source hromadske --since 2026-06-01 --until 2026-06-02
+docker compose run --rm worker-ingestion python -m worker_ingestion.main --once --source hromadske --since 2026-06-01 --until 2026-06-02
 ```
 
 Date-bounded runs use `max_backfill_urls_per_source` as the effective discovery
@@ -139,4 +153,19 @@ Run read-only source validation:
 
 ```bash
 uv run python apps/worker-ingestion/scripts/validate_sources.py --sample 2
+```
+
+Coverage reporting remains available as local scripts-only tooling. It is not
+part of the production package or Docker image:
+
+```bash
+uv run python apps/worker-ingestion/scripts/article_coverage_report.py
+```
+
+Inspect exhausted failed fetches, then explicitly reset selected rows for
+another retry sequence:
+
+```bash
+uv run python apps/worker-ingestion/scripts/reset_failed_fetches.py --source pravda
+uv run python apps/worker-ingestion/scripts/reset_failed_fetches.py --source pravda --apply
 ```

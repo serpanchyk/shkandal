@@ -9,9 +9,10 @@ from shkandal_database.config import DatabaseConfig
 from shkandal_database.session import create_async_engine_from_config, create_async_sessionmaker
 
 from worker_ingestion.config import IngestionConfig
-from worker_ingestion.repair import PublishedAtRepairStats, repair_missing_published_at
+from worker_ingestion.maintenance.repair import PublishedAtRepairStats, repair_missing_published_at
+from worker_ingestion.persistence.articles import SqlAlchemyArticleRepository
+from worker_ingestion.runtime import run_continuously
 from worker_ingestion.service import IngestionStats, IngestionWorker
-from worker_ingestion.storage import SqlAlchemyArticleRepository
 from worker_ingestion.transport import HttpxFetcher
 
 
@@ -57,6 +58,7 @@ async def run_once(
             "worker_ingestion_finished",
             extra={
                 "processed_sources": stats.processed_sources,
+                "failed_sources": stats.failed_sources,
                 "discovered_articles": stats.discovered_articles,
                 "skipped_existing_articles": stats.skipped_existing_articles,
                 "skipped_out_of_window_articles": stats.skipped_out_of_window_articles,
@@ -116,6 +118,11 @@ async def repair_published_at(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run Shkandal source ingestion.")
+    parser.add_argument(
+        "--once",
+        action="store_true",
+        help="Run one ingestion pass and exit. Required for targeted runs and backfills.",
+    )
     parser.add_argument("--source", dest="source_slug")
     parser.add_argument("--limit", type=int)
     parser.add_argument("--since", type=_parse_since_datetime)
@@ -144,6 +151,28 @@ def main() -> None:
                 limit=args.limit,
                 batch_size=args.batch_size,
                 apply=args.apply,
+            )
+        )
+        return
+
+    targeted_arguments = (
+        args.source_slug,
+        args.limit,
+        args.since,
+        args.until,
+        args.max_backfill_urls_per_source,
+    )
+    if any(value is not None for value in targeted_arguments) and not args.once:
+        parser.error("targeted ingestion and backfill arguments require --once")
+
+    if not args.once:
+        settings = IngestionConfig()
+        logger = setup_logger(settings.service_name)
+        asyncio.run(
+            run_continuously(
+                lambda: run_once(settings),
+                config=settings,
+                logger=logger,
             )
         )
         return

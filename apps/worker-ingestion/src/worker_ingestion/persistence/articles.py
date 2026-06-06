@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Protocol
 from uuid import UUID
 
 from shkandal_database.models import Article, Source
-from sqlalchemy import cast, select, tuple_, update
+from sqlalchemy import and_, case, cast, or_, select, tuple_, update
 from sqlalchemy.dialects.postgresql import JSONB, insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.sql import func
@@ -39,6 +39,10 @@ class ArticleInput:
     remote_image_url: str | None
     remote_image_metadata: dict[str, Any]
     source_metadata: dict[str, Any]
+    fetch_status: str = "succeeded"
+    fetch_attempt_count: int = 1
+    next_fetch_at: datetime | None = None
+    last_fetch_error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -54,8 +58,24 @@ class ArticleRepository(Protocol):
     async def ensure_source(self, source: SourceInput) -> UUID:
         """Create or return a source id."""
 
-    async def existing_identity_urls(self, identity_urls: set[str]) -> set[str]:
-        """Return article identity URLs already stored."""
+    async def skippable_identity_urls(
+        self,
+        identity_urls: set[str],
+        *,
+        max_attempts: int,
+        now: datetime | None = None,
+    ) -> set[str]:
+        """Return identities that are complete, not due, or exhausted."""
+
+    async def due_failed_article_urls(
+        self,
+        source_id: UUID,
+        *,
+        max_attempts: int,
+        limit: int,
+        now: datetime | None = None,
+    ) -> tuple[str, ...]:
+        """Return failed article URLs whose next attempt is due."""
 
     async def upsert_article(self, article: ArticleInput) -> None:
         """Insert or update one article by identity URL."""
@@ -93,17 +113,57 @@ class SqlAlchemyArticleRepository:
             await session.commit()
             return source_id
 
-    async def existing_identity_urls(self, identity_urls: set[str]) -> set[str]:
+    async def skippable_identity_urls(
+        self,
+        identity_urls: set[str],
+        *,
+        max_attempts: int,
+        now: datetime | None = None,
+    ) -> set[str]:
         if not identity_urls:
             return set()
 
-        existing_identity_urls: set[str] = set()
+        now = now or datetime.now(UTC)
+        skippable_identity_urls: set[str] = set()
         async with self.session_factory() as session:
             for chunk in _chunks(tuple(identity_urls), size=10_000):
-                statement = select(Article.identity_url).where(Article.identity_url.in_(chunk))
+                statement = select(Article.identity_url).where(
+                    Article.identity_url.in_(chunk),
+                    or_(
+                        Article.fetch_status == "succeeded",
+                        Article.fetch_attempt_count >= max_attempts,
+                        and_(
+                            Article.next_fetch_at.is_not(None),
+                            Article.next_fetch_at > now,
+                        ),
+                    ),
+                )
                 result = await session.execute(statement)
-                existing_identity_urls.update(result.scalars())
-        return existing_identity_urls
+                skippable_identity_urls.update(result.scalars())
+        return skippable_identity_urls
+
+    async def due_failed_article_urls(
+        self,
+        source_id: UUID,
+        *,
+        max_attempts: int,
+        limit: int,
+        now: datetime | None = None,
+    ) -> tuple[str, ...]:
+        now = now or datetime.now(UTC)
+        async with self.session_factory() as session:
+            statement = (
+                select(Article.url)
+                .where(
+                    Article.source_id == source_id,
+                    Article.fetch_status == "failed",
+                    Article.fetch_attempt_count < max_attempts,
+                    or_(Article.next_fetch_at.is_(None), Article.next_fetch_at <= now),
+                )
+                .order_by(Article.next_fetch_at.asc().nulls_first(), Article.updated_at)
+                .limit(limit)
+            )
+            return tuple((await session.scalars(statement)).all())
 
     async def fetch_articles_missing_published_at_batch(
         self,
@@ -176,8 +236,13 @@ class SqlAlchemyArticleRepository:
                 remote_image_url=article.remote_image_url,
                 remote_image_metadata=article.remote_image_metadata,
                 source_metadata=article.source_metadata,
+                fetch_status=article.fetch_status,
+                fetch_attempt_count=article.fetch_attempt_count,
+                next_fetch_at=article.next_fetch_at,
+                last_fetch_error=article.last_fetch_error,
             )
             excluded = statement.excluded
+            retry_attempt_count = Article.fetch_attempt_count + 1
             statement = statement.on_conflict_do_update(
                 constraint="uq_articles_identity_url",
                 set_={
@@ -205,6 +270,22 @@ class SqlAlchemyArticleRepository:
                         excluded.remote_image_metadata
                     ),
                     "source_metadata": Article.source_metadata.op("||")(excluded.source_metadata),
+                    "fetch_status": excluded.fetch_status,
+                    "fetch_attempt_count": retry_attempt_count,
+                    "next_fetch_at": case(
+                        (excluded.fetch_status == "succeeded", None),
+                        else_=case(
+                            (
+                                Article.fetch_attempt_count <= 1,
+                                func.now() + func.make_interval(0, 0, 0, 0, 6),
+                            ),
+                            else_=func.now() + func.make_interval(0, 0, 0, 1),
+                        ),
+                    ),
+                    "last_fetch_error": case(
+                        (excluded.fetch_status == "succeeded", None),
+                        else_=excluded.last_fetch_error,
+                    ),
                 },
             )
             await session.execute(statement)

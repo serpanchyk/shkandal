@@ -1,4 +1,4 @@
-from worker_ingestion.sources import CURATED_SOURCES, MEDIA_SOURCES, SourceConfig
+from worker_ingestion.discovery.sources import CURATED_SOURCES, MEDIA_SOURCES, SourceConfig
 
 
 def test_curated_source_catalog_contains_unique_slugs_and_expected_types() -> None:

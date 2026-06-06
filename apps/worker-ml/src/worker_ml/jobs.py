@@ -65,7 +65,10 @@ class MlJobPlanner:
         return (
             select(Article.id)
             .outerjoin(ArticleRelevance, ArticleRelevance.article_id == Article.id)
-            .where(ArticleRelevance.id.is_(None))
+            .where(
+                ArticleRelevance.id.is_(None),
+                Article.fetch_status == "succeeded",
+            )
             .order_by(Article.published_at.asc().nulls_last(), Article.created_at.asc())
             .limit(limit)
         )

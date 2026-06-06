@@ -3,13 +3,13 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
+from worker_ingestion.articles.extractor import extract_article
+from worker_ingestion.articles.identity import normalize_article_url
 from worker_ingestion.config import IngestionConfig
-from worker_ingestion.extractor import extract_article
-from worker_ingestion.identity import normalize_article_url
+from worker_ingestion.discovery.sitemap import discover_article_urls, parse_sitemap
+from worker_ingestion.discovery.sources import MEDIA_SOURCES, SourceConfig
+from worker_ingestion.persistence.articles import ArticleInput, SourceInput
 from worker_ingestion.service import IngestionWorker
-from worker_ingestion.sitemap import discover_article_urls, parse_sitemap
-from worker_ingestion.sources import MEDIA_SOURCES, SourceConfig
-from worker_ingestion.storage import ArticleInput, SourceInput
 from worker_ingestion.transport import FetchResult
 
 
@@ -35,8 +35,43 @@ class FakeArticleRepository:
             self.source_ids[source.slug] = source_id
         return source_id
 
-    async def existing_identity_urls(self, identity_urls: set[str]) -> set[str]:
-        return set(self.articles).intersection(identity_urls)
+    async def skippable_identity_urls(
+        self,
+        identity_urls: set[str],
+        *,
+        max_attempts: int,
+        now: datetime | None = None,
+    ) -> set[str]:
+        now = now or datetime.now(UTC)
+        skippable: set[str] = set()
+        for identity_url in set(self.articles).intersection(identity_urls):
+            article = self.articles[identity_url]
+            next_fetch_at = article.next_fetch_at
+            if (
+                article.fetch_status == "succeeded"
+                or article.fetch_attempt_count >= max_attempts
+                or (next_fetch_at is not None and next_fetch_at > now)
+            ):
+                skippable.add(identity_url)
+        return skippable
+
+    async def due_failed_article_urls(
+        self,
+        source_id: UUID,
+        *,
+        max_attempts: int,
+        limit: int,
+        now: datetime | None = None,
+    ) -> tuple[str, ...]:
+        now = now or datetime.now(UTC)
+        return tuple(
+            article.url
+            for article in self.articles.values()
+            if article.source_id == source_id
+            and article.fetch_status == "failed"
+            and article.fetch_attempt_count < max_attempts
+            and (article.next_fetch_at is None or article.next_fetch_at <= now)
+        )[:limit]
 
     async def upsert_article(self, article: ArticleInput) -> None:
         existing = self.articles.get(article.identity_url)
@@ -61,6 +96,10 @@ class FakeArticleRepository:
                 **article.remote_image_metadata,
             },
             source_metadata={**existing.source_metadata, **article.source_metadata},
+            fetch_status=article.fetch_status,
+            fetch_attempt_count=existing.fetch_attempt_count + 1,
+            next_fetch_at=article.next_fetch_at,
+            last_fetch_error=article.last_fetch_error,
         )
 
 

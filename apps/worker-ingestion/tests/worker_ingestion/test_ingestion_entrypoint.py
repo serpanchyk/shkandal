@@ -1,5 +1,8 @@
+import sys
 from datetime import datetime
 
+import pytest
+import worker_ingestion.main as entrypoint
 from worker_ingestion.main import _parse_datetime, _parse_until_datetime
 
 
@@ -19,3 +22,12 @@ def test_parse_until_datetime_preserves_explicit_time() -> None:
     assert _parse_until_datetime("2026-06-03T12:30:00+00:00") == datetime.fromisoformat(
         "2026-06-03T12:30:00+00:00"
     )
+
+
+def test_targeted_run_requires_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["worker-ingestion", "--source", "pravda"])
+
+    with pytest.raises(SystemExit) as exc_info:
+        entrypoint.main()
+
+    assert exc_info.value.code == 2

@@ -28,6 +28,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-m", "worker_ingestion.healthcheck"]
+      interval: 5m
+      timeout: 10s
+      retries: 1
+      start_period: 3h
     restart: unless-stopped
 
   worker-ml:

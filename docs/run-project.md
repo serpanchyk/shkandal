@@ -210,22 +210,28 @@ uv run alembic -c packages/database/alembic.ini revision --autogenerate -m "desc
 
 ## Ingestion Worker
 
-Run all configured media and institutional sources:
+Start the continuous hourly ingestion worker:
 
 ```bash
-docker compose run --rm worker-ingestion
+docker compose up -d worker-ingestion
+```
+
+Run one explicit pass:
+
+```bash
+docker compose run --rm worker-ingestion python -m worker_ingestion.main --once
 ```
 
 Run one source with a small debug limit:
 
 ```bash
-docker compose run --rm worker-ingestion python -m worker_ingestion.main --source pravda --limit 20
+docker compose run --rm worker-ingestion python -m worker_ingestion.main --once --source pravda --limit 20
 ```
 
 Run a bounded date range:
 
 ```bash
-docker compose run --rm worker-ingestion python -m worker_ingestion.main --since 2025-01-01 --until 2025-01-31 --limit 100
+docker compose run --rm worker-ingestion python -m worker_ingestion.main --once --since 2025-01-01 --until 2025-01-31 --limit 100
 ```
 
 Date-bounded runs use a higher backfill discovery cap by default so source
@@ -233,7 +239,7 @@ archive traversal is not truncated at the daily discovery limit.
 For dense sources, raise the cap explicitly:
 
 ```bash
-docker compose run --rm worker-ingestion python -m worker_ingestion.main --source pravda --since 2025-01-01 --until 2026-06-03 --max-backfill-urls-per-source 80000
+docker compose run --rm worker-ingestion python -m worker_ingestion.main --once --source pravda --since 2025-01-01 --until 2026-06-03 --max-backfill-urls-per-source 80000
 ```
 
 `pravda`, `nabu`, `dbr`, `ssu`, `kmu`, and `president` requests use browser TLS
@@ -256,12 +262,27 @@ the database:
 uv run python apps/worker-ingestion/scripts/validate_sources.py --sample 2
 ```
 
-Generate a read-only article coverage report by source and month:
+Generate a read-only article coverage report by source and month. Coverage
+reporting is local scripts-only tooling and is not copied into the production
+worker image:
 
 ```bash
 uv run python apps/worker-ingestion/scripts/article_coverage_report.py
 uv run python apps/worker-ingestion/scripts/article_coverage_report.py --source tyzhden --since 2026-01-01 --until 2026-06-03
 ```
+
+Failed article fetches retry after 1 hour, 6 hours, and then daily, stopping
+after five total attempts. Inspect exhausted rows or explicitly reset them for
+another retry sequence:
+
+```bash
+uv run python apps/worker-ingestion/scripts/reset_failed_fetches.py --source pravda
+uv run python apps/worker-ingestion/scripts/reset_failed_fetches.py --source pravda --apply
+```
+
+The Compose healthcheck becomes unhealthy after three hours without a completed
+ingestion pass. Compose reports unhealthy containers but does not restart them
+solely because of health status.
 
 If ingestion fails, check logs in this order:
 

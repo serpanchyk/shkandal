@@ -61,9 +61,10 @@ Retries use exponential-style backoff with jitter, starting from 1 minute, then
 job is marked `failed`.
 
 Ingestion is not modeled as a queued job for the MVP. After the historical
-backfill is complete, the ingestion worker should run continuously, discover new
-articles, and write them to PostgreSQL. Downstream workers then enqueue or claim
-processing jobs for stored articles.
+backfill is complete, the ingestion worker runs continuously, starts a
+full-source pass every hour, retries failed fetches with bounded durable state,
+and writes successfully fetched articles to PostgreSQL. Downstream workers then
+enqueue or claim processing jobs for stored articles.
 
 The ML worker owns ML job creation. Ingestion only persists article evidence; it
 does not need to know classifier, prompt, embedding, or resolution job types.
