@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 import worker_ml.main as entrypoint
 from shkandal_database.jobs import ArticleJobStore
+from worker_ml.article_cards import ArticleCardJobHandler
 from worker_ml.classifier import ClassificationJobHandler, RelevanceModel
 from worker_ml.config import MlConfig
 from worker_ml.jobs import EnqueueStats, MlJobPlanner
@@ -28,7 +29,7 @@ async def test_run_cycle_enqueues_and_processes_bounded_batch() -> None:
         SimpleNamespace(
             id=f"job-{index}",
             article_id=f"article-{index}",
-            job_type="classify_article",
+            job_type="create_article_card" if index == 1 else "classify_article",
             attempt_count=1,
             max_attempts=3,
         )
@@ -38,8 +39,10 @@ async def test_run_cycle_enqueues_and_processes_bounded_batch() -> None:
     job_store.claim_next_job = AsyncMock(side_effect=claimed_jobs)
     job_store.complete_job = AsyncMock()
     job_store.fail_job = AsyncMock()
-    handler = Mock(spec=ClassificationJobHandler)
-    handler.handle = AsyncMock()
+    classification_handler = Mock(spec=ClassificationJobHandler)
+    classification_handler.handle = AsyncMock()
+    article_card_handler = Mock(spec=ArticleCardJobHandler)
+    article_card_handler.handle = AsyncMock()
 
     result = await _run_cycle(
         settings=MlConfig(
@@ -50,7 +53,10 @@ async def test_run_cycle_enqueues_and_processes_bounded_batch() -> None:
         logger=Mock(),
         planner=planner,
         job_store=job_store,
-        handler=handler,
+        handlers={
+            "classify_article": classification_handler,
+            "create_article_card": article_card_handler,
+        },
     )
 
     assert result == {
@@ -60,7 +66,12 @@ async def test_run_cycle_enqueues_and_processes_bounded_batch() -> None:
         "failed_jobs": 0,
     }
     assert job_store.claim_next_job.await_count == 3
-    assert handler.handle.await_count == 3
+    assert classification_handler.handle.await_count == 2
+    article_card_handler.handle.assert_awaited_once_with(claimed_jobs[1])
+    assert job_store.claim_next_job.await_args.kwargs["job_types"] == (
+        "classify_article",
+        "create_article_card",
+    )
     assert job_store.complete_job.await_count == 3
 
 

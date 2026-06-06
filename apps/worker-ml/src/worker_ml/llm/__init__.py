@@ -8,7 +8,7 @@ from worker_ml.llm.contracts import (
     LlmRunType,
 )
 from worker_ml.llm.prompts import PromptRegistry
-from worker_ml.llm.runner import LlmTaskRunner, create_litellm_chat_model
+from worker_ml.llm.runner import LlmTaskResult, LlmTaskRunner, create_litellm_chat_model
 from worker_ml.llm.runs import LlmRunStore
 
 __all__ = [
@@ -18,6 +18,7 @@ __all__ = [
     "EventResolutionOutput",
     "LlmRunStore",
     "LlmRunType",
+    "LlmTaskResult",
     "LlmTaskRunner",
     "PromptRegistry",
     "create_litellm_chat_model",

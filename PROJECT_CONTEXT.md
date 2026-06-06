@@ -46,7 +46,10 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - One generic PostgreSQL `jobs` table with row locking is the MVP background-work mechanism. A job is one durable, retryable, typed pipeline work unit, not a worker process or domain object.
 - MVP jobs are article-scoped: each job works on one article, so the job store should carry an explicit `article_id` and enforce one all-time job row per `(job_type, article_id)`. Reruns reset or requeue that row rather than creating duplicates.
 - Ingestion is not queued as a job in the MVP. After historical backfill, systemd starts an hourly one-shot full-source pass that persists new articles to PostgreSQL and retries failed fetches up to five attempts.
-- `worker-ml` owns ML job creation. It should poll PostgreSQL for articles missing ML-derived state, starting with articles missing `article_relevance`, and enqueue idempotent downstream jobs such as `classify_article`.
+- `worker-ml` owns ML job creation. It polls PostgreSQL for articles missing
+  `article_relevance`, enqueues idempotent `classify_article` jobs, and processes
+  relevant articles through `create_article_card` into `article_cards` with
+  `llm_runs` provenance.
 - Article jobs are gated by durable outputs. Each successful step enqueues the next step only after its output row/link exists; downstream jobs are not pre-enqueued.
 - Workers claim jobs with PostgreSQL `FOR UPDATE SKIP LOCKED` row locking so multiple workers do not process the same job.
 - `running` jobs are reclaimable leases. If `locked_at` becomes older than the configured stale-job timeout, defaulting to 30 minutes, another worker may retry the job.

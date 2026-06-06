@@ -91,6 +91,9 @@ services:
     command: ["--config", "/app/config.yaml"]
     env_file:
       - ./.env.example
+    environment:
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-replace-me}"
     ports:
       - "${LITELLM_PROXY_PORT:-4000}:4000"
     volumes:

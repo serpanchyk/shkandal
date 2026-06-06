@@ -271,11 +271,100 @@ uv run python apps/worker-ingestion/scripts/reset_failed_fetches.py --source pra
 ## ML Worker
 
 The ML worker is also a one-shot job. Each run enqueues missing
-`classify_article` jobs and processes one bounded batch:
+`classify_article` jobs and processes one bounded batch of classification and
+article-card jobs:
 
 ```bash
 docker compose --profile jobs run --rm worker-ml
 ```
+
+### Smoke-test 10 article cards
+
+Put a real OpenAI key in the ignored root `.env` file. The tracked LiteLLM
+configuration currently routes all aliases through OpenAI:
+
+```bash
+cp .env.example .env
+# Edit .env and set OPENAI_API_KEY=...
+```
+
+Start the required infrastructure and run migrations:
+
+```bash
+docker compose up -d postgres qdrant llm-proxy
+uv run alembic -c packages/database/alembic.ini upgrade head
+```
+
+If the database has no articles, ingest a small source sample. Then run the ML
+worker until relevant classifier rows exist:
+
+```bash
+docker compose --profile jobs run --rm worker-ingestion python -m worker_ingestion.main --source pravda --limit 50
+docker compose --profile jobs run --rm worker-ml
+```
+
+Select up to ten relevant articles without cards and ensure their card jobs are
+queued at high priority:
+
+```bash
+docker compose exec -T postgres psql -U shkandal -d shkandal <<'SQL'
+WITH candidates AS (
+    SELECT a.id
+    FROM articles AS a
+    JOIN article_relevance AS ar ON ar.article_id = a.id AND ar.is_relevant = true
+    LEFT JOIN article_cards AS ac ON ac.article_id = a.id
+    LEFT JOIN jobs AS j
+      ON j.article_id = a.id
+     AND j.job_type = 'create_article_card'
+    WHERE ac.id IS NULL
+      AND (j.id IS NULL OR j.status <> 'running')
+    ORDER BY a.published_at DESC NULLS LAST, a.created_at DESC
+    LIMIT 10
+)
+INSERT INTO jobs (id, job_type, article_id, status, priority, payload, max_attempts)
+SELECT
+    gen_random_uuid(),
+    'create_article_card',
+    id,
+    'queued',
+    100,
+    jsonb_build_object('article_id', id::text),
+    3
+FROM candidates
+ON CONFLICT (job_type, article_id) DO UPDATE
+SET status = 'queued',
+    priority = 100,
+    attempt_count = 0,
+    run_after = NULL,
+    locked_at = NULL,
+    locked_by = NULL,
+    last_error = NULL,
+    updated_at = now();
+SQL
+```
+
+Run exactly one bounded worker batch of ten:
+
+```bash
+docker compose --profile jobs run --rm -e CLAIM_BATCH_SIZE=10 worker-ml
+```
+
+Inspect the generated rows and their LLM run history:
+
+```bash
+docker compose exec postgres psql -U shkandal -d shkandal -c \
+  "SELECT id, job_type, article_id, status, attempt_count, last_error, updated_at FROM jobs ORDER BY updated_at DESC LIMIT 20;"
+
+docker compose exec postgres psql -U shkandal -d shkandal -c \
+  "SELECT id, article_id, llm_run_id, title_uk, summary_uk, card_json, created_at FROM article_cards ORDER BY created_at DESC LIMIT 10;"
+
+docker compose exec postgres psql -U shkandal -d shkandal -c \
+  "SELECT id, run_type, model_name, status, metadata, raw_output, repaired_output, error_message, created_at FROM llm_runs ORDER BY created_at DESC LIMIT 10;"
+```
+
+To route through Anthropic instead, add `ANTHROPIC_API_KEY` to `.env` and change
+the local LiteLLM model entries in `infra/litellm/config.yaml.example` to
+Anthropic model identifiers before starting `llm-proxy`.
 
 For optional direct loop mode, bypass the scheduled one-shot runtime:
 

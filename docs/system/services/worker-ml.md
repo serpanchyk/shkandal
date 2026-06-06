@@ -40,9 +40,13 @@ proxy configuration, not to `worker-ml`.
 
 The current implementation supports a systemd-scheduled bounded pass that
 creates idempotent `classify_article` jobs for articles missing
-`article_relevance` and processes one configured batch. An explicit continuous
-polling mode remains available for direct use. It also includes an embedding
-service and vector-index integration for future card resolution jobs.
+`article_relevance` and processes one configured batch. Relevant classifier
+results enqueue `create_article_card`; the worker sends compact article evidence
+through the `article_card` prompt, validates `ArticleCardOutput`, and stores the
+result in `article_cards` with `llm_runs` provenance. Article text sent to the
+LLM is capped at 20,000 characters. An explicit continuous polling mode remains
+available for direct use. It also includes an embedding service and vector-index
+integration for future card resolution jobs.
 
 Run the default local one-shot pass or optional direct loop mode:
 
@@ -77,7 +81,7 @@ stored card/document text with `passage: ` before encoding. It validates
 non-empty text and the configured vector size. `VectorIndexService` composes
 that embedder with the shared Qdrant case, entity, and event repositories for
 typed upsert and search operations. Article-card generation and resolution jobs
-are still separate future pipeline stages.
+are separate pipeline stages; only article-card generation is implemented.
 
 The relevance classifier loads `manifest.json` and the sibling joblib pipeline
 from the configured `relevance_model_dir`. The current artifact was produced

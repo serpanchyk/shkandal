@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any, Protocol, TypeVar, cast
+from uuid import UUID
 
 from langchain_core.output_parsers import StrOutputParser
 from langchain_openai import ChatOpenAI
@@ -29,6 +31,14 @@ RUN_TYPE_MODELS: dict[LlmRunType, type[BaseModel]] = {
     "entity_resolution": EntityResolutionOutput,
     "event_resolution": EventResolutionOutput,
 }
+
+
+@dataclass(frozen=True)
+class LlmTaskResult:
+    """Validated LLM output and its persisted run provenance."""
+
+    output: BaseModel
+    run_id: UUID | None
 
 
 class AsyncTextChain(Protocol):
@@ -110,6 +120,25 @@ class LlmTaskRunner:
     ) -> BaseModel:
         """Run an LLM task, validate output, and repair invalid output once."""
 
+        return (
+            await self.run_with_provenance(
+                run_type=run_type,
+                model_name=model_name,
+                variables=variables,
+                metadata=metadata,
+            )
+        ).output
+
+    async def run_with_provenance(
+        self,
+        *,
+        run_type: LlmRunType,
+        model_name: str,
+        variables: Mapping[str, Any],
+        metadata: dict[str, Any] | None = None,
+    ) -> LlmTaskResult:
+        """Run an LLM task and return validated output with run provenance."""
+
         output_model = RUN_TYPE_MODELS[run_type]
         prompt = self._prompt_registry.get(run_type)
         run_id = None
@@ -154,7 +183,17 @@ class LlmTaskRunner:
                     repaired_output=repaired_json,
                     metadata=metadata,
                 )
-            return parsed
+            return LlmTaskResult(output=parsed, run_id=run_id)
+        except Exception as exc:
+            if self._run_store is not None and run_id is not None:
+                await self._run_store.finish_run(
+                    run_id=run_id,
+                    status="failed",
+                    raw_output=raw_json or {"text": raw_text},
+                    error_message=str(exc),
+                    metadata=metadata,
+                )
+            raise
 
         if self._run_store is not None and run_id is not None:
             await self._run_store.finish_run(
@@ -163,7 +202,7 @@ class LlmTaskRunner:
                 raw_output=raw_json,
                 metadata=metadata,
             )
-        return parsed
+        return LlmTaskResult(output=parsed, run_id=run_id)
 
     def _chain_for(self, run_type: LlmRunType) -> AsyncTextChain:
         try:

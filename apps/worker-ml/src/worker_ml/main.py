@@ -3,15 +3,30 @@
 import argparse
 import asyncio
 import logging
+from collections.abc import Mapping
+from typing import Protocol
 
 from shkandal_common.logging import setup_logger
 from shkandal_database.config import DatabaseConfig
-from shkandal_database.jobs import ArticleJobStore
+from shkandal_database.jobs import ArticleJobStore, ClaimedJob
 from shkandal_database.session import create_async_engine_from_config, create_async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from worker_ml.article_cards import ArticleCardJobHandler
 from worker_ml.classifier import ClassificationJobHandler, RelevanceModel
 from worker_ml.config import MlConfig
-from worker_ml.jobs import CLASSIFY_ARTICLE_JOB, MlJobPlanner
+from worker_ml.jobs import CLASSIFY_ARTICLE_JOB, CREATE_ARTICLE_CARD_JOB, MlJobPlanner
+from worker_ml.llm.runner import LlmTaskRunner
+from worker_ml.llm.runs import LlmRunStore
+
+SUPPORTED_JOB_TYPES = (CLASSIFY_ARTICLE_JOB, CREATE_ARTICLE_CARD_JOB)
+
+
+class JobHandler(Protocol):
+    """Minimal interface for one supported ML job handler."""
+
+    async def handle(self, job: ClaimedJob) -> object:
+        """Process one claimed job."""
 
 
 async def run_once(config: MlConfig | None = None) -> dict[str, int]:
@@ -33,13 +48,18 @@ async def run_once(config: MlConfig | None = None) -> dict[str, int]:
             stale_job_timeout=settings.stale_job_timeout,
         )
         planner = MlJobPlanner(session_factory, job_store)
-        handler = ClassificationJobHandler(session_factory, job_store, model)
+        handlers = _create_handlers(
+            settings=settings,
+            session_factory=session_factory,
+            job_store=job_store,
+            model=model,
+        )
         return await _run_cycle(
             settings=settings,
             logger=logger,
             planner=planner,
             job_store=job_store,
-            handler=handler,
+            handlers=handlers,
         )
     finally:
         await engine.dispose()
@@ -106,7 +126,7 @@ async def process_next_job(
         )
         claimed_job = await job_store.claim_next_job(
             worker_id=worker_id or settings.service_name,
-            job_types=(CLASSIFY_ARTICLE_JOB,),
+            job_types=SUPPORTED_JOB_TYPES,
         )
         if claimed_job is None:
             return {"status": "idle"}
@@ -115,9 +135,14 @@ async def process_next_job(
             settings.relevance_model_dir,
             threshold=settings.relevance_threshold,
         )
-        handler = ClassificationJobHandler(session_factory, job_store, model)
+        handlers = _create_handlers(
+            settings=settings,
+            session_factory=session_factory,
+            job_store=job_store,
+            model=model,
+        )
         try:
-            await handler.handle(claimed_job)
+            await handlers[claimed_job.job_type].handle(claimed_job)
         except Exception as exc:
             await job_store.fail_job(
                 job_id=claimed_job.id,
@@ -168,7 +193,12 @@ async def run_worker(config: MlConfig | None = None) -> None:
             stale_job_timeout=settings.stale_job_timeout,
         )
         planner = MlJobPlanner(session_factory, job_store)
-        handler = ClassificationJobHandler(session_factory, job_store, model)
+        handlers = _create_handlers(
+            settings=settings,
+            session_factory=session_factory,
+            job_store=job_store,
+            model=model,
+        )
         logger.info(
             "worker_ml_started",
             extra={
@@ -186,7 +216,7 @@ async def run_worker(config: MlConfig | None = None) -> None:
                 logger=logger,
                 planner=planner,
                 job_store=job_store,
-                handler=handler,
+                handlers=handlers,
             )
             if stats["processed_jobs"] == 0 and stats["ensured_jobs"] == 0:
                 await asyncio.sleep(settings.poll_interval_seconds)
@@ -200,7 +230,7 @@ async def _run_cycle(
     logger: logging.Logger,
     planner: MlJobPlanner,
     job_store: ArticleJobStore,
-    handler: ClassificationJobHandler,
+    handlers: Mapping[str, JobHandler],
 ) -> dict[str, int]:
     enqueue_stats = await planner.enqueue_missing_classification_jobs(
         limit=settings.enqueue_batch_size,
@@ -224,13 +254,13 @@ async def _run_cycle(
     for _ in range(settings.claim_batch_size):
         claimed_job = await job_store.claim_next_job(
             worker_id=settings.service_name,
-            job_types=(CLASSIFY_ARTICLE_JOB,),
+            job_types=SUPPORTED_JOB_TYPES,
         )
         if claimed_job is None:
             break
 
         try:
-            await handler.handle(claimed_job)
+            await handlers[claimed_job.job_type].handle(claimed_job)
         except Exception as exc:
             await job_store.fail_job(
                 job_id=claimed_job.id,
@@ -268,6 +298,25 @@ async def _run_cycle(
     }
     logger.info("worker_ml_cycle_finished", extra=stats)
     return stats
+
+
+def _create_handlers(
+    *,
+    settings: MlConfig,
+    session_factory: async_sessionmaker[AsyncSession],
+    job_store: ArticleJobStore,
+    model: RelevanceModel,
+) -> dict[str, JobHandler]:
+    run_store = LlmRunStore(session_factory)
+    runner = LlmTaskRunner.from_config(settings=settings, run_store=run_store)
+    return {
+        CLASSIFY_ARTICLE_JOB: ClassificationJobHandler(session_factory, job_store, model),
+        CREATE_ARTICLE_CARD_JOB: ArticleCardJobHandler(
+            session_factory,
+            runner,
+            model_name=settings.llm_article_card_model,
+        ),
+    }
 
 
 def main() -> None:
