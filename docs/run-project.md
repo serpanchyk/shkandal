@@ -369,6 +369,16 @@ docker compose exec postgres psql -U shkandal -d shkandal -c \
   "SELECT id, run_type, model_name, status, metadata, raw_output, repaired_output, error_message, created_at FROM llm_runs ORDER BY created_at DESC LIMIT 10;"
 ```
 
+After changing the article-card prompt or JSON contract, preview and apply a
+full card regeneration. Stop active ML workers first; apply mode also refuses
+to proceed if any `create_article_card` job is running. Existing `llm_runs`
+remain available for comparison and debugging:
+
+```bash
+uv run python -m worker_ml.reprocess_article_cards
+uv run python -m worker_ml.reprocess_article_cards --apply
+```
+
 To route through another provider instead, add its credential to
 `infra/litellm/.env` and change the LiteLLM model entries in
 `infra/litellm/config.yaml.example` before starting `llm-proxy`.

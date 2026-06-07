@@ -11,7 +11,7 @@ from worker_ml.article_cards import (
     ArticleCardJobHandler,
     build_article_json,
 )
-from worker_ml.llm.contracts import ArticleCardOutput
+from worker_ml.llm.contracts import ArticleCardOutput, ProvisionalEvent
 from worker_ml.llm.runner import LlmTaskResult, LlmTaskRunner
 
 
@@ -72,10 +72,18 @@ async def test_handler_creates_article_card_from_valid_llm_output() -> None:
     output = ArticleCardOutput(
         title_uk="Картка",
         summary_uk="Короткий опис",
+        is_case_candidate=True,
+        main_event_title_uk="НБУ оштрафував банк",
         entities=[],
-        events=[],
-        key_terms=["термін"],
-        source_metadata={},
+        events=[
+            ProvisionalEvent(
+                title_uk="НБУ оштрафував банк",
+                description_uk="Регулятор наклав штраф.",
+                event_date="2026-06-06",
+                event_date_precision="day",
+            )
+        ],
+        case_signature_terms=["НБУ", "штраф"],
     )
     run_id = uuid4()
     runner = Mock(spec=LlmTaskRunner)

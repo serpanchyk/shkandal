@@ -49,7 +49,9 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - `worker-ml` owns ML job creation. It polls PostgreSQL for articles missing
   `article_relevance`, enqueues idempotent `classify_article` jobs, and processes
   relevant articles through `create_article_card` into `article_cards` with
-  `llm_runs` provenance.
+  `llm_runs` provenance. Article cards apply a stricter LLM case-candidate gate;
+  non-case cards retain a summary but do not expose events, entities, or case
+  signature terms.
 - Article jobs are gated by durable outputs. Each successful step enqueues the next step only after its output row/link exists; downstream jobs are not pre-enqueued.
 - Workers claim jobs with PostgreSQL `FOR UPDATE SKIP LOCKED` row locking so multiple workers do not process the same job.
 - `running` jobs are reclaimable leases. If `locked_at` becomes older than the configured stale-job timeout, defaulting to 30 minutes, another worker may retry the job.

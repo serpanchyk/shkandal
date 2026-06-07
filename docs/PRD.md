@@ -93,6 +93,11 @@ current database rows.
 - The first likely classifier shape is logistic regression over title, lead, and the first fixed-size text window with TF-IDF word and character ngrams.
 - DVC tracks large model binaries under `artifacts/models/`. Real artifacts stay outside Git; manifests and `.dvc` pointers are tracked.
 - LLM article cards are provisional structured understanding, not final global identity.
+- Article cards separate classifier relevance from case candidacy. Non-case
+  cards retain a summary but have no provisional events, entities, or case
+  signature terms.
+- Article-card extraction is limited to the main article and excludes related
+  articles, recommendations, boilerplate, and unrelated background.
 - Article-case resolution happens before entity and event resolution.
 - Entity and event resolvers receive all linked cases and assign each resolved item only to relevant cases.
 - Direct `case_entities` and `case_events` are materialized from article-level scoped links.

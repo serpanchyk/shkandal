@@ -21,8 +21,9 @@ async def test_runner_returns_valid_output_without_repair() -> None:
         prompt_registry=PromptRegistry(),
         task_chains={
             "article_card": FakeChain(
-                '{"title_uk":"Заголовок","summary_uk":"Опис","entities":[],"events":[],'
-                '"key_terms":[],"source_metadata":{}}'
+                '{"title_uk":"Заголовок","summary_uk":"Опис","is_case_candidate":false,'
+                '"noise_reason":"generic_news","main_event_title_uk":null,"entities":[],'
+                '"events":[],"case_signature_terms":[]}'
             )
         },
     )
@@ -48,8 +49,9 @@ async def test_runner_returns_persisted_run_provenance() -> None:
         run_store=run_store,
         task_chains={
             "article_card": FakeChain(
-                '{"title_uk":"Заголовок","summary_uk":"Опис","entities":[],"events":[],'
-                '"key_terms":[],"source_metadata":{}}'
+                '{"title_uk":"Заголовок","summary_uk":"Опис","is_case_candidate":false,'
+                '"noise_reason":"generic_news","main_event_title_uk":null,"entities":[],'
+                '"events":[],"case_signature_terms":[]}'
             )
         },
     )
@@ -68,8 +70,9 @@ async def test_runner_returns_persisted_run_provenance() -> None:
 @pytest.mark.asyncio
 async def test_runner_repairs_invalid_output_once() -> None:
     repair_chain = FakeChain(
-        '{"title_uk":"Виправлено","summary_uk":"Опис","entities":[],"events":[],'
-        '"key_terms":[],"source_metadata":{}}'
+        '{"title_uk":"Виправлено","summary_uk":"Опис","is_case_candidate":false,'
+        '"noise_reason":"generic_news","main_event_title_uk":null,"entities":[],'
+        '"events":[],"case_signature_terms":[]}'
     )
     runner = LlmTaskRunner(
         prompt_registry=PromptRegistry(),

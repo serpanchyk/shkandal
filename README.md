@@ -167,18 +167,23 @@ Irrelevant articles remain stored with `is_relevant=false` for debugging, evalua
 
 ### 4. Create Provisional Article Card
 
-For relevant articles, the LLM creates a compact Ukrainian article card with structured JSON validated by Pydantic.
+For classifier-positive articles, the LLM creates a compact Ukrainian article
+card with structured JSON validated by Pydantic. The LLM applies a stricter
+`is_case_candidate` gate so rankings, essays, generic news, and similar material
+remain available as summaries without producing case events or entities.
 
 The card contains:
 
 - Ukrainian title or cleaned title;
 - short Ukrainian summary;
-- provisional normalized entities;
-- provisional normalized events;
-- key terms;
-- source metadata.
+- case-candidate decision and fixed noise reason;
+- main event title for case candidates;
+- up to eight case-relevant normalized entities;
+- one to three provisional normalized events;
+- up to eight case-signature terms.
 
 The provisional entities and events are not final global identities yet.
+Non-case cards have empty event, entity, and case-signature lists.
 
 ### 5. Resolve Cases
 

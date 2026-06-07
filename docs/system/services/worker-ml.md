@@ -48,6 +48,24 @@ LLM is capped at 20,000 characters. An explicit continuous polling mode remains
 available for direct use. It also includes an embedding service and vector-index
 integration for future card resolution jobs.
 
+The article-card prompt considers only the main article and excludes related
+articles, recommendations, boilerplate, and unrelated background. Its contract
+separates classifier relevance from stricter case candidacy. Case candidates
+have a main event, one to three events, up to eight central entities, and up to
+eight case-signature terms. Non-case cards retain only the cleaned title,
+summary, and a fixed noise reason; their events, entities, and signature terms
+are empty.
+
+After an article-card prompt or contract change, inspect and explicitly apply a
+full regeneration. Apply mode refuses to run while any article-card job is
+running, deletes current cards, and resets or creates card jobs for all
+classifier-positive articles while preserving historical `llm_runs`:
+
+```bash
+uv run python -m worker_ml.reprocess_article_cards
+uv run python -m worker_ml.reprocess_article_cards --apply
+```
+
 Run the default local one-shot pass or optional direct loop mode:
 
 ```bash

@@ -1,0 +1,109 @@
+"""Tests for article-card regeneration."""
+
+from unittest.mock import AsyncMock, MagicMock, Mock
+from uuid import uuid4
+
+import pytest
+from shkandal_database.models import Job
+from worker_ml.reprocess_article_cards import reprocess_article_cards
+
+
+def _session_context(session: MagicMock) -> MagicMock:
+    context = MagicMock()
+    context.__aenter__ = AsyncMock(return_value=session)
+    context.__aexit__ = AsyncMock(return_value=None)
+    return context
+
+
+def _scalar_result(values: list[object]) -> MagicMock:
+    result = MagicMock()
+    result.all.return_value = values
+    return result
+
+
+def _job(*, article_id: object, status: str = "succeeded") -> Job:
+    return Job(
+        id=uuid4(),
+        job_type="create_article_card",
+        article_id=article_id,
+        status=status,
+        payload={},
+        attempt_count=2,
+        max_attempts=3,
+    )
+
+
+@pytest.mark.asyncio
+async def test_reprocess_article_cards_dry_run_reports_without_mutation() -> None:
+    existing_id = uuid4()
+    missing_id = uuid4()
+    session = MagicMock()
+    session.scalars = AsyncMock(
+        side_effect=[
+            _scalar_result([_job(article_id=existing_id)]),
+            _scalar_result([existing_id, missing_id]),
+        ]
+    )
+    session.scalar = AsyncMock(return_value=5)
+    session.execute = AsyncMock()
+    session.commit = AsyncMock()
+
+    stats = await reprocess_article_cards(
+        Mock(return_value=_session_context(session)),
+        apply=False,
+    )
+
+    assert stats.cards_to_delete == 5
+    assert stats.jobs_to_reset == 1
+    assert stats.jobs_to_create == 1
+    session.execute.assert_not_awaited()
+    session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_reprocess_article_cards_refuses_running_jobs() -> None:
+    session = MagicMock()
+    session.scalars = AsyncMock(
+        return_value=_scalar_result([_job(article_id=uuid4(), status="running")])
+    )
+
+    with pytest.raises(RuntimeError, match="card jobs are running"):
+        await reprocess_article_cards(
+            Mock(return_value=_session_context(session)),
+            apply=True,
+        )
+
+
+@pytest.mark.asyncio
+async def test_reprocess_article_cards_applies_reset_and_creates_missing_job() -> None:
+    existing_id = uuid4()
+    missing_id = uuid4()
+    existing_job = _job(article_id=existing_id)
+    session = MagicMock()
+    session.scalars = AsyncMock(
+        side_effect=[
+            _scalar_result([existing_job]),
+            _scalar_result([existing_id, missing_id]),
+        ]
+    )
+    session.scalar = AsyncMock(return_value=4)
+    session.execute = AsyncMock()
+    session.commit = AsyncMock()
+
+    stats = await reprocess_article_cards(
+        Mock(return_value=_session_context(session)),
+        apply=True,
+        max_attempts=5,
+    )
+
+    assert stats.applied is True
+    assert stats.jobs_to_reset == 1
+    assert stats.jobs_to_create == 1
+    assert session.execute.await_count == 2
+    upsert = session.execute.await_args_list[1].args[0]
+    params = upsert.compile().params
+    assert existing_id in params.values()
+    assert missing_id in params.values()
+    assert "queued" in params.values()
+    assert 5 in params.values()
+    session.commit.assert_awaited_once()
