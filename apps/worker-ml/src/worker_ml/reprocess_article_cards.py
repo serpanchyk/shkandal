@@ -6,7 +6,7 @@ import argparse
 import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from shkandal_database.config import DatabaseConfig
 from shkandal_database.models import ArticleCard, ArticleRelevance, Job
@@ -16,6 +16,8 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from worker_ml.jobs import CREATE_ARTICLE_CARD_JOB
+
+JOB_UPSERT_BATCH_SIZE = 1_000
 
 
 @dataclass(frozen=True)
@@ -84,39 +86,56 @@ async def reprocess_article_cards(
 
         await session.execute(delete(ArticleCard))
         reset_at = datetime.now(UTC)
-        if relevant_article_ids:
-            statement = insert(Job).values(
-                [
-                    {
-                        "id": uuid4(),
-                        "job_type": CREATE_ARTICLE_CARD_JOB,
-                        "article_id": article_id,
-                        "status": "queued",
-                        "payload": {"article_id": str(article_id)},
-                        "attempt_count": 0,
-                        "max_attempts": max_attempts,
-                    }
-                    for article_id in relevant_article_ids
-                ]
-            )
-            await session.execute(
-                statement.on_conflict_do_update(
-                    index_elements=[Job.job_type, Job.article_id],
-                    set_={
-                        "status": "queued",
-                        "payload": statement.excluded.payload,
-                        "attempt_count": 0,
-                        "max_attempts": max_attempts,
-                        "run_after": None,
-                        "locked_at": None,
-                        "locked_by": None,
-                        "last_error": None,
-                        "updated_at": reset_at,
-                    },
-                )
+        for start in range(0, len(relevant_article_ids), JOB_UPSERT_BATCH_SIZE):
+            await _upsert_article_card_jobs(
+                session,
+                article_ids=relevant_article_ids[start : start + JOB_UPSERT_BATCH_SIZE],
+                max_attempts=max_attempts,
+                reset_at=reset_at,
             )
         await session.commit()
         return stats
+
+
+async def _upsert_article_card_jobs(
+    session: AsyncSession,
+    *,
+    article_ids: tuple[UUID, ...],
+    max_attempts: int,
+    reset_at: datetime,
+) -> None:
+    """Queue one bounded batch without exceeding asyncpg's parameter limit."""
+
+    statement = insert(Job).values(
+        [
+            {
+                "id": uuid4(),
+                "job_type": CREATE_ARTICLE_CARD_JOB,
+                "article_id": article_id,
+                "status": "queued",
+                "payload": {"article_id": str(article_id)},
+                "attempt_count": 0,
+                "max_attempts": max_attempts,
+            }
+            for article_id in article_ids
+        ]
+    )
+    await session.execute(
+        statement.on_conflict_do_update(
+            index_elements=[Job.job_type, Job.article_id],
+            set_={
+                "status": "queued",
+                "payload": statement.excluded.payload,
+                "attempt_count": 0,
+                "max_attempts": max_attempts,
+                "run_after": None,
+                "locked_at": None,
+                "locked_by": None,
+                "last_error": None,
+                "updated_at": reset_at,
+            },
+        )
+    )
 
 
 async def _run(*, apply: bool, max_attempts: int) -> ArticleCardReprocessingStats:

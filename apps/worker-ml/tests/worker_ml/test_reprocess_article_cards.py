@@ -1,11 +1,12 @@
 """Tests for article-card regeneration."""
 
+from collections.abc import Sequence
 from unittest.mock import AsyncMock, MagicMock, Mock
 from uuid import uuid4
 
 import pytest
 from shkandal_database.models import Job
-from worker_ml.reprocess_article_cards import reprocess_article_cards
+from worker_ml.reprocess_article_cards import JOB_UPSERT_BATCH_SIZE, reprocess_article_cards
 
 
 def _session_context(session: MagicMock) -> MagicMock:
@@ -15,7 +16,7 @@ def _session_context(session: MagicMock) -> MagicMock:
     return context
 
 
-def _scalar_result(values: list[object]) -> MagicMock:
+def _scalar_result(values: Sequence[object]) -> MagicMock:
     result = MagicMock()
     result.all.return_value = values
     return result
@@ -107,3 +108,25 @@ async def test_reprocess_article_cards_applies_reset_and_creates_missing_job() -
     assert "queued" in params.values()
     assert 5 in params.values()
     session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_reprocess_article_cards_batches_large_job_upserts() -> None:
+    article_ids = [uuid4() for _ in range(JOB_UPSERT_BATCH_SIZE + 1)]
+    session = MagicMock()
+    session.scalars = AsyncMock(
+        side_effect=[
+            _scalar_result([]),
+            _scalar_result(article_ids),
+        ]
+    )
+    session.scalar = AsyncMock(return_value=0)
+    session.execute = AsyncMock()
+    session.commit = AsyncMock()
+
+    await reprocess_article_cards(
+        Mock(return_value=_session_context(session)),
+        apply=True,
+    )
+
+    assert session.execute.await_count == 3
