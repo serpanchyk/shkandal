@@ -54,7 +54,7 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - Workers claim jobs with PostgreSQL `FOR UPDATE SKIP LOCKED` row locking so multiple workers do not process the same job.
 - `running` jobs are reclaimable leases. If `locked_at` becomes older than the configured stale-job timeout, defaulting to 30 minutes, another worker may retry the job.
 - Claiming a job increments `attempt_count`; crashes count as attempts. Failed jobs with attempts remaining return to `queued` with `run_after`, and exhausted jobs become `failed`.
-- LLM calls go through a LiteLLM proxy service. `worker-ml` uses logical per-stage aliases, while provider credentials, throttling, and routing belong to proxy configuration. No secrets are committed.
+- LLM calls go through a LiteLLM proxy service. `worker-ml` uses logical per-stage aliases, while provider credentials, throttling, and routing belong to proxy configuration. The tracked proxy configuration routes all aliases through Lapatonia's OpenAI-compatible API. No secrets are committed.
 - Runtime configuration uses three ignored env files: root `.env` for shared
   application settings and proxy access, `infra/postgres/.env` for PostgreSQL
   bootstrap credentials, and `infra/litellm/.env` for provider API keys.

@@ -287,12 +287,12 @@ docker compose --profile jobs run --rm worker-ml
 
 ### Smoke-test 10 article cards
 
-Put a real OpenAI key in the ignored LiteLLM env file. The tracked LiteLLM
-configuration currently routes all aliases through OpenAI:
+Put a real Lapatonia key in the ignored LiteLLM env file. The tracked LiteLLM
+configuration routes all aliases through the OpenAI-compatible Lapatonia API:
 
 ```bash
 cp infra/litellm/.env.example infra/litellm/.env
-# Edit infra/litellm/.env and set OPENAI_API_KEY=...
+# Edit infra/litellm/.env and set LAPATONIA_API_KEY=...
 ```
 
 Start the required infrastructure and run migrations:
@@ -369,10 +369,9 @@ docker compose exec postgres psql -U shkandal -d shkandal -c \
   "SELECT id, run_type, model_name, status, metadata, raw_output, repaired_output, error_message, created_at FROM llm_runs ORDER BY created_at DESC LIMIT 10;"
 ```
 
-To route through Anthropic instead, set `ANTHROPIC_API_KEY` in
-`infra/litellm/.env` and change the local LiteLLM model entries in
-`infra/litellm/config.yaml.example` to Anthropic model identifiers before
-starting `llm-proxy`.
+To route through another provider instead, add its credential to
+`infra/litellm/.env` and change the LiteLLM model entries in
+`infra/litellm/config.yaml.example` before starting `llm-proxy`.
 
 For optional direct loop mode, bypass the scheduled one-shot runtime:
 
