@@ -67,7 +67,7 @@ class LlmRunStore:
             "finished_at": finished_at or datetime.now(UTC),
         }
         if metadata is not None:
-            values["metadata"] = metadata
+            values["metadata_"] = metadata
 
         async with async_session_scope(self._session_factory) as session:
             await session.execute(update(LlmRun).where(LlmRun.id == run_id).values(**values))
