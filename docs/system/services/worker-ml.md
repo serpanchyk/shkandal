@@ -45,10 +45,10 @@ results enqueue `create_article_card`; the worker sends compact article evidence
 through the `article_card` prompt, validates `ArticleCardOutput`, and stores the
 result in `article_cards` with `llm_runs` provenance. Article text sent to the
 LLM is capped at 20,000 characters. The table stores an indexed
-`is_case_candidate` column alongside the full card JSON so later resolution
-stages can select only trackable cases. An explicit continuous polling mode
-remains available for direct use. It also includes an embedding service and
-vector-index integration for future card resolution jobs.
+`is_case_candidate` column so later resolution stages can select only trackable
+cases; the gate is omitted from `card_json` to avoid duplicating it. An explicit
+continuous polling mode remains available for direct use. It also includes an
+embedding service and vector-index integration for future card resolution jobs.
 
 The article-card prompt considers only the main article and excludes related
 articles, recommendations, boilerplate, and unrelated background. Its contract

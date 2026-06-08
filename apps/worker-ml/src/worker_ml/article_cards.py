@@ -33,7 +33,7 @@ async def get_case_candidate_card(
                 ArticleCard.article_id == article_id,
                 ArticleCard.is_case_candidate.is_(True),
             )
-        )
+        ),
     )
 
 
@@ -100,7 +100,10 @@ class ArticleCardJobHandler:
                     title_uk=output.title_uk,
                     summary_uk=output.summary_uk,
                     is_case_candidate=output.is_case_candidate,
-                    card_json=output.model_dump(mode="json"),
+                    card_json=output.model_dump(
+                        mode="json",
+                        exclude={"is_case_candidate"},
+                    ),
                 )
                 .on_conflict_do_nothing(index_elements=[ArticleCard.article_id])
             )

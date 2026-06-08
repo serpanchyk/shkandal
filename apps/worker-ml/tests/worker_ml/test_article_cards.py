@@ -109,7 +109,10 @@ async def test_handler_creates_article_card_from_valid_llm_output() -> None:
     assert params["title_uk"] == "Картка"
     assert params["summary_uk"] == "Короткий опис"
     assert params["is_case_candidate"] is True
-    assert params["card_json"] == output.model_dump(mode="json")
+    assert params["card_json"] == output.model_dump(
+        mode="json",
+        exclude={"is_case_candidate"},
+    )
 
 
 @pytest.mark.asyncio
