@@ -38,6 +38,12 @@ logical model aliases (`shkandal-article-card`, `shkandal-case-resolution`,
 routing, provider credentials, throttling, and fallback policy belong to the
 proxy configuration, not to `worker-ml`.
 
+When the proxy or provider returns HTTP `429`, the worker persists a shared LLM
+cooldown and stops claiming LLM-backed jobs until it expires. The rejected job
+is deferred without consuming a job attempt. Local relevance classification
+continues during the cooldown. The worker honors `Retry-After` when present and
+uses a 60-minute fallback otherwise.
+
 The current implementation supports a systemd-scheduled bounded pass that
 creates idempotent `classify_article` jobs for articles missing
 `article_relevance` and processes one configured batch. Relevant classifier

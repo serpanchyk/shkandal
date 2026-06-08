@@ -269,6 +269,9 @@ task failed and keep it eligible for later reprocessing.
 All runtime LLM calls go through the LiteLLM proxy. `worker-ml` requests logical
 per-stage aliases such as `shkandal-article-card` and `shkandal-repair`; the
 proxy owns provider credentials, throttling, routing, and fallback policy.
+Provider HTTP `429` responses create a durable shared LLM cooldown: the rejected
+job is deferred without consuming an attempt, while local relevance
+classification continues.
 
 ## Architecture
 

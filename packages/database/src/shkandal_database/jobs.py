@@ -222,6 +222,32 @@ class ArticleJobStore:
         async with async_session_scope(self._session_factory) as session:
             await session.execute(update(Job).where(Job.id == job_id).values(**values))
 
+    async def defer_job(
+        self,
+        *,
+        job_id: UUID,
+        run_after: datetime,
+        reason: str,
+        now: datetime | None = None,
+    ) -> None:
+        """Release a claimed job without consuming its attempt."""
+
+        deferred_at = now or datetime.now(UTC)
+        async with async_session_scope(self._session_factory) as session:
+            await session.execute(
+                update(Job)
+                .where(Job.id == job_id, Job.status == JOB_STATUS_RUNNING)
+                .values(
+                    status=JOB_STATUS_QUEUED,
+                    attempt_count=Job.attempt_count - 1,
+                    run_after=run_after,
+                    locked_at=None,
+                    locked_by=None,
+                    last_error=reason,
+                    updated_at=deferred_at,
+                )
+            )
+
     def retry_delay(self, attempt_count: int) -> timedelta:
         """Return exponential-ish retry delay for a failed claimed attempt."""
 

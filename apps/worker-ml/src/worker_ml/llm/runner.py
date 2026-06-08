@@ -5,11 +5,14 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from typing import Any, Protocol, TypeVar, cast
 from uuid import UUID
 
 from langchain_core.output_parsers import StrOutputParser
 from langchain_openai import ChatOpenAI
+from openai import RateLimitError
 from pydantic import BaseModel, SecretStr, ValidationError
 
 from worker_ml.config import MlConfig
@@ -31,6 +34,15 @@ RUN_TYPE_MODELS: dict[LlmRunType, type[BaseModel]] = {
     "entity_resolution": EntityResolutionOutput,
     "event_resolution": EventResolutionOutput,
 }
+DEFAULT_RATE_LIMIT_RETRY_SECONDS = 3600
+
+
+class LlmRateLimitError(RuntimeError):
+    """Provider rate limit with the requested retry time."""
+
+    def __init__(self, message: str, *, retry_after_seconds: int) -> None:
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
 
 
 @dataclass(frozen=True)
@@ -56,6 +68,7 @@ def create_litellm_chat_model(*, settings: MlConfig, model_name: str) -> ChatOpe
         api_key=SecretStr(settings.llm_api_key),
         base_url=settings.llm_api_base,
         temperature=0,
+        max_retries=0,
     )
 
 
@@ -154,15 +167,25 @@ class LlmTaskRunner:
         raw_text = ""
         raw_json: dict[str, Any] | None = None
         try:
-            raw_text = str(await self._chain_for(run_type).ainvoke(dict(variables)))
+            raw_text = str(await invoke_chain(self._chain_for(run_type), dict(variables)))
             raw_json = parse_json_object(raw_text)
             parsed = output_model.model_validate(raw_json)
         except (ValueError, ValidationError) as exc:
-            repaired_json, repair_error = await self._repair(
-                output_model=output_model,
-                validation_error=str(exc),
-                invalid_output=raw_text,
-            )
+            try:
+                repaired_json, repair_error = await self._repair(
+                    output_model=output_model,
+                    validation_error=str(exc),
+                    invalid_output=raw_text,
+                )
+            except LlmRateLimitError as rate_limit_exc:
+                await self._finish_rate_limited_run(
+                    run_id=run_id,
+                    raw_text=raw_text,
+                    raw_json=raw_json,
+                    error=rate_limit_exc,
+                    metadata=metadata,
+                )
+                raise
             if repaired_json is None:
                 if self._run_store is not None and run_id is not None:
                     await self._run_store.finish_run(
@@ -186,12 +209,19 @@ class LlmTaskRunner:
             return LlmTaskResult(output=parsed, run_id=run_id)
         except Exception as exc:
             if self._run_store is not None and run_id is not None:
+                failed_metadata = metadata
+                if isinstance(exc, LlmRateLimitError):
+                    failed_metadata = {
+                        **(metadata or {}),
+                        "rate_limited": True,
+                        "retry_after_seconds": exc.retry_after_seconds,
+                    }
                 await self._run_store.finish_run(
                     run_id=run_id,
                     status="failed",
                     raw_output=raw_json or {"text": raw_text},
                     error_message=str(exc),
-                    metadata=metadata,
+                    metadata=failed_metadata,
                 )
             raise
 
@@ -222,7 +252,8 @@ class LlmTaskRunner:
 
         try:
             repaired_text = str(
-                await self._repair_chain.ainvoke(
+                await invoke_chain(
+                    self._repair_chain,
                     {
                         "schema_json": json.dumps(
                             output_model.model_json_schema(),
@@ -230,7 +261,7 @@ class LlmTaskRunner:
                         ),
                         "validation_error": validation_error,
                         "invalid_output": invalid_output,
-                    }
+                    },
                 )
             )
             repaired_json = parse_json_object(repaired_text)
@@ -238,6 +269,29 @@ class LlmTaskRunner:
             return repaired_json, None
         except (ValueError, ValidationError) as exc:
             return None, str(exc)
+
+    async def _finish_rate_limited_run(
+        self,
+        *,
+        run_id: UUID | None,
+        raw_text: str,
+        raw_json: dict[str, Any] | None,
+        error: LlmRateLimitError,
+        metadata: dict[str, Any] | None,
+    ) -> None:
+        if self._run_store is None or run_id is None:
+            return
+        await self._run_store.finish_run(
+            run_id=run_id,
+            status="failed",
+            raw_output=raw_json or {"text": raw_text},
+            error_message=str(error),
+            metadata={
+                **(metadata or {}),
+                "rate_limited": True,
+                "retry_after_seconds": error.retry_after_seconds,
+            },
+        )
 
 
 def model_aliases(settings: MlConfig) -> dict[str, str]:
@@ -263,3 +317,33 @@ def parse_json_object(text: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError("LLM output must be a JSON object")
     return value
+
+
+async def invoke_chain(chain: AsyncTextChain, variables: Mapping[str, Any]) -> Any:
+    """Invoke an LLM chain and normalize provider rate-limit failures."""
+
+    try:
+        return await chain.ainvoke(variables)
+    except RateLimitError as exc:
+        raise LlmRateLimitError(
+            str(exc),
+            retry_after_seconds=parse_retry_after_seconds(exc),
+        ) from exc
+
+
+def parse_retry_after_seconds(error: RateLimitError) -> int:
+    """Return provider Retry-After seconds or the safe hourly fallback."""
+
+    value = error.response.headers.get("retry-after")
+    if value is None:
+        return DEFAULT_RATE_LIMIT_RETRY_SECONDS
+    try:
+        return max(1, int(float(value)))
+    except ValueError:
+        try:
+            retry_at = parsedate_to_datetime(value)
+        except (TypeError, ValueError):
+            return DEFAULT_RATE_LIMIT_RETRY_SECONDS
+        if retry_at.tzinfo is None:
+            retry_at = retry_at.replace(tzinfo=UTC)
+        return max(1, int((retry_at - datetime.now(UTC)).total_seconds()))

@@ -57,6 +57,10 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - `running` jobs are reclaimable leases. If `locked_at` becomes older than the configured stale-job timeout, defaulting to 30 minutes, another worker may retry the job.
 - Claiming a job increments `attempt_count`; crashes count as attempts. Failed jobs with attempts remaining return to `queued` with `run_after`, and exhausted jobs become `failed`.
 - LLM calls go through a LiteLLM proxy service. `worker-ml` uses logical per-stage aliases, while provider credentials, throttling, and routing belong to proxy configuration. The tracked proxy configuration routes all aliases through Lapatonia's OpenAI-compatible API. No secrets are committed.
+- Provider HTTP `429` responses create a shared durable LLM cooldown. The current
+  LLM job is deferred without consuming an attempt, later LLM jobs wait until
+  the provider `Retry-After` time or a 60-minute fallback, and local classifier
+  jobs continue during the pause.
 - Runtime configuration uses three ignored env files: root `.env` for shared
   application settings and proxy access, `infra/postgres/.env` for PostgreSQL
   bootstrap credentials, and `infra/litellm/.env` for provider API keys.

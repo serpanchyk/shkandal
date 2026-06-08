@@ -209,6 +209,18 @@ class LlmRun(Base):
     created_at: Mapped[datetime] = created_at_column()
 
 
+class LlmCooldown(Base):
+    """Shared pause state for LLM-backed jobs."""
+
+    __tablename__ = "llm_cooldowns"
+
+    scope: Mapped[str] = mapped_column(Text, primary_key=True)
+    resume_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+
+
 class ArticleCard(Base):
     """Provisional structured article card."""
 

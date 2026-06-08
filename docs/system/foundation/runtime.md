@@ -61,6 +61,13 @@ Retries use exponential-style backoff with jitter, starting from 1 minute, then
 5 minutes, then 15 minutes for MVP defaults. When attempts are exhausted, the
 job is marked `failed`.
 
+Provider HTTP `429` responses are capacity deferrals, not job failures. The
+worker records one shared durable LLM cooldown, releases the current LLM job
+with its claim attempt restored, and sets its `run_after` to the cooldown
+expiry. Later worker runs claim only non-LLM jobs until the cooldown expires.
+The provider's `Retry-After` value is used when available; otherwise the worker
+waits 60 minutes.
+
 Ingestion is not modeled as a queued job for the MVP. After the historical
 backfill is complete, systemd starts a one-shot full-source pass every hour.
 The pass retries failed fetches with bounded durable state and writes

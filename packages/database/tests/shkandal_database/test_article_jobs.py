@@ -105,3 +105,23 @@ def test_claim_query_uses_skip_locked() -> None:
 
     assert "FOR UPDATE SKIP LOCKED" in compiled
     assert "jobs.job_type IN" in compiled
+
+
+@pytest.mark.asyncio
+async def test_defer_job_releases_claim_and_restores_attempt() -> None:
+    session_factory, session = _mock_session_factory()
+    session.execute = AsyncMock()
+    resume_at = datetime(2026, 6, 8, 15, 0, tzinfo=UTC)
+
+    await ArticleJobStore(session_factory).defer_job(
+        job_id=uuid4(),
+        run_after=resume_at,
+        reason="LLM rate limit",
+    )
+
+    statement = session.execute.await_args.args[0]
+    params = statement.compile().params
+    assert params["status"] == "queued"
+    assert params["run_after"] == resume_at
+    assert params["last_error"] == "LLM rate limit"
+    assert "attempt_count - " in str(statement)

@@ -9,6 +9,7 @@ EXPECTED_TABLES = {
     "articles",
     "article_relevance",
     "llm_runs",
+    "llm_cooldowns",
     "article_cards",
     "cases",
     "case_articles",

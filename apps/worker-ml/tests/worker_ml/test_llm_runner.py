@@ -7,11 +7,19 @@ from typing import Any
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
+import httpx
+import openai
 import pytest
 from worker_ml.config import MlConfig
 from worker_ml.llm.contracts import ArticleCardOutput
 from worker_ml.llm.prompts import PromptRegistry
-from worker_ml.llm.runner import LlmTaskRunner, model_aliases, parse_json_object
+from worker_ml.llm.runner import (
+    DEFAULT_RATE_LIMIT_RETRY_SECONDS,
+    LlmRateLimitError,
+    LlmTaskRunner,
+    model_aliases,
+    parse_json_object,
+)
 from worker_ml.llm.runs import LlmRunStore
 
 
@@ -145,6 +153,46 @@ def test_model_aliases_use_stage_specific_settings() -> None:
     assert aliases["repair"] == "shkandal-repair"
 
 
+@pytest.mark.asyncio
+async def test_runner_normalizes_provider_rate_limit_and_persists_metadata() -> None:
+    run_id = uuid4()
+    run_store = Mock(spec=LlmRunStore)
+    run_store.create_run = AsyncMock(return_value=run_id)
+    run_store.finish_run = AsyncMock()
+    runner = LlmTaskRunner(
+        prompt_registry=PromptRegistry(),
+        run_store=run_store,
+        task_chains={"article_card": RateLimitedChain(retry_after="120")},
+    )
+
+    with pytest.raises(LlmRateLimitError) as raised:
+        await runner.run(
+            run_type="article_card",
+            model_name="shkandal-article-card",
+            variables={"article_json": "{}", "schema_json": "{}"},
+        )
+
+    assert raised.value.retry_after_seconds == 120
+    assert run_store.finish_run.await_args.kwargs["metadata"]["rate_limited"] is True
+
+
+@pytest.mark.asyncio
+async def test_runner_rate_limit_without_retry_after_uses_hourly_fallback() -> None:
+    runner = LlmTaskRunner(
+        prompt_registry=PromptRegistry(),
+        task_chains={"article_card": RateLimitedChain()},
+    )
+
+    with pytest.raises(LlmRateLimitError) as raised:
+        await runner.run(
+            run_type="article_card",
+            model_name="shkandal-article-card",
+            variables={"article_json": "{}", "schema_json": "{}"},
+        )
+
+    assert raised.value.retry_after_seconds == DEFAULT_RATE_LIMIT_RETRY_SECONDS
+
+
 class FakeChain:
     def __init__(self, response: str) -> None:
         self.response = response
@@ -158,3 +206,17 @@ class FakeChain:
 class FailingChain:
     async def ainvoke(self, input: Mapping[str, Any]) -> str:
         raise RuntimeError("provider unavailable")
+
+
+class RateLimitedChain:
+    def __init__(self, retry_after: str | None = None) -> None:
+        self.retry_after = retry_after
+
+    async def ainvoke(self, input: Mapping[str, Any]) -> str:
+        headers = {"retry-after": self.retry_after} if self.retry_after is not None else {}
+        response = httpx.Response(
+            429,
+            headers=headers,
+            request=httpx.Request("POST", "https://provider.example/v1/chat/completions"),
+        )
+        raise openai.RateLimitError("quota exhausted", response=response, body=None)

@@ -1,15 +1,18 @@
 import asyncio
 import sys
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 import worker_ml.main as entrypoint
 from shkandal_database.jobs import ArticleJobStore
+from shkandal_database.llm_cooldowns import LlmCooldownStore
 from worker_ml.article_cards import ArticleCardJobHandler
 from worker_ml.classifier import ClassificationJobHandler, RelevanceModel
 from worker_ml.config import MlConfig
 from worker_ml.jobs import EnqueueStats, MlJobPlanner
+from worker_ml.llm.runner import LlmRateLimitError
 from worker_ml.main import _run_cycle
 
 
@@ -39,6 +42,8 @@ async def test_run_cycle_enqueues_and_processes_bounded_batch() -> None:
     job_store.claim_next_job = AsyncMock(side_effect=claimed_jobs)
     job_store.complete_job = AsyncMock()
     job_store.fail_job = AsyncMock()
+    cooldown_store = Mock(spec=LlmCooldownStore)
+    cooldown_store.active_resume_at = AsyncMock(return_value=None)
     classification_handler = Mock(spec=ClassificationJobHandler)
     classification_handler.handle = AsyncMock()
     article_card_handler = Mock(spec=ArticleCardJobHandler)
@@ -53,6 +58,7 @@ async def test_run_cycle_enqueues_and_processes_bounded_batch() -> None:
         logger=Mock(),
         planner=planner,
         job_store=job_store,
+        cooldown_store=cooldown_store,
         handlers={
             "classify_article": classification_handler,
             "create_article_card": article_card_handler,
@@ -73,6 +79,98 @@ async def test_run_cycle_enqueues_and_processes_bounded_batch() -> None:
         "create_article_card",
     )
     assert job_store.complete_job.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_run_cycle_defers_rate_limited_job_and_continues_classifier_jobs() -> None:
+    planner = Mock(spec=MlJobPlanner)
+    planner.enqueue_missing_classification_jobs = AsyncMock(
+        return_value=EnqueueStats(
+            scanned_articles=0,
+            ensured_jobs=0,
+            inserted_jobs=0,
+            requeued_jobs=0,
+            existing_jobs=0,
+        )
+    )
+    card_job = SimpleNamespace(
+        id="card-job",
+        article_id="card-article",
+        job_type="create_article_card",
+        attempt_count=1,
+        max_attempts=3,
+    )
+    classifier_job = SimpleNamespace(
+        id="classifier-job",
+        article_id="classifier-article",
+        job_type="classify_article",
+        attempt_count=1,
+        max_attempts=3,
+    )
+    job_store = Mock(spec=ArticleJobStore)
+    job_store.claim_next_job = AsyncMock(side_effect=[card_job, classifier_job])
+    job_store.complete_job = AsyncMock()
+    job_store.fail_job = AsyncMock()
+    job_store.defer_job = AsyncMock()
+    resume_at = datetime(2026, 6, 8, 16, 0, tzinfo=UTC)
+    cooldown_store = Mock(spec=LlmCooldownStore)
+    cooldown_store.active_resume_at = AsyncMock(return_value=None)
+    cooldown_store.extend = AsyncMock(return_value=resume_at)
+    classification_handler = Mock(spec=ClassificationJobHandler)
+    classification_handler.handle = AsyncMock()
+    article_card_handler = Mock(spec=ArticleCardJobHandler)
+    article_card_handler.handle = AsyncMock(
+        side_effect=LlmRateLimitError("quota exhausted", retry_after_seconds=3600)
+    )
+
+    result = await _run_cycle(
+        settings=MlConfig(claim_batch_size=2),
+        logger=Mock(),
+        planner=planner,
+        job_store=job_store,
+        cooldown_store=cooldown_store,
+        handlers={
+            "classify_article": classification_handler,
+            "create_article_card": article_card_handler,
+        },
+    )
+
+    assert result["processed_jobs"] == 1
+    assert result["failed_jobs"] == 0
+    job_store.defer_job.assert_awaited_once()
+    assert job_store.claim_next_job.await_args_list[1].kwargs["job_types"] == ("classify_article",)
+    classification_handler.handle.assert_awaited_once_with(classifier_job)
+
+
+@pytest.mark.asyncio
+async def test_run_cycle_skips_llm_jobs_during_active_cooldown() -> None:
+    planner = Mock(spec=MlJobPlanner)
+    planner.enqueue_missing_classification_jobs = AsyncMock(
+        return_value=EnqueueStats(
+            scanned_articles=0,
+            ensured_jobs=0,
+            inserted_jobs=0,
+            requeued_jobs=0,
+            existing_jobs=0,
+        )
+    )
+    job_store = Mock(spec=ArticleJobStore)
+    job_store.claim_next_job = AsyncMock(return_value=None)
+    cooldown_store = Mock(spec=LlmCooldownStore)
+    cooldown_store.active_resume_at = AsyncMock(
+        return_value=datetime(2026, 6, 8, 16, 0, tzinfo=UTC)
+    )
+
+    await _run_cycle(
+        settings=MlConfig(claim_batch_size=1),
+        logger=Mock(),
+        planner=planner,
+        job_store=job_store,
+        cooldown_store=cooldown_store,
+        handlers={},
+    )
+
+    assert job_store.claim_next_job.await_args.kwargs["job_types"] == ("classify_article",)
 
 
 def test_no_args_dispatches_one_cycle(monkeypatch: pytest.MonkeyPatch) -> None:
