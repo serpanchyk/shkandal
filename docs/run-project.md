@@ -426,10 +426,12 @@ timers instead:
 ```bash
 ./ops/install-user-systemd.sh
 systemctl --user list-timers "shkandal-*"
+loginctl enable-linger "$USER"
 ```
 
-User timers run while the user's systemd session is active. Enable user lingering
-separately if they must run while the user is logged out.
+User timers run while the user's systemd session is active. User lingering keeps
+that session and its timers running while the user is logged out and after
+reboot.
 
 Ingestion runs hourly. ML runs every 70 minutes so scheduled passes do not
 repeatedly probe a rolling hourly LLM quota. `llm-proxy` remains in Compose
