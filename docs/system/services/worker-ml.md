@@ -93,7 +93,7 @@ docker compose --profile jobs run --rm worker-ml
 python -m worker_ml.main --loop
 ```
 
-On servers, `shkandal-ml-worker.timer` starts the one-shot container every 10
+On servers, `shkandal-ml-worker.timer` starts the one-shot container every 70
 minutes. `worker-ml` continues to depend on the Compose `llm-proxy` because
 article-card and resolution stages use its logical model aliases.
 

@@ -416,7 +416,8 @@ Install and start the timers from a checkout deployed at `/opt/shkandal`:
 systemctl list-timers "shkandal-*"
 ```
 
-Ingestion runs hourly. ML runs every 10 minutes. `llm-proxy` remains in Compose
+Ingestion runs hourly. ML runs every 70 minutes so scheduled passes do not
+repeatedly probe a rolling hourly LLM quota. `llm-proxy` remains in Compose
 because the ML pipeline uses it for article-card and resolution stages.
 Manually trigger either job:
 

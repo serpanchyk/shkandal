@@ -15,7 +15,7 @@ Long-lived services are:
 Scheduled one-shot jobs are:
 
 - `worker-ingestion`, hourly;
-- `worker-ml`, every 10 minutes.
+- `worker-ml`, every 70 minutes.
 
 One-shot batch processes release all process memory after each run, avoid hidden
 failures inside an in-process scheduler, and expose scheduling, exit status,
