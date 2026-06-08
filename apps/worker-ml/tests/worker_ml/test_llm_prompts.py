@@ -27,9 +27,9 @@ def test_article_card_prompt_has_strict_case_candidate_rules() -> None:
     assert "Це не дубль списку `entities`" in prompt
     assert "`1 млн доларів`" in prompt
     assert "`Національний банк України` зазвичай" in prompt
-    assert "`noise_reason = \"diplomacy\"`" in prompt
-    assert "`noise_reason = \"policy_law\"`" in prompt
-    assert "`noise_reason = \"routine_regulatory\"`" in prompt
+    assert '`noise_reason = "diplomacy"`' in prompt
+    assert '`noise_reason = "policy_law"`' in prompt
+    assert '`noise_reason = "routine_regulatory"`' in prompt
     assert "`Полтавапаливо`" in prompt
 
 

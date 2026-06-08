@@ -71,6 +71,7 @@ Use:
 * minimal dependencies
 * production-ready code only
 * Docker Compose for normal project runs unless a direct per-service local run is explicitly requested or clearly necessary
+* After changing orm rn migrations.
 
 Never:
 
@@ -79,7 +80,7 @@ Never:
 * commit real `.env` files, secrets, tokens, cookies, or API keys
 * add unnecessary dependencies
 * weaken typing, linting, tests, or validation to make checks pass
-* do things that could affect the data in the db
+* do things that could affect the data in the db, without questioning
 * silently change public content language rules
 
 Content/product rules:
