@@ -1,31 +1,31 @@
 model_list:
   - model_name: shkandal-article-card
     litellm_params:
-      model: openai/LapaLLM-Gemma-3-12B-v0.1.2-instruct
+      model: openai/MamayLM-Gemma-3-27B-IT-v2.0
       api_base: https://api.lapathoniia.top/v1
       api_key: os.environ/LAPATONIA_API_KEY
     rpm: 60
   - model_name: shkandal-case-resolution
     litellm_params:
-      model: openai/LapaLLM-Gemma-3-12B-v0.1.2-instruct
+      model: openai/MamayLM-Gemma-3-27B-IT-v2.0
       api_base: https://api.lapathoniia.top/v1
       api_key: os.environ/LAPATONIA_API_KEY
     rpm: 30
   - model_name: shkandal-entity-resolution
     litellm_params:
-      model: openai/LapaLLM-Gemma-3-12B-v0.1.2-instruct
+      model: openai/MamayLM-Gemma-3-27B-IT-v2.0
       api_base: https://api.lapathoniia.top/v1
       api_key: os.environ/LAPATONIA_API_KEY
     rpm: 60
   - model_name: shkandal-event-resolution
     litellm_params:
-      model: openai/LapaLLM-Gemma-3-12B-v0.1.2-instruct
+      model: openai/MamayLM-Gemma-3-27B-IT-v2.0
       api_base: https://api.lapathoniia.top/v1
       api_key: os.environ/LAPATONIA_API_KEY
     rpm: 60
   - model_name: shkandal-repair
     litellm_params:
-      model: openai/LapaLLM-Gemma-3-12B-v0.1.2-instruct
+      model: openai/MamayLM-Gemma-3-27B-IT-v2.0
       api_base: https://api.lapathoniia.top/v1
       api_key: os.environ/LAPATONIA_API_KEY
     rpm: 60
