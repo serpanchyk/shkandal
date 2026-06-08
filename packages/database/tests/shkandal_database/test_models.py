@@ -1,6 +1,6 @@
 """Tests for database model metadata."""
 
-from shkandal_database.models import Article, Base, Case, Entity, Job, LlmRun, Source
+from shkandal_database.models import Article, ArticleCard, Base, Case, Entity, Job, LlmRun, Source
 from sqlalchemy import CheckConstraint, ForeignKeyConstraint, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -58,6 +58,7 @@ def test_key_constraints_are_registered() -> None:
 
 def test_key_indexes_are_registered() -> None:
     assert "ix_articles_source_id_published_at" in index_names("articles")
+    assert "ix_article_cards_is_case_candidate" in index_names("article_cards")
     assert "ix_cases_status_last_updated_at" in index_names("cases")
     assert "ix_entities_aliases" in index_names("entities")
     assert "ix_case_events_case_id_event_date" in index_names("case_events")
@@ -104,3 +105,7 @@ def test_jobs_are_article_scoped() -> None:
         isinstance(constraint, ForeignKeyConstraint)
         for constraint in Base.metadata.tables["jobs"].constraints
     )
+
+
+def test_article_card_case_candidate_is_queryable() -> None:
+    assert ArticleCard.is_case_candidate.property.columns[0].nullable is False

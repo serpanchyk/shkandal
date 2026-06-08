@@ -44,9 +44,11 @@ creates idempotent `classify_article` jobs for articles missing
 results enqueue `create_article_card`; the worker sends compact article evidence
 through the `article_card` prompt, validates `ArticleCardOutput`, and stores the
 result in `article_cards` with `llm_runs` provenance. Article text sent to the
-LLM is capped at 20,000 characters. An explicit continuous polling mode remains
-available for direct use. It also includes an embedding service and vector-index
-integration for future card resolution jobs.
+LLM is capped at 20,000 characters. The table stores an indexed
+`is_case_candidate` column alongside the full card JSON so later resolution
+stages can select only trackable cases. An explicit continuous polling mode
+remains available for direct use. It also includes an embedding service and
+vector-index integration for future card resolution jobs.
 
 The article-card prompt considers only the main article and excludes related
 articles, recommendations, boilerplate, and unrelated background. Its contract
@@ -56,6 +58,10 @@ eight case-signature terms. Non-case cards retain only the cleaned title,
 summary, and a fixed noise reason; their events, entities, and signature terms
 are empty.
 
+Future case, entity, and event resolution handlers must load cards through the
+case-candidate gate. A stored non-case card remains available for inspection but
+must not create provisional cases, events, or entities downstream.
+
 After an article-card prompt or contract change, inspect and explicitly apply a
 full regeneration. Apply mode refuses to run while any article-card job is
 running, deletes current cards, and resets or creates card jobs for all
@@ -64,6 +70,14 @@ classifier-positive articles while preserving historical `llm_runs`:
 ```bash
 uv run python -m worker_ml.reprocess_article_cards
 uv run python -m worker_ml.reprocess_article_cards --apply
+```
+
+To compare a small stable sample after a prompt change, regenerate only the most
+recently created existing cards:
+
+```bash
+uv run python -m worker_ml.reprocess_article_cards --apply --limit 10
+docker compose --profile jobs run --rm -e CLAIM_BATCH_SIZE=10 worker-ml
 ```
 
 Run the default local one-shot pass or optional direct loop mode:

@@ -379,6 +379,16 @@ uv run python -m worker_ml.reprocess_article_cards
 uv run python -m worker_ml.reprocess_article_cards --apply
 ```
 
+To regenerate the same ten most recently created existing cards for a
+before/after comparison:
+
+```bash
+uv run python -m worker_ml.reprocess_article_cards --apply --limit 10
+docker compose --profile jobs run --rm -e CLAIM_BATCH_SIZE=10 worker-ml
+docker compose exec postgres psql -U shkandal -d shkandal -c \
+  "SELECT article_id, is_case_candidate, card_json->>'noise_reason' AS noise_reason, title_uk, card_json FROM article_cards ORDER BY created_at DESC LIMIT 10;"
+```
+
 To route through another provider instead, add its credential to
 `infra/litellm/.env` and change the LiteLLM model entries in
 `infra/litellm/config.yaml.example` before starting `llm-proxy`.

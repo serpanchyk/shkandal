@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from typing import Any, cast
+from uuid import UUID
 
 from shkandal_database.jobs import ClaimedJob
 from shkandal_database.models import Article, ArticleCard, ArticleRelevance, Source
@@ -16,6 +17,24 @@ from worker_ml.llm.contracts import ArticleCardOutput
 from worker_ml.llm.runner import LlmTaskRunner
 
 MAX_ARTICLE_TEXT_CHARACTERS = 20_000
+
+
+async def get_case_candidate_card(
+    session: AsyncSession,
+    *,
+    article_id: UUID,
+) -> ArticleCard | None:
+    """Return a card only when the article is allowed into resolution."""
+
+    return cast(
+        ArticleCard | None,
+        await session.scalar(
+            select(ArticleCard).where(
+                ArticleCard.article_id == article_id,
+                ArticleCard.is_case_candidate.is_(True),
+            )
+        )
+    )
 
 
 class ArticleCardJobHandler:
@@ -80,6 +99,7 @@ class ArticleCardJobHandler:
                     llm_run_id=result.run_id,
                     title_uk=output.title_uk,
                     summary_uk=output.summary_uk,
+                    is_case_candidate=output.is_case_candidate,
                     card_json=output.model_dump(mode="json"),
                 )
                 .on_conflict_do_nothing(index_elements=[ArticleCard.article_id])

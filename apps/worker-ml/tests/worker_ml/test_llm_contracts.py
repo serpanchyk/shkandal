@@ -43,13 +43,19 @@ def test_article_card_contract_accepts_representative_json() -> None:
     assert output.events[0].event_date_precision == "day"
 
 
-def test_article_card_contract_accepts_non_case_card_without_case_signals() -> None:
+@pytest.mark.parametrize(
+    "noise_reason",
+    ["culture", "diplomacy", "policy_law", "routine_regulatory", "routine_crime"],
+)
+def test_article_card_contract_accepts_non_case_card_without_case_signals(
+    noise_reason: str,
+) -> None:
     output = ArticleCardOutput.model_validate(
         {
             "title_uk": "Огляд культурної виставки",
             "summary_uk": "Матеріал розповідає про мистецьку виставку.",
             "is_case_candidate": False,
-            "noise_reason": "culture",
+            "noise_reason": noise_reason,
             "main_event_title_uk": None,
             "entities": [],
             "events": [],
@@ -57,7 +63,7 @@ def test_article_card_contract_accepts_non_case_card_without_case_signals() -> N
         }
     )
 
-    assert output.noise_reason == "culture"
+    assert output.noise_reason == noise_reason
 
 
 @pytest.mark.parametrize(

@@ -130,3 +130,40 @@ async def test_reprocess_article_cards_batches_large_job_upserts() -> None:
     )
 
     assert session.execute.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_reprocess_article_cards_targets_latest_existing_cards() -> None:
+    older_id = uuid4()
+    latest_ids = [uuid4(), uuid4()]
+    session = MagicMock()
+    session.scalars = AsyncMock(
+        side_effect=[
+            _scalar_result(
+                [_job(article_id=older_id), *[_job(article_id=value) for value in latest_ids]]
+            ),
+            _scalar_result(latest_ids),
+        ]
+    )
+    session.execute = AsyncMock()
+    session.commit = AsyncMock()
+
+    stats = await reprocess_article_cards(
+        Mock(return_value=_session_context(session)),
+        apply=True,
+        limit=2,
+    )
+
+    assert stats.cards_to_delete == 2
+    assert stats.relevant_articles == 2
+    assert stats.jobs_to_reset == 2
+    delete_statement = session.execute.await_args_list[0].args[0]
+    delete_params = delete_statement.compile().params
+    assert latest_ids in delete_params.values()
+    assert all(older_id not in value for value in delete_params.values() if isinstance(value, list))
+
+
+@pytest.mark.asyncio
+async def test_reprocess_article_cards_rejects_non_positive_limit() -> None:
+    with pytest.raises(ValueError, match="greater than zero"):
+        await reprocess_article_cards(Mock(), apply=False, limit=0)

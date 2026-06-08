@@ -213,6 +213,7 @@ class ArticleCard(Base):
     """Provisional structured article card."""
 
     __tablename__ = "article_cards"
+    __table_args__ = (Index("ix_article_cards_is_case_candidate", "is_case_candidate"),)
 
     id: Mapped[UUID] = uuid_pk_column()
     article_id: Mapped[UUID] = mapped_column(
@@ -223,6 +224,7 @@ class ArticleCard(Base):
     llm_run_id: Mapped[UUID | None] = mapped_column(ForeignKey("llm_runs.id"))
     title_uk: Mapped[str] = mapped_column(Text, nullable=False)
     summary_uk: Mapped[str] = mapped_column(Text, nullable=False)
+    is_case_candidate: Mapped[bool] = mapped_column(Boolean, nullable=False)
     card_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()

@@ -23,7 +23,7 @@ class PromptDefinition:
 PROMPTS: dict[str, PromptDefinition] = {
     "article_card": PromptDefinition(
         name="article_card",
-        version="2026-06-07",
+        version="2026-06-08",
         filename="article_card.uk.md",
         input_variables=("article_json", "schema_json"),
     ),
@@ -47,7 +47,7 @@ PROMPTS: dict[str, PromptDefinition] = {
     ),
     "repair": PromptDefinition(
         name="repair",
-        version="2026-06-05",
+        version="2026-06-08",
         filename="repair.uk.md",
         input_variables=("schema_json", "validation_error", "invalid_output"),
     ),

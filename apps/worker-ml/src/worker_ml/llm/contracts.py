@@ -36,6 +36,10 @@ NoiseReason = Literal[
     "explainer",
     "lifestyle",
     "broad_analysis",
+    "diplomacy",
+    "policy_law",
+    "routine_regulatory",
+    "routine_crime",
 ]
 
 
@@ -144,7 +148,7 @@ class ArticleCardOutput(StrictOutput):
     case_signature_terms: list[str] = Field(
         default_factory=list,
         max_length=8,
-        description="Специфічні назви й терміни для кластеризації тієї самої справи.",
+        description="Специфічні не загальні якорі для кластеризації тієї самої справи.",
     )
 
     @model_validator(mode="after")
