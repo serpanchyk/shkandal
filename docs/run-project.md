@@ -403,7 +403,7 @@ python -m worker_ml.main --loop
 The ingestion heartbeat and healthcheck apply only to optional loop mode, not
 to normal systemd-scheduled one-shot runs.
 
-## Server Scheduling
+## Systemd Scheduling
 
 On a Linux server, keep backend, frontend, PostgreSQL, Qdrant, the LiteLLM
 proxy, and supporting infrastructure running as long-lived Compose services.
@@ -436,18 +436,37 @@ reboot.
 Ingestion runs hourly. ML runs every 70 minutes so scheduled passes do not
 repeatedly probe a rolling hourly LLM quota. `llm-proxy` remains in Compose
 because the ML pipeline uses it for article-card and resolution stages.
-Manually trigger either job:
+
+Manage system-wide server timers:
 
 ```bash
+systemctl list-timers "shkandal-*"
 sudo systemctl start shkandal-ingestion.service
 sudo systemctl start shkandal-ml-worker.service
+sudo systemctl disable --now shkandal-ingestion.timer shkandal-ml-worker.timer
 ```
 
-Inspect recent job logs:
+Manage local-PC user timers:
+
+```bash
+systemctl --user list-timers "shkandal-*"
+systemctl --user start shkandal-ingestion.service
+systemctl --user start shkandal-ml-worker.service
+systemctl --user disable --now shkandal-ingestion.timer shkandal-ml-worker.timer
+```
+
+Inspect system-wide server logs:
 
 ```bash
 journalctl -u shkandal-ingestion.service -n 100 --no-pager
 journalctl -u shkandal-ml-worker.service -n 100 --no-pager
+```
+
+Inspect or follow local-PC user logs:
+
+```bash
+journalctl --user -u shkandal-ingestion.service -n 100 --no-pager
+journalctl --user -u shkandal-ml-worker.service -f
 ```
 
 ## Frontend
