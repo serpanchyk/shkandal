@@ -409,12 +409,27 @@ On a Linux server, keep backend, frontend, PostgreSQL, Qdrant, the LiteLLM
 proxy, and supporting infrastructure running as long-lived Compose services.
 Systemd starts the one-shot workers with `docker compose run --rm`.
 
-Install and start the timers from a checkout deployed at `/opt/shkandal`:
+Install and start the timers from the checkout that should run the workers:
 
 ```bash
 ./ops/install-systemd.sh
 systemctl list-timers "shkandal-*"
 ```
+
+The installer renders each service with the current checkout's absolute path,
+so the same command works for `/opt/shkandal` deployments and local development
+checkouts. Moving the checkout requires running the installer again.
+
+For a local PC without system-wide sudo installation, install user systemd
+timers instead:
+
+```bash
+./ops/install-user-systemd.sh
+systemctl --user list-timers "shkandal-*"
+```
+
+User timers run while the user's systemd session is active. Enable user lingering
+separately if they must run while the user is logged out.
 
 Ingestion runs hourly. ML runs every 70 minutes so scheduled passes do not
 repeatedly probe a rolling hourly LLM quota. `llm-proxy` remains in Compose
