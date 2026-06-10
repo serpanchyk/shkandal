@@ -287,13 +287,25 @@ docker compose --profile jobs run --rm worker-ml
 
 ### Smoke-test 10 article cards
 
-Put a real Lapatonia key in the ignored LiteLLM env file. The tracked LiteLLM
-configuration routes all aliases through the OpenAI-compatible Lapatonia API:
+Put real Lapatonia and AWS credentials in the ignored LiteLLM env file. The
+tracked LiteLLM configuration routes each logical alias through the
+OpenAI-compatible Lapatonia API first and falls back to Amazon Bedrock's
+Gemma 3 27B model immediately when the primary request fails:
 
 ```bash
 cp infra/litellm/.env.example infra/litellm/.env
-# Edit infra/litellm/.env and set LAPATONIA_API_KEY=...
+# Edit infra/litellm/.env and set:
+# LAPATONIA_API_KEY=...
+# AWS_ACCESS_KEY_ID=...
+# AWS_SECRET_ACCESS_KEY=...
+# AWS_REGION_NAME=us-west-2
 ```
+
+The AWS identity needs `bedrock:InvokeModel` and
+`bedrock:InvokeModelWithResponseStream` permissions for
+`google.gemma-3-27b-it`. Enable model access for Gemma 3 27B in the selected
+Bedrock region before starting the proxy. When using temporary AWS credentials,
+also add `AWS_SESSION_TOKEN` to `infra/litellm/.env`.
 
 Start the required infrastructure and run migrations:
 
@@ -389,8 +401,8 @@ docker compose exec postgres psql -U shkandal -d shkandal -c \
   "SELECT article_id, is_case_candidate, card_json->>'noise_reason' AS noise_reason, title_uk, card_json FROM article_cards ORDER BY created_at DESC LIMIT 10;"
 ```
 
-To route through another provider instead, add its credential to
-`infra/litellm/.env` and change the LiteLLM model entries in
+To route through another provider, add its credential to `infra/litellm/.env`
+and change the LiteLLM model entries or fallback routing in
 `infra/litellm/config.yaml.example` before starting `llm-proxy`.
 
 For optional direct loop mode, bypass the scheduled one-shot runtime:

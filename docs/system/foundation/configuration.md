@@ -48,7 +48,11 @@ variables or file secrets, never committed values. `worker-ml` uses
 `LLM_REQUEST_TIMEOUT_SECONDS`, and logical model aliases such as
 `LLM_ARTICLE_CARD_MODEL` and `LLM_CASE_COPY_UPDATE_MODEL`; the LiteLLM proxy
 consumes provider credentials such
-as `LAPATONIA_API_KEY`. The tracked proxy configuration routes every logical
-alias through Lapatonia's OpenAI-compatible API. Standard LangSmith settings
-are available from root `.env`; tracing is disabled by default and can be
-enabled with `LANGSMITH_TRACING=true`.
+as `LAPATONIA_API_KEY`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and
+`AWS_REGION_NAME`. The tracked proxy configuration routes every logical alias
+through Lapatonia's OpenAI-compatible API and falls back to Amazon Bedrock's
+Gemma 3 27B model when the primary provider fails. Primary-provider retries are
+disabled so fallback begins immediately. Temporary AWS credentials also require
+`AWS_SESSION_TOKEN`. Standard LangSmith settings are available from root `.env`;
+tracing is disabled by default and can be enabled with
+`LANGSMITH_TRACING=true`.

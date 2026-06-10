@@ -39,13 +39,14 @@ logical model aliases (`shkandal-article-card`, `shkandal-case-resolution`,
 routing, provider credentials, throttling, and fallback policy belong to the
 proxy configuration, not to `worker-ml`.
 
-When the proxy or provider returns HTTP `429`, the worker persists a shared LLM
-cooldown, defers the rejected job without consuming a job attempt, and ends the
-current pass. Later scheduled passes exit before model loading or job claiming
-until the cooldown expires. The worker honors usable `Retry-After` values. A
-first ambiguous `429` creates a five-minute cooldown; a second within 15
-minutes infers a one-hour cooldown. Other API errors and invalid output remain
-per-job failures, and each LLM request has a five-minute timeout.
+When HTTP `429` still reaches the worker after LiteLLM fallback routing, the
+worker persists a shared LLM cooldown, defers the rejected job without consuming
+a job attempt, and ends the current pass. Later scheduled passes exit before
+model loading or job claiming until the cooldown expires. The worker honors
+usable `Retry-After` values. A first ambiguous `429` creates a five-minute
+cooldown; a second within 15 minutes infers a one-hour cooldown. Other API
+errors and invalid output remain per-job failures, and each LLM request has a
+five-minute timeout.
 
 The current implementation supports a systemd-scheduled bounded pass that
 creates idempotent `classify_article` jobs for articles missing
