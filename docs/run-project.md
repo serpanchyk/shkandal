@@ -413,6 +413,43 @@ scheduled container on exit, interruption, or systemd timeout.
 The installers stop existing worker units and remove auto-named Compose worker
 one-offs; explicitly named backfill containers are left untouched.
 
+### Deploy And Start Scheduled Workers
+
+After pulling worker, migration, or systemd changes, run these commands from the
+project checkout in order:
+
+```bash
+# Start or rebuild the long-lived services.
+docker compose up -d --build
+
+# Apply pending schema migrations before workers use the new code.
+uv run alembic -c packages/database/alembic.ini upgrade head
+
+# Install the current units and start both scheduled timers.
+./ops/install-systemd.sh
+```
+
+Applying migrations preserves existing database contents unless a specific
+migration explicitly documents otherwise. Migration `202606100001` only extends
+`llm_cooldowns`.
+
+Verify the services, timers, and latest worker logs:
+
+```bash
+docker compose ps
+systemctl list-timers "shkandal-*"
+journalctl -u shkandal-ml-worker.service -n 100 --no-pager
+journalctl -u shkandal-ingestion.service -n 100 --no-pager
+```
+
+To run both workers immediately instead of waiting for their next timer
+activation:
+
+```bash
+sudo systemctl start shkandal-ingestion.service
+sudo systemctl start shkandal-ml-worker.service
+```
+
 Install and start the timers from the checkout that should run the workers:
 
 ```bash
