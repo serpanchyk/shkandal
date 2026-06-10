@@ -39,10 +39,12 @@ routing, provider credentials, throttling, and fallback policy belong to the
 proxy configuration, not to `worker-ml`.
 
 When the proxy or provider returns HTTP `429`, the worker persists a shared LLM
-cooldown and stops claiming LLM-backed jobs until it expires. The rejected job
-is deferred without consuming a job attempt. Local relevance classification
-continues during the cooldown. The worker honors `Retry-After` when present and
-uses a 60-minute fallback otherwise.
+cooldown, defers the rejected job without consuming a job attempt, and ends the
+current pass. Later scheduled passes exit before model loading or job claiming
+until the cooldown expires. The worker honors usable `Retry-After` values. A
+first ambiguous `429` creates a five-minute cooldown; a second within 15
+minutes infers a one-hour cooldown. Other API errors and invalid output remain
+per-job failures, and each LLM request has a five-minute timeout.
 
 The current implementation supports a systemd-scheduled bounded pass that
 creates idempotent `classify_article` jobs for articles missing
@@ -93,8 +95,8 @@ docker compose --profile jobs run --rm worker-ml
 python -m worker_ml.main --loop
 ```
 
-On servers, `shkandal-ml-worker.timer` starts the one-shot container every 70
-minutes. `worker-ml` continues to depend on the Compose `llm-proxy` because
+On servers, `shkandal-ml-worker.timer` starts a one-shot pass five minutes after
+the previous pass becomes inactive. `worker-ml` continues to depend on the Compose `llm-proxy` because
 article-card and resolution stages use its logical model aliases.
 
 Local model artifacts live under `artifacts/models/` in the repository working

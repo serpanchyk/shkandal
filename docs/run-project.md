@@ -407,7 +407,11 @@ to normal systemd-scheduled one-shot runs.
 
 On a Linux server, keep backend, frontend, PostgreSQL, Qdrant, the LiteLLM
 proxy, and supporting infrastructure running as long-lived Compose services.
-Systemd starts the one-shot workers with `docker compose run --rm`.
+Systemd starts one-shot workers through `ops/run-scheduled-worker`, which uses
+deterministic container names, prevents overlap, and force-removes the
+scheduled container on exit, interruption, or systemd timeout.
+The installers stop existing worker units and remove auto-named Compose worker
+one-offs; explicitly named backfill containers are left untouched.
 
 Install and start the timers from the checkout that should run the workers:
 
@@ -433,9 +437,10 @@ User timers run while the user's systemd session is active. User lingering keeps
 that session and its timers running while the user is logged out and after
 reboot.
 
-Ingestion runs hourly. ML runs every 70 minutes so scheduled passes do not
-repeatedly probe a rolling hourly LLM quota. `llm-proxy` remains in Compose
-because the ML pipeline uses it for article-card and resolution stages.
+Ingestion runs every even-numbered hour. ML runs five minutes after the previous
+pass becomes inactive and exits immediately while a durable LLM cooldown is
+active. `llm-proxy` remains in Compose because the ML pipeline uses it for
+article-card and resolution stages.
 
 Manage system-wide server timers:
 

@@ -28,7 +28,7 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 ## Service Map
 
 - `backend`: FastAPI service exposing `GET /healthz` today; future public API and business boundary.
-- `worker-ingestion`: hourly systemd-scheduled one-shot curated-source discovery from sitemaps, RSS/Atom feeds, and section pages; bounded fetch retries; date-bounded backfill traversal; fetching; generic-first extraction; publication-date repair from stored raw HTML; URL identity normalization; image URL extraction; and PostgreSQL upsert.
+- `worker-ingestion`: two-hourly systemd-scheduled one-shot curated-source discovery from sitemaps, RSS/Atom feeds, and section pages; bounded fetch retries; date-bounded backfill traversal; fetching; generic-first extraction; publication-date repair from stored raw HTML; URL identity normalization; image URL extraction; and PostgreSQL upsert.
 - `worker-ml`: async worker entrypoint with article relevance classifier job enqueueing/handling, E5-small embedding service, Qdrant vector-index integration, and the LLM task architecture for future article cards, resolution, and deduplication.
 - `frontend`: Next.js TypeScript app with an API health link today; future public feed, case pages, and entity pages.
 - `postgres`: source-of-truth database and Postgres-backed job store schema.
@@ -45,7 +45,7 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - Redis is excluded from MVP.
 - One generic PostgreSQL `jobs` table with row locking is the MVP background-work mechanism. A job is one durable, retryable, typed pipeline work unit, not a worker process or domain object.
 - MVP jobs are article-scoped: each job works on one article, so the job store should carry an explicit `article_id` and enforce one all-time job row per `(job_type, article_id)`. Reruns reset or requeue that row rather than creating duplicates.
-- Ingestion is not queued as a job in the MVP. After historical backfill, systemd starts an hourly one-shot full-source pass that persists new articles to PostgreSQL and retries failed fetches up to five attempts.
+- Ingestion is not queued as a job in the MVP. After historical backfill, systemd starts a one-shot full-source pass every two hours that persists new articles to PostgreSQL and retries failed fetches up to five attempts.
 - `worker-ml` owns ML job creation. It polls PostgreSQL for articles missing
   `article_relevance`, enqueues idempotent `classify_article` jobs, and processes
   relevant articles through `create_article_card` into `article_cards` with
@@ -58,9 +58,10 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - Claiming a job increments `attempt_count`; crashes count as attempts. Failed jobs with attempts remaining return to `queued` with `run_after`, and exhausted jobs become `failed`.
 - LLM calls go through a LiteLLM proxy service. `worker-ml` uses logical per-stage aliases, while provider credentials, throttling, and routing belong to proxy configuration. The tracked proxy configuration routes all aliases through Lapatonia's OpenAI-compatible API. No secrets are committed.
 - Provider HTTP `429` responses create a shared durable LLM cooldown. The current
-  LLM job is deferred without consuming an attempt, later LLM jobs wait until
-  the provider `Retry-After` time or a 60-minute fallback, and local classifier
-  jobs continue during the pause.
+  LLM job is deferred without consuming an attempt and the ML pass exits.
+  Explicit `Retry-After` values are honored; the first ambiguous response waits
+  five minutes and a second within 15 minutes infers a one-hour cooldown.
+  Other provider errors remain per-job failures.
 - Runtime configuration uses three ignored env files: root `.env` for shared
   application settings and proxy access, `infra/postgres/.env` for PostgreSQL
   bootstrap credentials, and `infra/litellm/.env` for provider API keys.

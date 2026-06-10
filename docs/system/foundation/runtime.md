@@ -64,15 +64,19 @@ job is marked `failed`.
 Provider HTTP `429` responses are capacity deferrals, not job failures. The
 worker records one shared durable LLM cooldown, releases the current LLM job
 with its claim attempt restored, and sets its `run_after` to the cooldown
-expiry. Later worker runs claim only non-LLM jobs until the cooldown expires.
-The provider's `Retry-After` value is used when available; otherwise the worker
-waits 60 minutes.
+expiry, then ends the current pass. A pass exits before loading models,
+enqueueing, or claiming jobs while the cooldown remains active. Explicit
+`Retry-After` values below 30 minutes are short provider backoffs and longer
+values are confirmed long cooldowns. Without a usable value, the first `429`
+waits five minutes and a second within 15 minutes infers a one-hour cooldown.
+HTTP errors other than `429`, connection errors, and invalid output remain
+per-job failures so the batch can continue.
 
 Ingestion is not modeled as a queued job for the MVP. After the historical
-backfill is complete, systemd starts a one-shot full-source pass every hour.
+backfill is complete, systemd starts a one-shot full-source pass every two hours.
 The pass retries failed fetches with bounded durable state and writes
 successfully fetched articles to PostgreSQL. A separate systemd timer starts a
-bounded ML pass every 70 minutes to enqueue and claim processing jobs.
+bounded ML pass five minutes after the previous pass becomes inactive.
 Both worker CLIs default to one-shot execution. Optional `--loop` modes remain
 available for direct/manual use. The ingestion heartbeat applies only to that
 optional loop mode, not to the scheduled systemd runtime.

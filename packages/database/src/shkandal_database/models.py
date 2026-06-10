@@ -217,6 +217,13 @@ class LlmCooldown(Base):
     scope: Mapped[str] = mapped_column(Text, primary_key=True)
     resume_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
+    cooldown_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    ambiguous_observation_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default=text("0"),
+    )
+    last_ambiguous_observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()
 

@@ -44,7 +44,8 @@ configured for the proxy rather than application packages.
   `CLAIM_BATCH_SIZE`: job-store runtime controls for article-scoped ML jobs.
 Runtime settings should select model endpoints and secrets through environment
 variables or file secrets, never committed values. `worker-ml` uses
-`LLM_API_BASE`, `LLM_API_KEY`, and logical model aliases such as
+`LLM_API_BASE`, `LLM_API_KEY`, the five-minute default
+`LLM_REQUEST_TIMEOUT_SECONDS`, and logical model aliases such as
 `LLM_ARTICLE_CARD_MODEL`; the LiteLLM proxy consumes provider credentials such
 as `LAPATONIA_API_KEY`. The tracked proxy configuration routes every logical
 alias through Lapatonia's OpenAI-compatible API. Standard LangSmith settings

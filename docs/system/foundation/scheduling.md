@@ -2,7 +2,11 @@
 
 Server-side worker scheduling belongs to systemd, not Python. Docker Compose
 defines `worker-ingestion` and `worker-ml` in the optional `jobs` profile, and
-systemd timers start short-lived containers with `docker compose run --rm`.
+systemd timers start short-lived containers through `ops/run-scheduled-worker`.
+The runner uses deterministic names, refuses overlapping scheduled runs, and
+force-removes only its scheduled container on exit or interruption.
+Timer installation stops the old units and removes auto-named Compose worker
+one-offs before deploying the units. Explicitly named backfills are preserved.
 
 Long-lived services are:
 
@@ -14,8 +18,8 @@ Long-lived services are:
 
 Scheduled one-shot jobs are:
 
-- `worker-ingestion`, hourly;
-- `worker-ml`, every 70 minutes.
+- `worker-ingestion`, every even-numbered hour;
+- `worker-ml`, five minutes after the previous pass becomes inactive.
 
 One-shot batch processes release all process memory after each run, avoid hidden
 failures inside an in-process scheduler, and expose scheduling, exit status,

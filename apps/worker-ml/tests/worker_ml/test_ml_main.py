@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 import worker_ml.main as entrypoint
 from shkandal_database.jobs import ArticleJobStore
-from shkandal_database.llm_cooldowns import LlmCooldownStore
+from shkandal_database.llm_cooldowns import LlmCooldownDecision, LlmCooldownStore
 from worker_ml.article_cards import ArticleCardJobHandler
 from worker_ml.classifier import ClassificationJobHandler, RelevanceModel
 from worker_ml.config import MlConfig
@@ -82,7 +82,7 @@ async def test_run_cycle_enqueues_and_processes_bounded_batch() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_cycle_defers_rate_limited_job_and_continues_classifier_jobs() -> None:
+async def test_run_cycle_defers_rate_limited_job_and_ends_pass() -> None:
     planner = Mock(spec=MlJobPlanner)
     planner.enqueue_missing_classification_jobs = AsyncMock(
         return_value=EnqueueStats(
@@ -115,7 +115,13 @@ async def test_run_cycle_defers_rate_limited_job_and_continues_classifier_jobs()
     resume_at = datetime(2026, 6, 8, 16, 0, tzinfo=UTC)
     cooldown_store = Mock(spec=LlmCooldownStore)
     cooldown_store.active_resume_at = AsyncMock(return_value=None)
-    cooldown_store.extend = AsyncMock(return_value=resume_at)
+    cooldown_store.record_rate_limit = AsyncMock(
+        return_value=LlmCooldownDecision(
+            resume_at=resume_at,
+            kind="provider_long",
+            ambiguous_observation_count=0,
+        )
+    )
     classification_handler = Mock(spec=ClassificationJobHandler)
     classification_handler.handle = AsyncMock()
     article_card_handler = Mock(spec=ArticleCardJobHandler)
@@ -135,15 +141,15 @@ async def test_run_cycle_defers_rate_limited_job_and_continues_classifier_jobs()
         },
     )
 
-    assert result["processed_jobs"] == 1
+    assert result["processed_jobs"] == 0
     assert result["failed_jobs"] == 0
     job_store.defer_job.assert_awaited_once()
-    assert job_store.claim_next_job.await_args_list[1].kwargs["job_types"] == ("classify_article",)
-    classification_handler.handle.assert_awaited_once_with(classifier_job)
+    job_store.claim_next_job.assert_awaited_once()
+    classification_handler.handle.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_run_cycle_skips_llm_jobs_during_active_cooldown() -> None:
+async def test_run_cycle_exits_before_enqueue_or_claim_during_active_cooldown() -> None:
     planner = Mock(spec=MlJobPlanner)
     planner.enqueue_missing_classification_jobs = AsyncMock(
         return_value=EnqueueStats(
@@ -170,7 +176,80 @@ async def test_run_cycle_skips_llm_jobs_during_active_cooldown() -> None:
         handlers={},
     )
 
-    assert job_store.claim_next_job.await_args.kwargs["job_types"] == ("classify_article",)
+    planner.enqueue_missing_classification_jobs.assert_not_awaited()
+    job_store.claim_next_job.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_cycle_continues_after_ordinary_api_failure() -> None:
+    planner = Mock(spec=MlJobPlanner)
+    planner.enqueue_missing_classification_jobs = AsyncMock(
+        return_value=EnqueueStats(0, 0, 0, 0, 0)
+    )
+    failed_job = SimpleNamespace(
+        id="failed-job",
+        article_id="failed-article",
+        job_type="create_article_card",
+        attempt_count=1,
+        max_attempts=3,
+    )
+    next_job = SimpleNamespace(
+        id="next-job",
+        article_id="next-article",
+        job_type="classify_article",
+        attempt_count=1,
+        max_attempts=3,
+    )
+    job_store = Mock(spec=ArticleJobStore)
+    job_store.claim_next_job = AsyncMock(side_effect=[failed_job, next_job])
+    job_store.complete_job = AsyncMock()
+    job_store.fail_job = AsyncMock()
+    cooldown_store = Mock(spec=LlmCooldownStore)
+    cooldown_store.active_resume_at = AsyncMock(return_value=None)
+    cooldown_store.clear_expired_ambiguous_observation = AsyncMock()
+    card_handler = Mock(spec=ArticleCardJobHandler)
+    card_handler.handle = AsyncMock(side_effect=RuntimeError("provider error"))
+    classifier_handler = Mock(spec=ClassificationJobHandler)
+    classifier_handler.handle = AsyncMock()
+
+    result = await _run_cycle(
+        settings=MlConfig(claim_batch_size=2),
+        logger=Mock(),
+        planner=planner,
+        job_store=job_store,
+        cooldown_store=cooldown_store,
+        handlers={
+            "classify_article": classifier_handler,
+            "create_article_card": card_handler,
+        },
+    )
+
+    assert result["failed_jobs"] == 1
+    assert result["processed_jobs"] == 1
+    job_store.fail_job.assert_awaited_once()
+    classifier_handler.handle.assert_awaited_once_with(next_job)
+
+
+@pytest.mark.asyncio
+async def test_run_once_active_cooldown_exits_before_model_loading(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = Mock()
+    engine.dispose = AsyncMock()
+    cooldown_store = Mock(spec=LlmCooldownStore)
+    cooldown_store.active_resume_at = AsyncMock(
+        return_value=datetime(2026, 6, 10, 16, 0, tzinfo=UTC)
+    )
+    load = Mock()
+    monkeypatch.setattr(entrypoint, "create_async_engine_from_config", Mock(return_value=engine))
+    monkeypatch.setattr(entrypoint, "create_async_sessionmaker", Mock())
+    monkeypatch.setattr(entrypoint, "LlmCooldownStore", Mock(return_value=cooldown_store))
+    monkeypatch.setattr(RelevanceModel, "load", load)
+
+    result = await entrypoint.run_once(MlConfig())
+
+    assert result["processed_jobs"] == 0
+    load.assert_not_called()
 
 
 def test_no_args_dispatches_one_cycle(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -207,6 +286,9 @@ async def test_worker_loop_sleeps_when_cycle_is_idle(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(RelevanceModel, "load", Mock())
     monkeypatch.setattr(entrypoint, "create_async_engine_from_config", Mock(return_value=engine))
     monkeypatch.setattr(entrypoint, "create_async_sessionmaker", Mock())
+    cooldown_store = Mock(spec=LlmCooldownStore)
+    cooldown_store.active_resume_at = AsyncMock(return_value=None)
+    monkeypatch.setattr(entrypoint, "LlmCooldownStore", Mock(return_value=cooldown_store))
     monkeypatch.setattr(entrypoint, "_run_cycle", run_cycle)
     monkeypatch.setattr(asyncio, "sleep", sleep)
 

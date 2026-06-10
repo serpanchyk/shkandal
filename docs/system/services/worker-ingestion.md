@@ -7,7 +7,7 @@ Current implemented scope is curated media and institutional source ingestion.
 Institutional sources use conservative URL patterns to avoid registry,
 document, search, and archive crawling.
 
-The Compose worker is a one-shot job scheduled hourly by systemd on servers.
+The Compose worker is a one-shot job scheduled every two hours by systemd on servers.
 Unexpected source failures are logged without preventing later sources from
 running.
 
@@ -106,7 +106,7 @@ docker compose --profile jobs run --rm worker-ingestion
 ```
 
 On servers, the `shkandal-ingestion.timer` systemd unit starts one pass every
-hour.
+even-numbered hour.
 
 Run one explicit pass or one source for debugging:
 

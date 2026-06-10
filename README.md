@@ -138,7 +138,7 @@ Initial discovery methods:
 - manually configured source sections;
 - include/exclude URL patterns.
 
-The MVP runs a controlled one-year backfill before first public launch, then continues forward ingestion with an hourly full-source pass. Date-bounded backfills use a higher source discovery cap than daily runs so archive traversal is not truncated too early. Fetching can happen in any order, but LLM resolution during backfill should process relevant articles oldest-to-newest by `published_at`.
+The MVP runs a controlled one-year backfill before first public launch, then continues forward ingestion with a full-source pass every two hours. Date-bounded backfills use a higher source discovery cap than daily runs so archive traversal is not truncated too early. Fetching can happen in any order, but LLM resolution during backfill should process relevant articles oldest-to-newest by `published_at`.
 
 ### 2. Extract and Store
 
@@ -270,8 +270,10 @@ All runtime LLM calls go through the LiteLLM proxy. `worker-ml` requests logical
 per-stage aliases such as `shkandal-article-card` and `shkandal-repair`; the
 proxy owns provider credentials, throttling, routing, and fallback policy.
 Provider HTTP `429` responses create a durable shared LLM cooldown: the rejected
-job is deferred without consuming an attempt, while local relevance
-classification continues.
+job is deferred without consuming an attempt and the current ML pass exits.
+Explicit `Retry-After` values are honored; otherwise two ambiguous `429`
+responses within 15 minutes infer a one-hour cooldown. Other provider errors
+remain per-job failures. LLM requests time out after five minutes.
 
 ## Architecture
 

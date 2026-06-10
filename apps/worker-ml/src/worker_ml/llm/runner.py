@@ -34,13 +34,12 @@ RUN_TYPE_MODELS: dict[LlmRunType, type[BaseModel]] = {
     "entity_resolution": EntityResolutionOutput,
     "event_resolution": EventResolutionOutput,
 }
-DEFAULT_RATE_LIMIT_RETRY_SECONDS = 3600
 
 
 class LlmRateLimitError(RuntimeError):
     """Provider rate limit with the requested retry time."""
 
-    def __init__(self, message: str, *, retry_after_seconds: int) -> None:
+    def __init__(self, message: str, *, retry_after_seconds: int | None) -> None:
         super().__init__(message)
         self.retry_after_seconds = retry_after_seconds
 
@@ -60,6 +59,13 @@ class AsyncTextChain(Protocol):
         """Invoke the chain asynchronously."""
 
 
+class LlmCooldownObserver(Protocol):
+    """Cooldown operation triggered by a successful provider request."""
+
+    async def clear_expired_ambiguous_observation(self) -> None:
+        """Clear expired ambiguous rate-limit evidence."""
+
+
 def create_litellm_chat_model(*, settings: MlConfig, model_name: str) -> ChatOpenAI:
     """Create a LangChain chat model pointed at the LiteLLM proxy."""
 
@@ -69,6 +75,7 @@ def create_litellm_chat_model(*, settings: MlConfig, model_name: str) -> ChatOpe
         base_url=settings.llm_api_base,
         temperature=0,
         max_retries=0,
+        timeout=settings.llm_request_timeout_seconds,
     )
 
 
@@ -82,11 +89,13 @@ class LlmTaskRunner:
         run_store: LlmRunStore | None = None,
         task_chains: Mapping[str, AsyncTextChain] | None = None,
         repair_chain: AsyncTextChain | None = None,
+        cooldown_observer: LlmCooldownObserver | None = None,
     ) -> None:
         self._prompt_registry = prompt_registry
         self._run_store = run_store
         self._task_chains = dict(task_chains or {})
         self._repair_chain = repair_chain
+        self._cooldown_observer = cooldown_observer
 
     @classmethod
     def from_config(
@@ -95,6 +104,7 @@ class LlmTaskRunner:
         settings: MlConfig,
         run_store: LlmRunStore | None = None,
         prompt_registry: PromptRegistry | None = None,
+        cooldown_observer: LlmCooldownObserver | None = None,
     ) -> LlmTaskRunner:
         """Create a production runner using LangChain and LiteLLM proxy."""
 
@@ -121,6 +131,7 @@ class LlmTaskRunner:
             run_store=run_store,
             task_chains=task_chains,
             repair_chain=repair_chain,
+            cooldown_observer=cooldown_observer,
         )
 
     async def run(
@@ -168,6 +179,7 @@ class LlmTaskRunner:
         raw_json: dict[str, Any] | None = None
         try:
             raw_text = str(await invoke_chain(self._chain_for(run_type), dict(variables)))
+            await self._record_successful_request()
             raw_json = parse_json_object(raw_text)
             parsed = output_model.model_validate(raw_json)
         except (ValueError, ValidationError) as exc:
@@ -264,11 +276,16 @@ class LlmTaskRunner:
                     },
                 )
             )
+            await self._record_successful_request()
             repaired_json = parse_json_object(repaired_text)
             output_model.model_validate(repaired_json)
             return repaired_json, None
         except (ValueError, ValidationError) as exc:
             return None, str(exc)
+
+    async def _record_successful_request(self) -> None:
+        if self._cooldown_observer is not None:
+            await self._cooldown_observer.clear_expired_ambiguous_observation()
 
     async def _finish_rate_limited_run(
         self,
@@ -331,19 +348,19 @@ async def invoke_chain(chain: AsyncTextChain, variables: Mapping[str, Any]) -> A
         ) from exc
 
 
-def parse_retry_after_seconds(error: RateLimitError) -> int:
-    """Return provider Retry-After seconds or the safe hourly fallback."""
+def parse_retry_after_seconds(error: RateLimitError) -> int | None:
+    """Return a usable provider Retry-After duration, if supplied."""
 
     value = error.response.headers.get("retry-after")
     if value is None:
-        return DEFAULT_RATE_LIMIT_RETRY_SECONDS
+        return None
     try:
         return max(1, int(float(value)))
     except ValueError:
         try:
             retry_at = parsedate_to_datetime(value)
         except (TypeError, ValueError):
-            return DEFAULT_RATE_LIMIT_RETRY_SECONDS
+            return None
         if retry_at.tzinfo is None:
             retry_at = retry_at.replace(tzinfo=UTC)
         return max(1, int((retry_at - datetime.now(UTC)).total_seconds()))

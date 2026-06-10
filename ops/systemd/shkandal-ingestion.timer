@@ -1,9 +1,9 @@
 [Unit]
-Description=Run Shkandal ingestion hourly
+Description=Run Shkandal ingestion every two hours
 
 [Timer]
 OnBootSec=5min
-OnCalendar=hourly
+OnCalendar=*-*-* 00/2:00:00
 Persistent=true
 Unit=shkandal-ingestion.service
 

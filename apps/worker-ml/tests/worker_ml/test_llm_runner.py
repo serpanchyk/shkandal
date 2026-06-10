@@ -14,9 +14,10 @@ from worker_ml.config import MlConfig
 from worker_ml.llm.contracts import ArticleCardOutput
 from worker_ml.llm.prompts import PromptRegistry
 from worker_ml.llm.runner import (
-    DEFAULT_RATE_LIMIT_RETRY_SECONDS,
     LlmRateLimitError,
     LlmTaskRunner,
+    create_litellm_chat_model,
+    invoke_chain,
     model_aliases,
     parse_json_object,
 )
@@ -25,6 +26,8 @@ from worker_ml.llm.runs import LlmRunStore
 
 @pytest.mark.asyncio
 async def test_runner_returns_valid_output_without_repair() -> None:
+    cooldown_observer = Mock()
+    cooldown_observer.clear_expired_ambiguous_observation = AsyncMock()
     runner = LlmTaskRunner(
         prompt_registry=PromptRegistry(),
         task_chains={
@@ -34,6 +37,7 @@ async def test_runner_returns_valid_output_without_repair() -> None:
                 '"events":[],"case_signature_terms":[]}'
             )
         },
+        cooldown_observer=cooldown_observer,
     )
 
     result = await runner.run(
@@ -44,6 +48,7 @@ async def test_runner_returns_valid_output_without_repair() -> None:
 
     assert isinstance(result, ArticleCardOutput)
     assert result.title_uk == "Заголовок"
+    cooldown_observer.clear_expired_ambiguous_observation.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -177,7 +182,7 @@ async def test_runner_normalizes_provider_rate_limit_and_persists_metadata() -> 
 
 
 @pytest.mark.asyncio
-async def test_runner_rate_limit_without_retry_after_uses_hourly_fallback() -> None:
+async def test_runner_rate_limit_without_retry_after_is_ambiguous() -> None:
     runner = LlmTaskRunner(
         prompt_registry=PromptRegistry(),
         task_chains={"article_card": RateLimitedChain()},
@@ -190,7 +195,42 @@ async def test_runner_rate_limit_without_retry_after_uses_hourly_fallback() -> N
             variables={"article_json": "{}", "schema_json": "{}"},
         )
 
-    assert raised.value.retry_after_seconds == DEFAULT_RATE_LIMIT_RETRY_SECONDS
+    assert raised.value.retry_after_seconds is None
+
+
+@pytest.mark.asyncio
+async def test_runner_rate_limit_with_invalid_retry_after_is_ambiguous() -> None:
+    runner = LlmTaskRunner(
+        prompt_registry=PromptRegistry(),
+        task_chains={"article_card": RateLimitedChain(retry_after="not-a-duration")},
+    )
+
+    with pytest.raises(LlmRateLimitError) as raised:
+        await runner.run(
+            run_type="article_card",
+            model_name="shkandal-article-card",
+            variables={"article_json": "{}", "schema_json": "{}"},
+        )
+
+    assert raised.value.retry_after_seconds is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status_code", [422, 500])
+async def test_non_rate_limit_api_errors_are_not_normalized(status_code: int) -> None:
+    with pytest.raises(openai.APIStatusError) as raised:
+        await invoke_chain(ApiErrorChain(status_code), {})
+
+    assert raised.value.status_code == status_code
+
+
+def test_chat_model_uses_five_minute_request_timeout() -> None:
+    model = create_litellm_chat_model(
+        settings=MlConfig(llm_request_timeout_seconds=300),
+        model_name="shkandal-article-card",
+    )
+
+    assert model.request_timeout == 300
 
 
 class FakeChain:
@@ -220,3 +260,15 @@ class RateLimitedChain:
             request=httpx.Request("POST", "https://provider.example/v1/chat/completions"),
         )
         raise openai.RateLimitError("quota exhausted", response=response, body=None)
+
+
+class ApiErrorChain:
+    def __init__(self, status_code: int) -> None:
+        self.status_code = status_code
+
+    async def ainvoke(self, input: Mapping[str, Any]) -> str:
+        response = httpx.Response(
+            self.status_code,
+            request=httpx.Request("POST", "https://provider.example/v1/chat/completions"),
+        )
+        raise openai.APIStatusError("provider error", response=response, body=None)

@@ -1,9 +1,9 @@
 [Unit]
-Description=Run Shkandal ML worker every 70 minutes
+Description=Run Shkandal ML worker five minutes after the previous pass finishes
 
 [Timer]
 OnBootSec=2min
-OnUnitActiveSec=70min
+OnUnitInactiveSec=5min
 Persistent=true
 Unit=shkandal-ml-worker.service
 

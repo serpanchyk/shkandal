@@ -7,6 +7,11 @@ project_dir="$(cd -- "${script_dir}/.." && pwd)"
 user_unit_dir="${XDG_CONFIG_HOME:-${HOME}/.config}/systemd/user"
 
 mkdir -p "${user_unit_dir}"
+systemctl --user stop shkandal-ingestion.timer shkandal-ml-worker.timer || true
+systemctl --user stop shkandal-ingestion.service shkandal-ml-worker.service || true
+"${script_dir}/remove-orphaned-worker-oneoffs"
+docker rm -f shkandal-scheduled-worker-ingestion shkandal-scheduled-worker-ml \
+    >/dev/null 2>&1 || true
 
 install_service() {
     local service_name="$1"

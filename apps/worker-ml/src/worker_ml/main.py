@@ -4,7 +4,7 @@ import argparse
 import asyncio
 import logging
 from collections.abc import Mapping
-from datetime import UTC, datetime, timedelta
+from datetime import datetime
 from typing import Protocol
 
 from shkandal_common.logging import setup_logger
@@ -22,7 +22,6 @@ from worker_ml.llm.runner import LlmRateLimitError, LlmTaskRunner
 from worker_ml.llm.runs import LlmRunStore
 
 SUPPORTED_JOB_TYPES = (CLASSIFY_ARTICLE_JOB, CREATE_ARTICLE_CARD_JOB)
-NON_LLM_JOB_TYPES = (CLASSIFY_ARTICLE_JOB,)
 
 
 class JobHandler(Protocol):
@@ -37,21 +36,23 @@ async def run_once(config: MlConfig | None = None) -> dict[str, int]:
 
     settings = config or MlConfig()
     logger = setup_logger(settings.service_name)
-    model = RelevanceModel.load(
-        settings.relevance_model_dir,
-        threshold=settings.relevance_threshold,
-    )
     engine = create_async_engine_from_config(
         DatabaseConfig(database_url=settings.postgres_database_url)
     )
     try:
         session_factory = create_async_sessionmaker(engine)
+        cooldown_store = LlmCooldownStore(session_factory)
+        if await _log_active_cooldown(cooldown_store=cooldown_store, logger=logger):
+            return _empty_cycle_stats()
+        model = RelevanceModel.load(
+            settings.relevance_model_dir,
+            threshold=settings.relevance_threshold,
+        )
         job_store = ArticleJobStore(
             session_factory,
             stale_job_timeout=settings.stale_job_timeout,
         )
         planner = MlJobPlanner(session_factory, job_store)
-        cooldown_store = LlmCooldownStore(session_factory)
         handlers = _create_handlers(
             settings=settings,
             session_factory=session_factory,
@@ -130,10 +131,11 @@ async def process_next_job(
             stale_job_timeout=settings.stale_job_timeout,
         )
         cooldown_store = LlmCooldownStore(session_factory)
-        job_types = await _eligible_job_types(cooldown_store)
+        if await _log_active_cooldown(cooldown_store=cooldown_store, logger=logger):
+            return {"status": "idle"}
         claimed_job = await job_store.claim_next_job(
             worker_id=worker_id or settings.service_name,
-            job_types=job_types,
+            job_types=SUPPORTED_JOB_TYPES,
         )
         if claimed_job is None:
             return {"status": "idle"}
@@ -202,21 +204,23 @@ async def run_worker(config: MlConfig | None = None) -> None:
 
     settings = config or MlConfig()
     logger = setup_logger(settings.service_name)
-    model = RelevanceModel.load(
-        settings.relevance_model_dir,
-        threshold=settings.relevance_threshold,
-    )
     engine = create_async_engine_from_config(
         DatabaseConfig(database_url=settings.postgres_database_url)
     )
     try:
         session_factory = create_async_sessionmaker(engine)
+        cooldown_store = LlmCooldownStore(session_factory)
+        if await _log_active_cooldown(cooldown_store=cooldown_store, logger=logger):
+            return
+        model = RelevanceModel.load(
+            settings.relevance_model_dir,
+            threshold=settings.relevance_threshold,
+        )
         job_store = ArticleJobStore(
             session_factory,
             stale_job_timeout=settings.stale_job_timeout,
         )
         planner = MlJobPlanner(session_factory, job_store)
-        cooldown_store = LlmCooldownStore(session_factory)
         handlers = _create_handlers(
             settings=settings,
             session_factory=session_factory,
@@ -258,6 +262,9 @@ async def _run_cycle(
     cooldown_store: LlmCooldownStore,
     handlers: Mapping[str, JobHandler],
 ) -> dict[str, int]:
+    if await _log_active_cooldown(cooldown_store=cooldown_store, logger=logger):
+        return _empty_cycle_stats()
+
     enqueue_stats = await planner.enqueue_missing_classification_jobs(
         limit=settings.enqueue_batch_size,
         max_attempts=settings.job_max_attempts,
@@ -277,11 +284,10 @@ async def _run_cycle(
 
     processed_jobs = 0
     failed_jobs = 0
-    job_types = await _eligible_job_types(cooldown_store)
     for _ in range(settings.claim_batch_size):
         claimed_job = await job_store.claim_next_job(
             worker_id=settings.service_name,
-            job_types=job_types,
+            job_types=SUPPORTED_JOB_TYPES,
         )
         if claimed_job is None:
             break
@@ -295,7 +301,6 @@ async def _run_cycle(
                 job_store=job_store,
                 cooldown_store=cooldown_store,
             )
-            job_types = NON_LLM_JOB_TYPES
             logger.warning(
                 "worker_ml_llm_rate_limited",
                 extra={
@@ -305,7 +310,7 @@ async def _run_cycle(
                     "resume_at": resume_at.isoformat(),
                 },
             )
-            continue
+            break
         except Exception as exc:
             await job_store.fail_job(
                 job_id=claimed_job.id,
@@ -345,12 +350,6 @@ async def _run_cycle(
     return stats
 
 
-async def _eligible_job_types(cooldown_store: LlmCooldownStore) -> tuple[str, ...]:
-    if await cooldown_store.active_resume_at() is not None:
-        return NON_LLM_JOB_TYPES
-    return SUPPORTED_JOB_TYPES
-
-
 async def _defer_for_rate_limit(
     *,
     job: ClaimedJob,
@@ -358,14 +357,40 @@ async def _defer_for_rate_limit(
     job_store: ArticleJobStore,
     cooldown_store: LlmCooldownStore,
 ) -> datetime:
-    requested_resume_at = datetime.now(UTC) + timedelta(seconds=error.retry_after_seconds)
-    resume_at = await cooldown_store.extend(resume_at=requested_resume_at, reason=str(error))
-    await job_store.defer_job(
-        job_id=job.id,
-        run_after=resume_at,
+    decision = await cooldown_store.record_rate_limit(
+        retry_after_seconds=error.retry_after_seconds,
         reason=str(error),
     )
-    return resume_at
+    await job_store.defer_job(
+        job_id=job.id,
+        run_after=decision.resume_at,
+        reason=str(error),
+    )
+    return decision.resume_at
+
+
+async def _log_active_cooldown(
+    *,
+    cooldown_store: LlmCooldownStore,
+    logger: logging.Logger,
+) -> bool:
+    resume_at = await cooldown_store.active_resume_at()
+    if resume_at is None:
+        return False
+    logger.info(
+        "worker_ml_cooldown_active",
+        extra={"resume_at": resume_at.isoformat()},
+    )
+    return True
+
+
+def _empty_cycle_stats() -> dict[str, int]:
+    return {
+        "scanned_articles": 0,
+        "ensured_jobs": 0,
+        "processed_jobs": 0,
+        "failed_jobs": 0,
+    }
 
 
 def _create_handlers(
@@ -376,7 +401,11 @@ def _create_handlers(
     model: RelevanceModel,
 ) -> dict[str, JobHandler]:
     run_store = LlmRunStore(session_factory)
-    runner = LlmTaskRunner.from_config(settings=settings, run_store=run_store)
+    runner = LlmTaskRunner.from_config(
+        settings=settings,
+        run_store=run_store,
+        cooldown_observer=LlmCooldownStore(session_factory),
+    )
     return {
         CLASSIFY_ARTICLE_JOB: ClassificationJobHandler(session_factory, job_store, model),
         CREATE_ARTICLE_CARD_JOB: ArticleCardJobHandler(
