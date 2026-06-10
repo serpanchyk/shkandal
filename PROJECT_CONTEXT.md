@@ -58,7 +58,7 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - Workers claim jobs with PostgreSQL `FOR UPDATE SKIP LOCKED` row locking so multiple workers do not process the same job.
 - `running` jobs are reclaimable leases. If `locked_at` becomes older than the configured stale-job timeout, defaulting to 30 minutes, another worker may retry the job.
 - Claiming a job increments `attempt_count`; crashes count as attempts. Failed jobs with attempts remaining return to `queued` with `run_after`, and exhausted jobs become `failed`.
-- LLM calls go through a LiteLLM proxy service. `worker-ml` uses logical per-stage aliases, while provider credentials, throttling, and routing belong to proxy configuration. The tracked proxy configuration routes aliases through Lapatonia's OpenAI-compatible API first and falls back to Amazon Bedrock Gemma 3 27B when the primary provider fails. No secrets are committed.
+- LLM calls go through a LiteLLM proxy service. `worker-ml` uses logical per-stage aliases, while provider credentials, throttling, and routing belong to proxy configuration. The tracked proxy configuration maps every alias to one shared Lapatonia deployment with a combined 60 RPM limit and falls back to Amazon Bedrock Gemma 3 27B when the primary provider fails. Four Lapatonia failures within one hour start a shared one-hour in-memory cooldown; restarting `llm-proxy` clears it. No secrets are committed.
 - Provider HTTP `429` responses that remain after LiteLLM fallback routing
   create a shared durable LLM cooldown. The current LLM job is deferred without
   consuming an attempt and the ML pass exits.

@@ -50,9 +50,12 @@ variables or file secrets, never committed values. `worker-ml` uses
 consumes provider credentials such
 as `LAPATONIA_API_KEY`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and
 `AWS_REGION_NAME`. The tracked proxy configuration routes every logical alias
-through Lapatonia's OpenAI-compatible API and falls back to Amazon Bedrock's
-Gemma 3 27B model when the primary provider fails. Primary-provider retries are
-disabled so fallback begins immediately. Temporary AWS credentials also require
-`AWS_SESSION_TOKEN`. Standard LangSmith settings are available from root `.env`;
-tracing is disabled by default and can be enabled with
-`LANGSMITH_TRACING=true`.
+through one shared Lapatonia deployment with a combined 60 RPM limit and falls
+back to Amazon Bedrock's Gemma 3 27B model when the primary provider fails.
+Primary-provider retries are disabled, so fallback begins immediately. After
+four Lapatonia failures within one hour, LiteLLM cools down the shared deployment
+for one hour and every logical alias routes directly to Bedrock. This cooldown
+is held in LiteLLM memory; restarting `llm-proxy` clears it. Temporary AWS
+credentials also require `AWS_SESSION_TOKEN`. Standard LangSmith settings are
+available from root `.env`; tracing is disabled by default and can be enabled
+with `LANGSMITH_TRACING=true`.

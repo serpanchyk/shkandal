@@ -288,9 +288,12 @@ docker compose --profile jobs run --rm worker-ml
 ### Smoke-test 10 article cards
 
 Put real Lapatonia and AWS credentials in the ignored LiteLLM env file. The
-tracked LiteLLM configuration routes each logical alias through the
-OpenAI-compatible Lapatonia API first and falls back to Amazon Bedrock's
-Gemma 3 27B model immediately when the primary request fails:
+tracked LiteLLM configuration routes all logical aliases through one shared
+OpenAI-compatible Lapatonia deployment with a combined 60 RPM limit and falls
+back to Amazon Bedrock's Gemma 3 27B model immediately when a primary request
+fails. After four Lapatonia failures within one hour, every alias skips
+Lapatonia for one hour. The cooldown is in memory, so restarting `llm-proxy`
+clears it:
 
 ```bash
 cp infra/litellm/.env.example infra/litellm/.env
