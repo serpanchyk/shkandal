@@ -104,6 +104,12 @@ current database rows.
 - Case copy updates are unique case-scoped jobs triggered after every new
   article-case link.
 - Entity and event resolvers receive all linked cases and assign each resolved item only to relevant cases.
+- Every provisional Entity/Event item receives an explicit link, create, or
+  reject decision; accepted items must be assigned to at least one linked Case.
+- Entity and Event mutations are serialized independently within their global
+  identity namespaces.
+- Event occurrence dates preserve partial precision with separate
+  year/month/day components. Unknown occurrence dates remain unknown.
 - Direct `case_entities` and `case_events` are materialized from article-level scoped links.
 - Qdrant has rebuildable collections for case cards, entity cards, and event cards.
 - LLM prompts live as plain files in the ML worker area.

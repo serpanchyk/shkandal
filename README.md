@@ -215,7 +215,9 @@ After article-case links exist, provisional events are embedded and compared aga
 
 The resolver receives all linked cases and assigns each resolved event only to the cases where it is relevant. The system then materializes direct `case_events` links.
 
-Event dates use best-effort extracted event date, with fallback to article publication date.
+Event dates use the best-effort extracted occurrence date. Unknown occurrence
+dates remain unknown; article publication time is provenance and an explicit
+timeline-ordering fallback, never the Event date.
 
 One supporting article is enough for a public event, as long as the event keeps article provenance.
 
@@ -295,7 +297,8 @@ The project is split into these services:
 - `frontend`: Next.js public UI for case pages, entity pages, and feed;
 - `backend`: FastAPI public API and application business boundary;
 - `worker-ingestion`: curated source discovery, fetching, extraction, URL identity normalization, image URL extraction;
-- `worker-ml`: relevance classifier, E5-small embeddings, Qdrant vector integration, LLM task contracts/prompt execution, future article cards, LLM resolution, deduplication;
+- `worker-ml`: relevance classifier, article cards, E5-small embeddings, Qdrant
+  vector integration, and LLM Case/Entity/Event resolution;
 - `postgres`: source-of-truth relational database and MVP job store;
 - `qdrant`: rebuildable 384-dimensional vector index for cases, entities, and events.
 - `llm-proxy`: LiteLLM proxy for provider routing, throttling, and fallback policy.

@@ -50,3 +50,16 @@ _Avoid_: same case, possible duplicate
 Cases likely describing the same durable accountability story and therefore
 candidates for eventual merge.
 _Avoid_: related cases, uncertain relationship
+
+**Entity**:
+A global durable real-world actor directly mentioned in supporting articles.
+Aliases and true renames may identify the same Entity, while successor bodies
+and independently acting named subdivisions are separate Entities.
+_Avoid_: keyword, incidental mention, parent institution
+
+**Event**:
+One strict real-world occurrence supported by at least one article. Mentions
+identify the same Event only when their known date, actors, institution, action,
+object, and location are compatible; missing facts may be added, but conflicting
+known facts indicate a different or unresolved Event.
+_Avoid_: development thread, article summary, procedural stage group

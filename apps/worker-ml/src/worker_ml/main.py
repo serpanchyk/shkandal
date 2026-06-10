@@ -24,10 +24,17 @@ from worker_ml.case_resolution import (
 from worker_ml.classifier import ClassificationJobHandler, RelevanceModel
 from worker_ml.config import MlConfig
 from worker_ml.embeddings import E5Embedder
+from worker_ml.identity_resolution import (
+    ArticleEntityResolutionJobHandler,
+    ArticleEventResolutionJobHandler,
+    IdentityMutationBusyError,
+)
 from worker_ml.jobs import (
     CLASSIFY_ARTICLE_JOB,
     CREATE_ARTICLE_CARD_JOB,
     RESOLVE_ARTICLE_CASES_JOB,
+    RESOLVE_ARTICLE_ENTITIES_JOB,
+    RESOLVE_ARTICLE_EVENTS_JOB,
     UPDATE_CASE_COPY_JOB,
     MlJobPlanner,
 )
@@ -39,6 +46,8 @@ SUPPORTED_JOB_TYPES = (
     CLASSIFY_ARTICLE_JOB,
     CREATE_ARTICLE_CARD_JOB,
     RESOLVE_ARTICLE_CASES_JOB,
+    RESOLVE_ARTICLE_ENTITIES_JOB,
+    RESOLVE_ARTICLE_EVENTS_JOB,
     UPDATE_CASE_COPY_JOB,
 )
 
@@ -187,7 +196,7 @@ async def process_next_job(
                 },
             )
             return {"status": "deferred", "job_type": claimed_job.job_type}
-        except CaseMutationBusyError as exc:
+        except (CaseMutationBusyError, IdentityMutationBusyError) as exc:
             await job_store.defer_job(
                 job_id=claimed_job.id,
                 run_after=datetime.now(UTC) + timedelta(seconds=10),
@@ -340,7 +349,7 @@ async def _run_cycle(
                 },
             )
             break
-        except CaseMutationBusyError as exc:
+        except (CaseMutationBusyError, IdentityMutationBusyError) as exc:
             await job_store.defer_job(
                 job_id=claimed_job.id,
                 run_after=datetime.now(UTC) + timedelta(seconds=10),
@@ -478,6 +487,18 @@ def _create_handlers(
             runner,
             vector_index,
             model_name=settings.llm_case_resolution_model,
+        ),
+        RESOLVE_ARTICLE_ENTITIES_JOB: ArticleEntityResolutionJobHandler(
+            session_factory,
+            runner,
+            vector_index,
+            model_name=settings.llm_entity_resolution_model,
+        ),
+        RESOLVE_ARTICLE_EVENTS_JOB: ArticleEventResolutionJobHandler(
+            session_factory,
+            runner,
+            vector_index,
+            model_name=settings.llm_event_resolution_model,
         ),
         UPDATE_CASE_COPY_JOB: CaseCopyUpdateJobHandler(
             session_factory,

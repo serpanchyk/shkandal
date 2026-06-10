@@ -35,13 +35,13 @@ PROMPTS: dict[str, PromptDefinition] = {
     ),
     "entity_resolution": PromptDefinition(
         name="entity_resolution",
-        version="2026-06-05",
+        version="2026-06-10",
         filename="entity_resolution.uk.md",
         input_variables=("resolution_json", "schema_json"),
     ),
     "event_resolution": PromptDefinition(
         name="event_resolution",
-        version="2026-06-05",
+        version="2026-06-10",
         filename="event_resolution.uk.md",
         input_variables=("resolution_json", "schema_json"),
     ),

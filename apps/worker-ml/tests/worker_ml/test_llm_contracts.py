@@ -20,6 +20,7 @@ def test_article_card_contract_accepts_representative_json() -> None:
             "main_event_title_uk": "НАБУ повідомило про підозру",
             "entities": [
                 {
+                    "provisional_ref": "entity_city_council",
                     "name_uk": "Міська рада",
                     "entity_type": "institution",
                     "aliases": ["рада"],
@@ -28,6 +29,7 @@ def test_article_card_contract_accepts_representative_json() -> None:
             ],
             "events": [
                 {
+                    "provisional_ref": "event_suspicion",
                     "title_uk": "НАБУ повідомило про підозру",
                     "description_uk": "Детективи повідомили посадовцю про підозру.",
                     "event_date": "2026-06-05",

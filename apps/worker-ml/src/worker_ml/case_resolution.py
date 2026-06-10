@@ -17,7 +17,11 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from worker_ml.article_cards import get_case_candidate_card
-from worker_ml.jobs import UPDATE_CASE_COPY_JOB
+from worker_ml.jobs import (
+    RESOLVE_ARTICLE_ENTITIES_JOB,
+    RESOLVE_ARTICLE_EVENTS_JOB,
+    UPDATE_CASE_COPY_JOB,
+)
 from worker_ml.llm.contracts import CaseCopyUpdateOutput, CaseResolutionOutput
 from worker_ml.llm.runner import LlmTaskRunner
 from worker_ml.vector_index import VectorIndexService
@@ -104,6 +108,13 @@ class ArticleCaseResolutionJobHandler:
                 job_type=UPDATE_CASE_COPY_JOB,
                 case_id=case_id,
                 payload={"case_id": str(case_id)},
+                max_attempts=job.max_attempts,
+            )
+        for job_type in (RESOLVE_ARTICLE_ENTITIES_JOB, RESOLVE_ARTICLE_EVENTS_JOB):
+            await self._job_store.enqueue_article_job(
+                job_type=job_type,
+                article_id=job.article_id,
+                payload={"article_id": str(job.article_id)},
                 max_attempts=job.max_attempts,
             )
         return output

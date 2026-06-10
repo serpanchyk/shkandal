@@ -393,7 +393,6 @@ class ArticleEntity(Base):
         nullable=False,
     )
     llm_run_id: Mapped[UUID | None] = mapped_column(ForeignKey("llm_runs.id"))
-    mention_text: Mapped[str | None] = mapped_column(Text)
     role_uk: Mapped[str | None] = mapped_column(Text)
     confidence: Mapped[Decimal | None] = mapped_column(Numeric)
     created_at: Mapped[datetime] = created_at_column()
@@ -465,16 +464,36 @@ class Event(Base):
             "event_date_precision in ('day', 'month', 'year', 'unknown')",
             name="ck_events_event_date_precision",
         ),
-        Index("ix_events_event_date", "event_date"),
+        Index("ix_events_event_date_parts", "event_year", "event_month", "event_day"),
         Index("ix_events_created_at", "created_at"),
+        CheckConstraint(
+            "(event_date_precision = 'unknown' AND event_year IS NULL "
+            "AND event_month IS NULL AND event_day IS NULL) OR "
+            "(event_date_precision = 'year' AND event_year IS NOT NULL "
+            "AND event_month IS NULL AND event_day IS NULL) OR "
+            "(event_date_precision = 'month' AND event_year IS NOT NULL "
+            "AND event_month IS NOT NULL AND event_day IS NULL) OR "
+            "(event_date_precision = 'day' AND event_year IS NOT NULL "
+            "AND event_month IS NOT NULL AND event_day IS NOT NULL)",
+            name="ck_events_date_parts_precision",
+        ),
+        CheckConstraint(
+            "(event_month IS NULL OR event_month BETWEEN 1 AND 12) AND "
+            "(event_day IS NULL OR event_day BETWEEN 1 AND 31)",
+            name="ck_events_date_parts_range",
+        ),
     )
 
     id: Mapped[UUID] = uuid_pk_column()
     slug: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     title_uk: Mapped[str] = mapped_column(Text, nullable=False)
     description_uk: Mapped[str | None] = mapped_column(Text)
-    event_date: Mapped[date | None] = mapped_column(Date)
-    event_date_precision: Mapped[str | None] = mapped_column(Text)
+    event_year: Mapped[int | None] = mapped_column(Integer)
+    event_month: Mapped[int | None] = mapped_column(Integer)
+    event_day: Mapped[int | None] = mapped_column(Integer)
+    event_date_precision: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'unknown'")
+    )
     location_uk: Mapped[str | None] = mapped_column(Text)
     metadata_: Mapped[dict[str, Any]] = mapped_column(
         "metadata",
@@ -505,7 +524,6 @@ class ArticleEvent(Base):
         nullable=False,
     )
     llm_run_id: Mapped[UUID | None] = mapped_column(ForeignKey("llm_runs.id"))
-    evidence_text: Mapped[str | None] = mapped_column(Text)
     confidence: Mapped[Decimal | None] = mapped_column(Numeric)
     created_at: Mapped[datetime] = created_at_column()
 
@@ -546,7 +564,13 @@ class CaseEvent(Base):
     __tablename__ = "case_events"
     __table_args__ = (
         UniqueConstraint("case_id", "event_id", name="uq_case_events_case_id_event_id"),
-        Index("ix_case_events_case_id_event_date", "case_id", "event_date"),
+        Index(
+            "ix_case_events_case_id_event_date_parts",
+            "case_id",
+            "event_year",
+            "event_month",
+            "event_day",
+        ),
         Index("ix_case_events_event_id_case_id", "event_id", "case_id"),
     )
 
@@ -558,7 +582,9 @@ class CaseEvent(Base):
         ForeignKey("events.id", ondelete="CASCADE"), nullable=False
     )
     first_article_id: Mapped[UUID | None] = mapped_column(ForeignKey("articles.id"))
-    event_date: Mapped[date | None] = mapped_column(Date)
+    event_year: Mapped[int | None] = mapped_column(Integer)
+    event_month: Mapped[int | None] = mapped_column(Integer)
+    event_day: Mapped[int | None] = mapped_column(Integer)
     supporting_article_count: Mapped[int] = mapped_column(
         Integer,
         nullable=False,

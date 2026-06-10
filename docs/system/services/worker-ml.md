@@ -68,15 +68,28 @@ eight case-signature terms. Non-case cards retain only the cleaned title,
 summary, and a fixed noise reason; their events, entities, and signature terms
 are empty.
 
-Future case, entity, and event resolution handlers must load cards through the
+Case, Entity, and Event resolution handlers load cards through the
 case-candidate gate. A stored non-case card remains available for inspection but
-must not create provisional cases, events, or entities downstream.
+does not create provisional cases, events, or entities downstream.
 
 Case resolution is mandatory for case-candidate cards: a successful output must
 link at least one existing Case or create at least one new Case. It may create
 only symmetric `related` and `possible_duplicate` relations. After every new
 article-case link, a unique case-scoped job regenerates summary copy and reviews
 whether the stable title materially needs replacement.
+
+Successful Case resolution enqueues separate article-scoped Entity and Event
+jobs. Each stage retrieves candidates independently for every provisional item,
+then resolves the article batch in one LLM call with all linked Case context.
+Every provisional item receives an explicit link, create, or reject decision,
+and every accepted identity is assigned to at least one linked Case.
+
+Entity and Event identity namespaces use separate PostgreSQL advisory locks.
+Existing identities are conservatively enriched, Event anchor conflicts reject
+automatic merging, and affected vectors are written before the PostgreSQL
+transaction commits. Rerunning a downstream article job reconciles that
+article's provenance and materialized Case links without deleting global
+identity rows.
 
 After an article-card prompt or contract change, inspect and explicitly apply a
 full regeneration. Apply mode refuses to run while any article-card job is
@@ -129,7 +142,7 @@ stored card/document text with `passage: ` before encoding. It validates
 non-empty text and the configured vector size. `VectorIndexService` composes
 that embedder with the shared Qdrant case, entity, and event repositories for
 typed upsert and search operations. Article-card generation and resolution jobs
-are separate pipeline stages; only article-card generation is implemented.
+are separate pipeline stages; Case, Entity, and Event resolution are implemented.
 
 The relevance classifier loads `manifest.json` and the sibling joblib pipeline
 from the configured `relevance_model_dir`. The current artifact was produced

@@ -42,6 +42,11 @@ lock. If unavailable, the job is deferred without consuming an attempt. Affected
 Case vectors are upserted before PostgreSQL commits; Qdrant failure rolls back
 the Case mutation.
 
+Entity and Event resolution use separate advisory locks for their respective
+global identity namespaces. They may run concurrently with each other, while
+each namespace remains serialized to prevent retrieve-before-create duplicate
+identities.
+
 Workers claim queued jobs through PostgreSQL row locking, using
 `FOR UPDATE SKIP LOCKED` semantics. A worker claims eligible queued jobs ordered
 by priority and age, marks them `running`, sets `locked_by` and `locked_at`, and

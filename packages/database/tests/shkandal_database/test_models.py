@@ -61,7 +61,7 @@ def test_key_indexes_are_registered() -> None:
     assert "ix_article_cards_is_case_candidate" in index_names("article_cards")
     assert "ix_cases_status_last_updated_at" in index_names("cases")
     assert "ix_entities_aliases" in index_names("entities")
-    assert "ix_case_events_case_id_event_date" in index_names("case_events")
+    assert "ix_case_events_case_id_event_date_parts" in index_names("case_events")
 
 
 def test_foreign_keys_are_registered() -> None:

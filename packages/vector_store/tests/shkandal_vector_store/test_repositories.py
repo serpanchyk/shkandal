@@ -1,4 +1,3 @@
-from datetime import date
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -130,7 +129,9 @@ async def test_event_repository_search_maps_payloads() -> None:
                 "slug": "event-a",
                 "title_uk": "Подія",
                 "description_uk": "Опис",
-                "event_date": "2026-06-04",
+                "event_year": 2026,
+                "event_month": 6,
+                "event_day": 4,
                 "event_date_precision": "day",
                 "location_uk": "Київ",
                 "metadata": {},
@@ -157,7 +158,9 @@ async def test_event_repository_search_maps_payloads() -> None:
         slug="event-a",
         title_uk="Подія",
         description_uk="Опис",
-        event_date=date(2026, 6, 4),
+        event_year=2026,
+        event_month=6,
+        event_day=4,
         event_date_precision="day",
         location_uk="Київ",
     )

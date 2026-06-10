@@ -164,7 +164,7 @@ def _event_text(payload: EventVectorPayload) -> str:
         [
             payload.title_uk,
             payload.description_uk,
-            payload.event_date.isoformat() if payload.event_date else None,
+            _event_date_text(payload),
             payload.location_uk,
         ]
     )
@@ -172,3 +172,14 @@ def _event_text(payload: EventVectorPayload) -> str:
 
 def _join_text_parts(parts: list[str | None]) -> str:
     return "\n".join(part.strip() for part in parts if part and part.strip())
+
+
+def _event_date_text(payload: EventVectorPayload) -> str | None:
+    if payload.event_year is None:
+        return None
+    parts = [str(payload.event_year)]
+    if payload.event_month is not None:
+        parts.append(f"{payload.event_month:02d}")
+    if payload.event_day is not None:
+        parts.append(f"{payload.event_day:02d}")
+    return "-".join(parts)

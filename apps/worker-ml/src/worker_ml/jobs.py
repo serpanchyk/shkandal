@@ -13,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 CLASSIFY_ARTICLE_JOB = "classify_article"
 CREATE_ARTICLE_CARD_JOB = "create_article_card"
 RESOLVE_ARTICLE_CASES_JOB = "resolve_article_cases"
+RESOLVE_ARTICLE_ENTITIES_JOB = "resolve_article_entities"
+RESOLVE_ARTICLE_EVENTS_JOB = "resolve_article_events"
 UPDATE_CASE_COPY_JOB = "update_case_copy"
 
 

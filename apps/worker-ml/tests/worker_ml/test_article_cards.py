@@ -78,6 +78,7 @@ async def test_handler_creates_article_card_from_valid_llm_output() -> None:
         entities=[],
         events=[
             ProvisionalEvent(
+                provisional_ref="event_nbu_fine",
                 title_uk="НБУ оштрафував банк",
                 description_uk="Регулятор наклав штраф.",
                 event_date="2026-06-06",

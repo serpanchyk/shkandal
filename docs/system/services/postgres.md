@@ -29,6 +29,12 @@ Implemented MVP data areas:
 `case_entities` and `case_events` carry the direct public-page links. Direct
 entity-event relationship modeling is out of scope for MVP.
 
+Event occurrence dates are stored as nullable year/month/day components plus
+precision. Unknown dates remain unknown; publication timestamps are retained on
+supporting Articles rather than copied into Events. Article Entity/Event links
+carry LLM provenance and confidence, while Case-scoped links carry relevance
+reasons; source text fragments are not duplicated into these link tables.
+
 Generated public fields are overwritten in place for MVP. Store enough version
 metadata to debug and manually reprocess later, but do not build automatic
 snapshot/version infrastructure yet.

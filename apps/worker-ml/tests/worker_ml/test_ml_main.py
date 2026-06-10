@@ -78,6 +78,8 @@ async def test_run_cycle_enqueues_and_processes_bounded_batch() -> None:
         "classify_article",
         "create_article_card",
         "resolve_article_cases",
+        "resolve_article_entities",
+        "resolve_article_events",
         "update_case_copy",
     )
     assert job_store.complete_job.await_count == 3

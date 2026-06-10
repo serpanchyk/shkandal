@@ -13,7 +13,8 @@ date-bounded high-cap backfills, stored-HTML publication-date repair, and the
 first article relevance classifier job handler. LLM prompts and public
 case/entity pages are future work. The LLM task architecture now exists in
 `worker-ml`, with LangChain prompt/chaining support and LiteLLM proxy routing,
-but downstream article-card and resolution jobs are not fully wired yet.
+Entity and Event resolution jobs are now wired after Case resolution; public
+API and pages remain future work.
 
 ## Product Direction
 
@@ -29,7 +30,8 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 
 - `backend`: FastAPI service exposing `GET /healthz` today; future public API and business boundary.
 - `worker-ingestion`: two-hourly systemd-scheduled one-shot curated-source discovery from sitemaps, RSS/Atom feeds, and section pages; bounded fetch retries; date-bounded backfill traversal; fetching; generic-first extraction; publication-date repair from stored raw HTML; URL identity normalization; image URL extraction; and PostgreSQL upsert.
-- `worker-ml`: async worker entrypoint with article relevance classifier job enqueueing/handling, E5-small embedding service, Qdrant vector-index integration, and the LLM task architecture for future article cards, resolution, and deduplication.
+- `worker-ml`: async worker entrypoint with article relevance, article cards,
+  Case resolution/copy, and article-scoped global Entity/Event resolution.
 - `frontend`: Next.js TypeScript app with an API health link today; future public feed, case pages, and entity pages.
 - `postgres`: source-of-truth database and Postgres-backed job store schema.
 - `packages/database`: shared async SQLAlchemy models, session helpers, and Alembic migrations.
@@ -82,6 +84,11 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - `case_entities` and `case_events` are direct materialized links for public pages, created from article-level resolution plus article-case context.
 - `Entity` is one global typed table for people, organizations, institutions, companies, political parties, informal groups, and unknown actors.
 - `Event` is a global strict real-world occurrence, shared across cases when appropriate.
+- Entity and Event identity mutations use separate advisory locks. Accepted
+  items must be assigned to at least one linked Case; rejected provisional
+  items are explicit.
+- Event occurrence dates use separate year/month/day fields so partial and
+  unknown dates do not create fictional exact dates.
 - Event relations are out of MVP.
 - Direct entity-event relations are out of MVP.
 - Public article cards link directly to original source pages; Shkandal does not publish copied full article pages.
@@ -100,6 +107,5 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 
 ## Known Next Work
 
-- Wire article-card and resolution jobs to the LLM task architecture.
 - Implement Qdrant collections for case, entity, and event cards.
 - Build public API and frontend for homepage feed, case pages, and entity pages.

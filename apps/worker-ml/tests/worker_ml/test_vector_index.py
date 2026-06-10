@@ -131,7 +131,7 @@ async def test_upsert_event_includes_date_and_location() -> None:
         slug="event-a",
         title_uk="Подія",
         description_uk=None,
-        event_date=None,
+        event_year=None,
         location_uk="Київ",
     )
 
