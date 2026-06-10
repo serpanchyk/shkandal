@@ -12,6 +12,7 @@ LlmRunType = Literal[
     "case_resolution",
     "entity_resolution",
     "event_resolution",
+    "case_copy_update",
 ]
 EntityType = Literal[
     "person",
@@ -23,7 +24,7 @@ EntityType = Literal[
     "unknown_actor",
     "other",
 ]
-CaseRelationType = Literal["parent_child", "related", "possible_duplicate"]
+CaseRelationType = Literal["related", "possible_duplicate"]
 EventDatePrecision = Literal["day", "month", "year", "unknown"]
 NoiseReason = Literal[
     "culture",
@@ -194,6 +195,7 @@ class CaseLinkDecision(StrictOutput):
 class NewCaseDecision(StrictOutput):
     """Decision to create a new reader-facing case."""
 
+    new_case_ref: str = Field(pattern=r"^new_[a-z0-9_]+$")
     title_uk: str = Field(min_length=1)
     summary_uk: str = Field(min_length=1)
     link_reason_uk: str = Field(min_length=1)
@@ -203,9 +205,31 @@ class NewCaseDecision(StrictOutput):
 class CaseRelationDecision(StrictOutput):
     """Explicit relationship between resolved cases."""
 
-    source_case_ref: str
-    target_case_ref: str
+    case_a_id: str | None = None
+    case_a_new_ref: str | None = Field(default=None, pattern=r"^new_[a-z0-9_]+$")
+    case_b_id: str | None = None
+    case_b_new_ref: str | None = Field(default=None, pattern=r"^new_[a-z0-9_]+$")
     relation_type: CaseRelationType
+
+    @model_validator(mode="after")
+    def validate_endpoints(self) -> CaseRelationDecision:
+        """Require exactly one identifier for each relation endpoint."""
+
+        if (self.case_a_id is None) == (self.case_a_new_ref is None):
+            raise ValueError("case_a requires exactly one existing id or new-case ref")
+        if (self.case_b_id is None) == (self.case_b_new_ref is None):
+            raise ValueError("case_b requires exactly one existing id or new-case ref")
+        if (
+            self.case_a_id is not None
+            and self.case_b_id is not None
+            and self.case_a_id == self.case_b_id
+        ) or (
+            self.case_a_new_ref is not None
+            and self.case_b_new_ref is not None
+            and self.case_a_new_ref == self.case_b_new_ref
+        ):
+            raise ValueError("case relation cannot reference the same case twice")
+        return self
 
 
 class CaseResolutionOutput(StrictOutput):
@@ -214,6 +238,44 @@ class CaseResolutionOutput(StrictOutput):
     existing_case_links: list[CaseLinkDecision] = Field(default_factory=list)
     new_cases: list[NewCaseDecision] = Field(default_factory=list)
     case_relations: list[CaseRelationDecision] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_resolution(self) -> CaseResolutionOutput:
+        """Require a case and validate references to proposed new cases."""
+
+        if not self.existing_case_links and not self.new_cases:
+            raise ValueError("case resolution must link or create at least one case")
+        existing_ids = [link.case_id for link in self.existing_case_links]
+        if len(existing_ids) != len(set(existing_ids)):
+            raise ValueError("existing case links must be unique")
+        new_refs = [case.new_case_ref for case in self.new_cases]
+        if len(new_refs) != len(set(new_refs)):
+            raise ValueError("new case refs must be unique")
+        known_refs = set(new_refs)
+        for relation in self.case_relations:
+            for ref in (relation.case_a_new_ref, relation.case_b_new_ref):
+                if ref is not None and ref not in known_refs:
+                    raise ValueError(f"unknown new case ref: {ref}")
+        return self
+
+
+class CaseCopyUpdateOutput(StrictOutput):
+    """Updated reader-facing copy for one existing case."""
+
+    title_action: Literal["keep", "replace"]
+    replacement_title_uk: str | None = None
+    title_reason_uk: str = Field(min_length=1)
+    summary_uk: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_title_action(self) -> CaseCopyUpdateOutput:
+        """Require replacement copy only for an explicit replacement."""
+
+        if self.title_action == "replace" and not self.replacement_title_uk:
+            raise ValueError("replacement title is required when title_action is replace")
+        if self.title_action == "keep" and self.replacement_title_uk is not None:
+            raise ValueError("replacement title must be null when title_action is keep")
+        return self
 
 
 class EntityCaseAssignment(StrictOutput):

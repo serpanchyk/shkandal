@@ -27,6 +27,7 @@ class MlConfig(BaseServiceConfig):
     llm_case_resolution_model: str = "shkandal-case-resolution"
     llm_entity_resolution_model: str = "shkandal-entity-resolution"
     llm_event_resolution_model: str = "shkandal-event-resolution"
+    llm_case_copy_update_model: str = "shkandal-case-copy-update"
     llm_repair_model: str = "shkandal-repair"
 
     @property

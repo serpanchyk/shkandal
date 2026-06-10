@@ -159,9 +159,13 @@ def test_article_card_contract_rejects_inconsistent_event_dates(
         )
 
 
-def test_resolution_contracts_accept_empty_decisions() -> None:
-    assert CaseResolutionOutput.model_validate(
-        {"existing_case_links": [], "new_cases": [], "case_relations": []}
-    )
+def test_case_resolution_contract_rejects_empty_decisions() -> None:
+    with pytest.raises(ValidationError):
+        CaseResolutionOutput.model_validate(
+            {"existing_case_links": [], "new_cases": [], "case_relations": []}
+        )
+
+
+def test_other_resolution_contracts_accept_empty_decisions() -> None:
     assert EntityResolutionOutput.model_validate({"entities": []})
     assert EventResolutionOutput.model_validate({"events": []})

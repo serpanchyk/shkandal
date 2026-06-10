@@ -117,6 +117,8 @@ class ClassificationJobHandler:
     async def handle(self, job: ClaimedJob) -> RelevancePrediction:
         """Classify the job article and persist classifier output."""
 
+        if job.article_id is None:
+            raise ValueError("classification job requires article_id")
         async with self._session_factory() as session:
             article = await session.scalar(select(Article).where(Article.id == job.article_id))
             if article is None:

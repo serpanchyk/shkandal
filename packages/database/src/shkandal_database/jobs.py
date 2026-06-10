@@ -8,7 +8,7 @@ from random import SystemRandom
 from typing import Any, Literal
 from uuid import UUID
 
-from sqlalchemy import Select, and_, desc, or_, select, update
+from sqlalchemy import Select, and_, case, desc, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -33,10 +33,12 @@ class ClaimedJob:
 
     id: UUID
     job_type: str
-    article_id: UUID
+    article_id: UUID | None
     payload: dict[str, Any]
     attempt_count: int
     max_attempts: int
+    case_id: UUID | None = None
+    requested_revision: int = 1
 
 
 @dataclass(frozen=True)
@@ -48,7 +50,7 @@ class EnqueueJobResult:
 
 
 class ArticleJobStore:
-    """Store and claim durable article-scoped jobs."""
+    """Store and claim durable typed-subject jobs."""
 
     def __init__(
         self,
@@ -76,12 +78,61 @@ class ArticleJobStore:
     ) -> EnqueueJobResult:
         """Create an article job or requeue an existing failed job."""
 
+        return await self._enqueue_job(
+            job_type=job_type,
+            subject_column=Job.article_id,
+            subject_id=article_id,
+            values={"article_id": article_id},
+            payload=payload,
+            priority=priority,
+            run_after=run_after,
+            max_attempts=max_attempts,
+            increment_revision=False,
+        )
+
+    async def enqueue_case_job(
+        self,
+        *,
+        job_type: str,
+        case_id: UUID,
+        payload: dict[str, Any] | None = None,
+        priority: int = 0,
+        run_after: datetime | None = None,
+        max_attempts: int = 3,
+    ) -> EnqueueJobResult:
+        """Create or request another revision of one case-scoped job."""
+
+        return await self._enqueue_job(
+            job_type=job_type,
+            subject_column=Job.case_id,
+            subject_id=case_id,
+            values={"case_id": case_id},
+            payload=payload,
+            priority=priority,
+            run_after=run_after,
+            max_attempts=max_attempts,
+            increment_revision=True,
+        )
+
+    async def _enqueue_job(
+        self,
+        *,
+        job_type: str,
+        subject_column: Any,
+        subject_id: UUID,
+        values: dict[str, UUID],
+        payload: dict[str, Any] | None,
+        priority: int,
+        run_after: datetime | None,
+        max_attempts: int,
+        increment_revision: bool,
+    ) -> EnqueueJobResult:
         async with async_session_scope(self._session_factory) as session:
             statement = (
                 insert(Job)
                 .values(
                     job_type=job_type,
-                    article_id=article_id,
+                    **values,
                     status=JOB_STATUS_QUEUED,
                     priority=priority,
                     payload=payload or {},
@@ -89,7 +140,8 @@ class ArticleJobStore:
                     max_attempts=max_attempts,
                 )
                 .on_conflict_do_nothing(
-                    index_elements=[Job.job_type, Job.article_id],
+                    index_elements=[Job.job_type, subject_column],
+                    index_where=subject_column.is_not(None),
                 )
                 .returning(Job.id)
             )
@@ -100,12 +152,30 @@ class ArticleJobStore:
             existing_job = (
                 await session.execute(
                     select(Job.id, Job.status)
-                    .where(Job.job_type == job_type, Job.article_id == article_id)
+                    .where(Job.job_type == job_type, subject_column == subject_id)
                     .with_for_update()
                 )
             ).one_or_none()
             if existing_job is None:
                 raise RuntimeError("job insert conflicted but existing job was not found")
+            if increment_revision:
+                next_status = (
+                    existing_job.status
+                    if existing_job.status in {JOB_STATUS_RUNNING, JOB_STATUS_QUEUED}
+                    else JOB_STATUS_QUEUED
+                )
+                update_values: dict[str, Any] = {
+                    "requested_revision": Job.requested_revision + 1,
+                    "status": next_status,
+                    "run_after": run_after,
+                    "last_error": None,
+                }
+                if payload is not None:
+                    update_values["payload"] = payload
+                await session.execute(
+                    update(Job).where(Job.id == existing_job.id).values(**update_values)
+                )
+                return EnqueueJobResult(job_id=existing_job.id, state="requeued")
             if existing_job.status != JOB_STATUS_FAILED:
                 return EnqueueJobResult(job_id=existing_job.id, state="existing")
 
@@ -164,9 +234,11 @@ class ArticleJobStore:
                     Job.id,
                     Job.job_type,
                     Job.article_id,
+                    Job.case_id,
                     Job.payload,
                     Job.attempt_count,
                     Job.max_attempts,
+                    Job.requested_revision,
                 )
             )
             row = (await session.execute(statement)).one()
@@ -174,21 +246,51 @@ class ArticleJobStore:
                 id=row.id,
                 job_type=row.job_type,
                 article_id=row.article_id,
+                case_id=row.case_id,
                 payload=row.payload,
                 attempt_count=row.attempt_count,
                 max_attempts=row.max_attempts,
+                requested_revision=row.requested_revision,
             )
 
-    async def complete_job(self, *, job_id: UUID, now: datetime | None = None) -> None:
+    async def complete_job(
+        self,
+        *,
+        job_id: UUID,
+        processed_revision: int | None = None,
+        now: datetime | None = None,
+    ) -> None:
         """Mark a claimed job as succeeded."""
 
         finished_at = now or datetime.now(UTC)
         async with async_session_scope(self._session_factory) as session:
+            if processed_revision is None:
+                await session.execute(
+                    update(Job)
+                    .where(Job.id == job_id)
+                    .values(
+                        status=JOB_STATUS_SUCCEEDED,
+                        completed_revision=Job.requested_revision,
+                        locked_at=None,
+                        locked_by=None,
+                        last_error=None,
+                        updated_at=finished_at,
+                    )
+                )
+                return
             await session.execute(
                 update(Job)
                 .where(Job.id == job_id)
                 .values(
-                    status=JOB_STATUS_SUCCEEDED,
+                    status=case(
+                        (Job.requested_revision > processed_revision, JOB_STATUS_QUEUED),
+                        else_=JOB_STATUS_SUCCEEDED,
+                    ),
+                    completed_revision=processed_revision,
+                    run_after=case(
+                        (Job.requested_revision > processed_revision, finished_at),
+                        else_=Job.run_after,
+                    ),
                     locked_at=None,
                     locked_by=None,
                     last_error=None,

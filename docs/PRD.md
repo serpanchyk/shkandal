@@ -79,7 +79,7 @@ current database rows.
 - One relevant article is enough to create a public case.
 - Case-linked articles may exist without extracted events.
 - Articles can link to multiple cases. Events can link to multiple cases. Entities can link to multiple cases.
-- Explicit case relations support `parent_child`, `related`, and `possible_duplicate`.
+- Explicit symmetric case relations support `related` and `possible_duplicate`.
 - `Entity` is one global typed model with canonical name, aliases, type, and Ukrainian description.
 - `Event` is one global strict real-world occurrence. Related developments are separate events.
 - One supporting article is enough for a public event if provenance is preserved.
@@ -99,6 +99,10 @@ current database rows.
 - Article-card extraction is limited to the main article and excludes related
   articles, recommendations, boilerplate, and unrelated background.
 - Article-case resolution happens before entity and event resolution.
+- Every case-candidate article must link to or create at least one case; empty
+  case resolution is invalid.
+- Case copy updates are unique case-scoped jobs triggered after every new
+  article-case link.
 - Entity and event resolvers receive all linked cases and assign each resolved item only to relevant cases.
 - Direct `case_entities` and `case_events` are materialized from article-level scoped links.
 - Qdrant has rebuildable collections for case cards, entity cards, and event cards.

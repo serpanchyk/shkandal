@@ -28,3 +28,25 @@ _Avoid_: Ukrainian-language article, international news
 **Institutional Decision**:
 A public-body decision with accountability stakes, such as misuse of power or funds, investigation, prosecution, sanctions, dismissal, public conflict, rights impact, major public risk, or a tie to an already relevant case. Routine announcements are not institutional decisions for Shkandal.
 _Avoid_: announcement, press release, routine update
+
+**Case**:
+A reader-facing dossier about one durable accountability story. Procedural stages
+and later developments about the same underlying conduct remain in the same Case.
+Shared actors or broad topics alone do not establish Case identity.
+_Avoid_: article cluster, actor dossier, broad topic
+
+**Material Article Contribution**:
+Evidence or context that advances, documents, corrects, or materially explains a
+Case. An incidental background mention is not a material contribution.
+_Avoid_: mention, keyword match
+
+**Related Cases**:
+Distinct Cases connected through a central actor or a specific recurring
+accountability theme useful for reader navigation. Broad categories such as
+corruption alone are insufficient.
+_Avoid_: same case, possible duplicate
+
+**Possible Duplicate Cases**:
+Cases likely describing the same durable accountability story and therefore
+candidates for eventual merge.
+_Avoid_: related cases, uncertain relationship

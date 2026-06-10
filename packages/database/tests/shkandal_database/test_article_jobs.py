@@ -79,6 +79,27 @@ async def test_enqueue_article_job_requeues_failed_job() -> None:
     assert requeue_statement.compile().params["max_attempts"] == 5
 
 
+@pytest.mark.asyncio
+async def test_enqueue_case_job_requests_another_revision() -> None:
+    job_id = uuid4()
+    case_id = uuid4()
+    session_factory, session = _mock_session_factory()
+    session.scalar = AsyncMock(return_value=None)
+    existing_result = MagicMock()
+    existing_result.one_or_none.return_value = SimpleNamespace(id=job_id, status="running")
+    session.execute = AsyncMock(return_value=existing_result)
+
+    result = await ArticleJobStore(session_factory).enqueue_case_job(
+        job_type="update_case_copy",
+        case_id=case_id,
+    )
+
+    assert result.state == "requeued"
+    statement = session.execute.await_args_list[1].args[0]
+    assert "requested_revision + " in str(statement)
+    assert statement.compile().params["status"] == "running"
+
+
 def test_retry_delay_uses_configured_backoff_without_jitter() -> None:
     session_factory = cast(async_sessionmaker[AsyncSession], object())
     store = ArticleJobStore(

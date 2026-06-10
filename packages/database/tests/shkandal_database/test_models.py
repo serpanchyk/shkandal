@@ -51,10 +51,9 @@ def test_key_constraints_are_registered() -> None:
         "case_articles",
         UniqueConstraint,
     )
-    assert "ck_case_relations_not_self" in constraint_names("case_relations", CheckConstraint)
+    assert "ck_case_relations_canonical_pair" in constraint_names("case_relations", CheckConstraint)
     assert "ck_entities_entity_type" in constraint_names("entities", CheckConstraint)
     assert "ck_jobs_status" in constraint_names("jobs", CheckConstraint)
-    assert "uq_jobs_job_type_article_id" in constraint_names("jobs", UniqueConstraint)
 
 
 def test_key_indexes_are_registered() -> None:
@@ -100,8 +99,12 @@ def test_article_uses_identity_url_only() -> None:
     assert "normalized_url" not in Base.metadata.tables["articles"].columns
 
 
-def test_jobs_are_article_scoped() -> None:
-    assert Job.article_id.property.columns[0].nullable is False
+def test_jobs_have_exactly_one_typed_subject() -> None:
+    assert Job.article_id.property.columns[0].nullable is True
+    assert Job.case_id.property.columns[0].nullable is True
+    assert "ck_jobs_exactly_one_subject" in constraint_names("jobs", CheckConstraint)
+    assert "uq_jobs_job_type_article_id" in index_names("jobs")
+    assert "uq_jobs_job_type_case_id" in index_names("jobs")
     assert any(
         isinstance(constraint, ForeignKeyConstraint)
         for constraint in Base.metadata.tables["jobs"].constraints

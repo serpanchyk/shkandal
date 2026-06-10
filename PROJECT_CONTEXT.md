@@ -44,7 +44,9 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - Qdrant is rebuildable from PostgreSQL-backed data.
 - Redis is excluded from MVP.
 - One generic PostgreSQL `jobs` table with row locking is the MVP background-work mechanism. A job is one durable, retryable, typed pipeline work unit, not a worker process or domain object.
-- MVP jobs are article-scoped: each job works on one article, so the job store should carry an explicit `article_id` and enforce one all-time job row per `(job_type, article_id)`. Reruns reset or requeue that row rather than creating duplicates.
+- Jobs have exactly one typed article or Case subject. Article jobs are unique by
+  `(job_type, article_id)`; revision-aware Case jobs are unique by
+  `(job_type, case_id)`.
 - Ingestion is not queued as a job in the MVP. After historical backfill, systemd starts a one-shot full-source pass every two hours that persists new articles to PostgreSQL and retries failed fetches up to five attempts.
 - `worker-ml` owns ML job creation. It polls PostgreSQL for articles missing
   `article_relevance`, enqueues idempotent `classify_article` jobs, and processes
@@ -71,6 +73,8 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 ## Domain Decisions
 
 - A `Case` is a reader-facing dossier/topic, not an exclusive article cluster.
+- A `Case` follows one durable accountability story across procedural stages.
+- Case relations are symmetric `related` or `possible_duplicate` links.
 - One relevant article is enough to create a public case.
 - Articles, entities, and events can connect to multiple cases.
 - Articles can link to cases even when they do not create extracted events.

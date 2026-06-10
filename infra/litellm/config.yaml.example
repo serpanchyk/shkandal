@@ -23,6 +23,12 @@ model_list:
       api_base: https://api.lapathoniia.top/v1
       api_key: os.environ/LAPATONIA_API_KEY
     rpm: 60
+  - model_name: shkandal-case-copy-update
+    litellm_params:
+      model: openai/MamayLM-Gemma-3-27B-IT-v2.0
+      api_base: https://api.lapathoniia.top/v1
+      api_key: os.environ/LAPATONIA_API_KEY
+    rpm: 30
   - model_name: shkandal-repair
     litellm_params:
       model: openai/MamayLM-Gemma-3-27B-IT-v2.0

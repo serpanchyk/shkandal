@@ -15,6 +15,10 @@ candidate global events.
 Qdrant is always derived from PostgreSQL-backed data and must not become the
 source of truth.
 
+Case retrieval results are hydrated from PostgreSQL before resolution, so stale
+or orphaned points cannot become identity truth. Serialized Case mutations
+upsert affected vectors before their PostgreSQL transaction commits.
+
 ## Shared Package
 
 `packages/vector_store` owns the shared thin Qdrant integration layer:

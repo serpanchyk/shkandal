@@ -155,6 +155,7 @@ def test_model_aliases_use_stage_specific_settings() -> None:
     assert aliases["case_resolution"] == "shkandal-case-resolution"
     assert aliases["entity_resolution"] == "shkandal-entity-resolution"
     assert aliases["event_resolution"] == "shkandal-event-resolution"
+    assert aliases["case_copy_update"] == "shkandal-case-copy-update"
     assert aliases["repair"] == "shkandal-repair"
 
 

@@ -18,6 +18,7 @@ from pydantic import BaseModel, SecretStr, ValidationError
 from worker_ml.config import MlConfig
 from worker_ml.llm.contracts import (
     ArticleCardOutput,
+    CaseCopyUpdateOutput,
     CaseResolutionOutput,
     EntityResolutionOutput,
     EventResolutionOutput,
@@ -33,6 +34,7 @@ RUN_TYPE_MODELS: dict[LlmRunType, type[BaseModel]] = {
     "case_resolution": CaseResolutionOutput,
     "entity_resolution": EntityResolutionOutput,
     "event_resolution": EventResolutionOutput,
+    "case_copy_update": CaseCopyUpdateOutput,
 }
 
 
@@ -319,6 +321,7 @@ def model_aliases(settings: MlConfig) -> dict[str, str]:
         "case_resolution": settings.llm_case_resolution_model,
         "entity_resolution": settings.llm_entity_resolution_model,
         "event_resolution": settings.llm_event_resolution_model,
+        "case_copy_update": settings.llm_case_copy_update_model,
         "repair": settings.llm_repair_model,
     }
 

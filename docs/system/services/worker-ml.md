@@ -19,6 +19,7 @@ Planned responsibilities:
 - embed article, case, entity, and event cards;
 - query Qdrant case, entity, and event collections;
 - resolve article-case relationships and explicit case relations;
+- serialize Case identity/copy mutation and keep affected Case vectors current;
 - resolve global entities from provisional article entities;
 - resolve global strict real-world events from provisional article events;
 - assign resolved entities/events only to relevant linked cases;
@@ -69,6 +70,12 @@ are empty.
 Future case, entity, and event resolution handlers must load cards through the
 case-candidate gate. A stored non-case card remains available for inspection but
 must not create provisional cases, events, or entities downstream.
+
+Case resolution is mandatory for case-candidate cards: a successful output must
+link at least one existing Case or create at least one new Case. It may create
+only symmetric `related` and `possible_duplicate` relations. After every new
+article-case link, a unique case-scoped job regenerates summary copy and reviews
+whether the stable title materially needs replacement.
 
 After an article-card prompt or contract change, inspect and explicitly apply a
 full regeneration. Apply mode refuses to run while any article-card job is
@@ -153,8 +160,9 @@ Below-threshold articles normally skip LLM work in the MVP, but they remain
 stored with score, classifier metadata, threshold metadata, extracted text, and
 source data so they can be revisited later.
 
-The worker should use the shared PostgreSQL job store for article-scoped jobs.
-Jobs are unique by `(job_type, article_id)` for the lifetime of the row. Workers
+The worker should use the shared PostgreSQL job store for typed-subject jobs.
+Article jobs are unique by `(job_type, article_id)` and Case jobs by
+`(job_type, case_id)` for the lifetime of the row. Workers
 claim jobs with `FOR UPDATE SKIP LOCKED`, treat `running` rows as reclaimable
 leases after the configured stale-job timeout, and count each claim as an
 attempt.

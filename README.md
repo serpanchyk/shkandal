@@ -37,14 +37,13 @@ Examples:
 - Denys Komarnytskyi / Clean City;
 - Bill No. 14057 and risks for investigative journalism.
 
-Cases can overlap. One article can belong to multiple cases. One event can be relevant to multiple cases. A specific case can have multiple broader parent cases.
+Cases can overlap. One article can belong to multiple cases. One event can be relevant to multiple cases.
 
 One relevant article is enough to create a public case. The system optimizes for coverage and speed, with source provenance visible to readers.
 
 Case relationships are explicit:
 
-- `parent_child` for broad/specific relationships;
-- `related` for meaningful overlap without containment;
+- `related` for shared central actors or specific accountability themes;
 - `possible_duplicate` for later automatic or manual merge handling.
 
 ### Article
@@ -193,7 +192,14 @@ The article card is embedded and used to retrieve candidate cases from Qdrant. T
 - create one or more new durable reader-facing cases;
 - create explicit case relations when useful.
 
+Every case-candidate article must link to or create at least one case. Empty
+resolution is invalid. Case mutation is serialized, and new or changed case
+vectors must be written before the PostgreSQL mutation commits.
+
 Case titles should be broader durable dossier names, not one-off event headlines.
+Existing case copy is refreshed by a unique case-scoped job after each new
+article link. The job always refreshes the summary and replaces the title only
+when the current title is materially inadequate.
 
 ### 6. Resolve Entities
 

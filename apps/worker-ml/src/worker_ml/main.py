@@ -4,7 +4,7 @@ import argparse
 import asyncio
 import logging
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
 from shkandal_common.logging import setup_logger
@@ -12,16 +12,35 @@ from shkandal_database.config import DatabaseConfig
 from shkandal_database.jobs import ArticleJobStore, ClaimedJob
 from shkandal_database.llm_cooldowns import LlmCooldownStore
 from shkandal_database.session import create_async_engine_from_config, create_async_sessionmaker
+from shkandal_vector_store import VectorStoreConfig, create_qdrant_client
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from worker_ml.article_cards import ArticleCardJobHandler
+from worker_ml.case_resolution import (
+    ArticleCaseResolutionJobHandler,
+    CaseCopyUpdateJobHandler,
+    CaseMutationBusyError,
+)
 from worker_ml.classifier import ClassificationJobHandler, RelevanceModel
 from worker_ml.config import MlConfig
-from worker_ml.jobs import CLASSIFY_ARTICLE_JOB, CREATE_ARTICLE_CARD_JOB, MlJobPlanner
+from worker_ml.embeddings import E5Embedder
+from worker_ml.jobs import (
+    CLASSIFY_ARTICLE_JOB,
+    CREATE_ARTICLE_CARD_JOB,
+    RESOLVE_ARTICLE_CASES_JOB,
+    UPDATE_CASE_COPY_JOB,
+    MlJobPlanner,
+)
 from worker_ml.llm.runner import LlmRateLimitError, LlmTaskRunner
 from worker_ml.llm.runs import LlmRunStore
+from worker_ml.vector_index import create_vector_index_service
 
-SUPPORTED_JOB_TYPES = (CLASSIFY_ARTICLE_JOB, CREATE_ARTICLE_CARD_JOB)
+SUPPORTED_JOB_TYPES = (
+    CLASSIFY_ARTICLE_JOB,
+    CREATE_ARTICLE_CARD_JOB,
+    RESOLVE_ARTICLE_CASES_JOB,
+    UPDATE_CASE_COPY_JOB,
+)
 
 
 class JobHandler(Protocol):
@@ -168,6 +187,13 @@ async def process_next_job(
                 },
             )
             return {"status": "deferred", "job_type": claimed_job.job_type}
+        except CaseMutationBusyError as exc:
+            await job_store.defer_job(
+                job_id=claimed_job.id,
+                run_after=datetime.now(UTC) + timedelta(seconds=10),
+                reason=str(exc),
+            )
+            return {"status": "deferred", "job_type": claimed_job.job_type}
         except Exception as exc:
             await job_store.fail_job(
                 job_id=claimed_job.id,
@@ -185,7 +211,10 @@ async def process_next_job(
             )
             return {"status": "failed", "job_type": claimed_job.job_type}
 
-        await job_store.complete_job(job_id=claimed_job.id)
+        await job_store.complete_job(
+            job_id=claimed_job.id,
+            processed_revision=_processed_revision(claimed_job),
+        )
         logger.info(
             "worker_ml_job_succeeded",
             extra={
@@ -311,6 +340,13 @@ async def _run_cycle(
                 },
             )
             break
+        except CaseMutationBusyError as exc:
+            await job_store.defer_job(
+                job_id=claimed_job.id,
+                run_after=datetime.now(UTC) + timedelta(seconds=10),
+                reason=str(exc),
+            )
+            continue
         except Exception as exc:
             await job_store.fail_job(
                 job_id=claimed_job.id,
@@ -329,7 +365,10 @@ async def _run_cycle(
             )
             continue
 
-        await job_store.complete_job(job_id=claimed_job.id)
+        await job_store.complete_job(
+            job_id=claimed_job.id,
+            processed_revision=_processed_revision(claimed_job),
+        )
         processed_jobs += 1
         logger.info(
             "worker_ml_job_succeeded",
@@ -393,6 +432,12 @@ def _empty_cycle_stats() -> dict[str, int]:
     }
 
 
+def _processed_revision(job: ClaimedJob) -> int | None:
+    if getattr(job, "case_id", None) is None:
+        return None
+    return int(getattr(job, "requested_revision", 1))
+
+
 def _create_handlers(
     *,
     settings: MlConfig,
@@ -406,12 +451,39 @@ def _create_handlers(
         run_store=run_store,
         cooldown_observer=LlmCooldownStore(session_factory),
     )
+    embedder = E5Embedder.load(
+        settings.embedding_model_dir,
+        vector_size=settings.embedding_vector_size,
+    )
+    vector_config = VectorStoreConfig(
+        qdrant_url=settings.qdrant_url,
+        vector_size=settings.embedding_vector_size,
+    )
+    vector_index = create_vector_index_service(
+        embedder=embedder,
+        client=create_qdrant_client(vector_config),
+        config=vector_config,
+    )
     return {
         CLASSIFY_ARTICLE_JOB: ClassificationJobHandler(session_factory, job_store, model),
         CREATE_ARTICLE_CARD_JOB: ArticleCardJobHandler(
             session_factory,
             runner,
+            job_store,
             model_name=settings.llm_article_card_model,
+        ),
+        RESOLVE_ARTICLE_CASES_JOB: ArticleCaseResolutionJobHandler(
+            session_factory,
+            job_store,
+            runner,
+            vector_index,
+            model_name=settings.llm_case_resolution_model,
+        ),
+        UPDATE_CASE_COPY_JOB: CaseCopyUpdateJobHandler(
+            session_factory,
+            runner,
+            vector_index,
+            model_name=settings.llm_case_copy_update_model,
         ),
     }
 

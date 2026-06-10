@@ -16,13 +16,10 @@ Redis is intentionally excluded from the MVP. Background work can start with a
 single generic PostgreSQL jobs table and row locking.
 
 A job is one durable, retryable, typed pipeline work unit with a structured
-payload. It is not a worker process and not a domain object. MVP jobs are
-article-scoped: each job works on one article, and the job store should carry an
-explicit article reference. Job enqueueing should be idempotent by enforcing one
-job per `(job_type, article_id)` for the lifetime of the row, regardless of job
-status. A job row represents that article's lifecycle through that pipeline
-step. Reruns should reset or requeue the existing job, or introduce deliberate
-versioned job semantics later, rather than accumulating duplicate job rows.
+payload. It is not a worker process and not a domain object. A job has exactly
+one typed subject: `article_id` or `case_id`. Article jobs remain unique by
+`(job_type, article_id)`; case jobs are unique by `(job_type, case_id)` and use
+requested/completed revisions so triggers arriving during a run are not lost.
 Durable output tables such as `article_relevance`, `article_cards`, and
 `llm_runs` hold processing results and history; `jobs` coordinates work.
 LLM calls are routed through the LiteLLM proxy service in Compose. The proxy is
@@ -39,6 +36,11 @@ its own durable output exists. `classify_article` succeeds by writing
 `resolve_article_cases`. After case links exist, the worker can enqueue
 `resolve_article_entities` and `resolve_article_events`. Later jobs are not
 pre-enqueued because they depend on upstream outputs and relevance gates.
+
+Case identity resolution and case-copy updates share one PostgreSQL advisory
+lock. If unavailable, the job is deferred without consuming an attempt. Affected
+Case vectors are upserted before PostgreSQL commits; Qdrant failure rolls back
+the Case mutation.
 
 Workers claim queued jobs through PostgreSQL row locking, using
 `FOR UPDATE SKIP LOCKED` semantics. A worker claims eligible queued jobs ordered

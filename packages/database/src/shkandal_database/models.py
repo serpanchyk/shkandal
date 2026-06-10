@@ -178,7 +178,7 @@ class LlmRun(Base):
     __table_args__ = (
         CheckConstraint(
             "run_type in ('article_card', 'case_resolution', 'entity_resolution', "
-            "'event_resolution')",
+            "'event_resolution', 'case_copy_update')",
             name="ck_llm_runs_run_type",
         ),
         CheckConstraint(
@@ -308,30 +308,30 @@ class CaseRelation(Base):
 
     __tablename__ = "case_relations"
     __table_args__ = (
-        CheckConstraint("source_case_id <> target_case_id", name="ck_case_relations_not_self"),
+        CheckConstraint("case_a_id < case_b_id", name="ck_case_relations_canonical_pair"),
         CheckConstraint(
-            "relation_type in ('parent_child', 'related', 'possible_duplicate')",
+            "relation_type in ('related', 'possible_duplicate')",
             name="ck_case_relations_relation_type",
         ),
         UniqueConstraint(
-            "source_case_id",
-            "target_case_id",
+            "case_a_id",
+            "case_b_id",
             "relation_type",
-            name="uq_case_relations_source_target_type",
+            name="uq_case_relations_pair_type",
         ),
         Index(
-            "ix_case_relations_target_case_id_relation_type",
-            "target_case_id",
+            "ix_case_relations_case_b_id_relation_type",
+            "case_b_id",
             "relation_type",
         ),
     )
 
     id: Mapped[UUID] = uuid_pk_column()
-    source_case_id: Mapped[UUID] = mapped_column(
+    case_a_id: Mapped[UUID] = mapped_column(
         ForeignKey("cases.id", ondelete="CASCADE"),
         nullable=False,
     )
-    target_case_id: Mapped[UUID] = mapped_column(
+    case_b_id: Mapped[UUID] = mapped_column(
         ForeignKey("cases.id", ondelete="CASCADE"),
         nullable=False,
     )
@@ -577,7 +577,25 @@ class Job(Base):
             "status in ('queued', 'running', 'succeeded', 'failed', 'cancelled')",
             name="ck_jobs_status",
         ),
-        UniqueConstraint("job_type", "article_id", name="uq_jobs_job_type_article_id"),
+        CheckConstraint(
+            "(article_id IS NOT NULL AND case_id IS NULL) OR "
+            "(article_id IS NULL AND case_id IS NOT NULL)",
+            name="ck_jobs_exactly_one_subject",
+        ),
+        Index(
+            "uq_jobs_job_type_article_id",
+            "job_type",
+            "article_id",
+            unique=True,
+            postgresql_where=text("article_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_jobs_job_type_case_id",
+            "job_type",
+            "case_id",
+            unique=True,
+            postgresql_where=text("case_id IS NOT NULL"),
+        ),
         Index(
             "ix_jobs_status_priority_run_after_created_at",
             "status",
@@ -590,9 +608,11 @@ class Job(Base):
 
     id: Mapped[UUID] = uuid_pk_column()
     job_type: Mapped[str] = mapped_column(Text, nullable=False)
-    article_id: Mapped[UUID] = mapped_column(
+    article_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("articles.id", ondelete="CASCADE"),
-        nullable=False,
+    )
+    case_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("cases.id", ondelete="CASCADE"),
     )
     status: Mapped[str] = mapped_column(Text, nullable=False)
     priority: Mapped[int] = mapped_column(
@@ -614,6 +634,16 @@ class Job(Base):
         Integer,
         nullable=False,
         server_default=text("3"),
+    )
+    requested_revision: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default=text("1"),
+    )
+    completed_revision: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default=text("0"),
     )
     run_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

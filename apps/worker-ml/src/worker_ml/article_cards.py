@@ -6,13 +6,14 @@ import json
 from typing import Any, cast
 from uuid import UUID
 
-from shkandal_database.jobs import ClaimedJob
+from shkandal_database.jobs import ArticleJobStore, ClaimedJob
 from shkandal_database.models import Article, ArticleCard, ArticleRelevance, Source
 from shkandal_database.session import async_session_scope
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from worker_ml.jobs import RESOLVE_ARTICLE_CASES_JOB
 from worker_ml.llm.contracts import ArticleCardOutput
 from worker_ml.llm.runner import LlmTaskRunner
 
@@ -44,16 +45,20 @@ class ArticleCardJobHandler:
         self,
         session_factory: async_sessionmaker[AsyncSession],
         runner: LlmTaskRunner,
+        job_store: ArticleJobStore | None = None,
         *,
         model_name: str,
     ) -> None:
         self._session_factory = session_factory
         self._runner = runner
+        self._job_store = job_store
         self._model_name = model_name
 
     async def handle(self, job: ClaimedJob) -> ArticleCardOutput | None:
         """Generate a card for a relevant article unless one already exists."""
 
+        if job.article_id is None:
+            raise ValueError("article-card job requires article_id")
         async with self._session_factory() as session:
             row = (
                 await session.execute(
@@ -106,6 +111,13 @@ class ArticleCardJobHandler:
                     ),
                 )
                 .on_conflict_do_nothing(index_elements=[ArticleCard.article_id])
+            )
+        if output.is_case_candidate and self._job_store is not None:
+            await self._job_store.enqueue_article_job(
+                job_type=RESOLVE_ARTICLE_CASES_JOB,
+                article_id=job.article_id,
+                payload={"article_id": str(job.article_id)},
+                max_attempts=job.max_attempts,
             )
         return output
 
