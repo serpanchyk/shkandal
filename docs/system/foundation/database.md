@@ -48,7 +48,7 @@ docker compose up -d postgres
 Apply migrations:
 
 ```bash
-uv run alembic -c packages/database/alembic.ini upgrade head
+./ops/run-migrations
 ```
 
 Check the current revision:

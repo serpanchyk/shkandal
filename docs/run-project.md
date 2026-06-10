@@ -193,7 +193,7 @@ docker compose down -v
 Run migrations from the repository root:
 
 ```bash
-uv run alembic -c packages/database/alembic.ini upgrade head
+./ops/run-migrations
 uv run alembic -c packages/database/alembic.ini current
 ```
 
@@ -299,7 +299,7 @@ Start the required infrastructure and run migrations:
 
 ```bash
 docker compose up -d postgres qdrant llm-proxy
-uv run alembic -c packages/database/alembic.ini upgrade head
+./ops/run-migrations
 ```
 
 If the database has no articles, ingest a small source sample. Then run the ML
@@ -419,11 +419,14 @@ After pulling worker, migration, or systemd changes, run these commands from the
 project checkout in order:
 
 ```bash
-# Start or rebuild the long-lived services.
-docker compose up -d --build
+# Start PostgreSQL and wait until it is healthy before applying migrations.
+docker compose up -d --wait postgres
 
 # Apply pending schema migrations before workers use the new code.
-uv run alembic -c packages/database/alembic.ini upgrade head
+./ops/run-migrations
+
+# Start or rebuild all long-lived services after migrations succeed.
+docker compose up -d --build
 
 # Install the current units and start both scheduled timers.
 ./ops/install-systemd.sh

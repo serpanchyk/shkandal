@@ -38,7 +38,7 @@ models, session helpers, and Alembic migrations. Run migrations from the
 repository root:
 
 ```bash
-uv run alembic -c packages/database/alembic.ini upgrade head
+./ops/run-migrations
 uv run alembic -c packages/database/alembic.ini current
 ```
 
