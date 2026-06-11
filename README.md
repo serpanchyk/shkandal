@@ -87,7 +87,14 @@ The homepage should feel modern and live, not like an old archive. The MVP shoul
 - `newest`: recently created cases;
 - `popular`: most viewed cases by anonymous aggregate counters;
 - `biggest`: cases with the most linked articles;
-- `trending`: cases with the highest recent article/event velocity.
+- `trending`: cases with the highest recent linked-article velocity.
+
+The implemented ranking contract defines `latest` as newest linked-article
+publication time, `trending` as linked articles published in the previous seven
+days, `popular` as all-time aggregate views, `biggest` as linked-article count,
+and `newest` as Case creation time. The homepage defaults to `trending`.
+Undated articles remain evidence but do not affect `latest` or `trending`.
+Typo-tolerant Case-title search uses PostgreSQL trigram similarity.
 
 Future homepage ideas include live event streams, infographics, and real-time update blocks.
 
@@ -102,6 +109,7 @@ A case page should contain:
 - event source popup with linked articles;
 - compact linked-articles/source section near the bottom;
 - short automatic-generation disclaimer.
+- compact `Джерела справи` logo strip for all supporting Source types.
 
 Case titles and summaries should be durable identity fields, not rewritten after every new article. Most change should appear through the event timeline. Regenerate title/summary only when the meaning of the case changes.
 
@@ -110,7 +118,7 @@ Generated tone must be neutral and factual. The system should distinguish allega
 Suggested disclaimer:
 
 ```text
-Сторінка автоматично зібрана з відкритих джерел. Події та учасники мають посилання на матеріали, на основі яких їх додано.
+Сторінка автоматично зібрана з відкритих джерел. Події та згадані особи й організації мають посилання на матеріали, на основі яких їх додано.
 ```
 
 ### Entity Page

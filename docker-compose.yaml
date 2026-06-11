@@ -55,6 +55,8 @@ services:
       dockerfile: Dockerfile
     environment:
       NEXT_PUBLIC_BACKEND_URL: "http://localhost:${BACKEND_PORT:-8000}"
+      BACKEND_INTERNAL_URL: "http://backend:8000"
+      NEXT_PUBLIC_SITE_URL: "http://localhost:${FRONTEND_PORT:-3000}"
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     depends_on:

@@ -7,6 +7,22 @@ on:
 jobs:
   checks:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: shkandal
+          POSTGRES_PASSWORD: shkandal_dev_password
+          POSTGRES_DB: shkandal
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U shkandal -d shkandal"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      POSTGRES_DATABASE_URL: postgresql://shkandal:shkandal_dev_password@localhost:5432/shkandal
     steps:
       - uses: actions/checkout@v4
 
@@ -40,4 +56,22 @@ jobs:
 
       - name: Build frontend
         run: npm run build
+        working-directory: apps/frontend
+
+      - name: Prepare browser-test database
+        run: |
+          uv run alembic -c packages/database/alembic.ini upgrade head
+          uv run python apps/backend/tests/seed_public_e2e.py
+
+      - name: Start backend for browser tests
+        run: |
+          PUBLIC_FRONTEND_ORIGIN=http://127.0.0.1:3000 uv run uvicorn shkandal_backend.app:create_app --factory --host 127.0.0.1 --port 8000 &
+          until curl --fail --silent http://127.0.0.1:8000/healthz; do sleep 1; done
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+        working-directory: apps/frontend
+
+      - name: Playwright
+        run: npm run test:e2e
         working-directory: apps/frontend

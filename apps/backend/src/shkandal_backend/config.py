@@ -11,3 +11,4 @@ class BackendConfig(BaseServiceConfig):
         "postgresql://shkandal:shkandal_dev_password@postgres:5432/shkandal"
     )
     qdrant_url: str = "http://qdrant:6333"
+    public_frontend_origin: str = "http://localhost:3000"

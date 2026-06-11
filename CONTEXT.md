@@ -57,6 +57,16 @@ Aliases and true renames may identify the same Entity, while successor bodies
 and independently acting named subdivisions are separate Entities.
 _Avoid_: keyword, incidental mention, parent institution
 
+**Mentioned Entity**:
+An Entity materially linked to a Case through supporting articles. The link
+establishes a source-backed mention, not guilt, responsibility, or formal participation.
+_Avoid_: participant, implicated actor, suspect
+
+**Source**:
+A curated media outlet, institution, court, NGO, government body, or other
+publisher whose original articles support public Cases.
+_Avoid_: media, authority score
+
 **Event**:
 One strict real-world occurrence supported by at least one article. Mentions
 identify the same Event only when their known date, actors, institution, action,

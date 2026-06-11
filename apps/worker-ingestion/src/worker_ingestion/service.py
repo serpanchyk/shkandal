@@ -118,6 +118,7 @@ class IngestionWorker:
                 name=source.name,
                 source_type=source.source_type,
                 base_url=source.base_url,
+                logo_path=source.logo_path,
                 language=source.language,
                 metadata=source.metadata,
             )

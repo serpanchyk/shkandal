@@ -1,26 +1,95 @@
-const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
+import Link from "next/link";
 
-export default function Home() {
+import { CaseCard } from "@/components/case-card";
+import { getCaseFeed, type CaseSort } from "@/lib/api";
+
+const sorts: Array<[CaseSort, string]> = [
+  ["trending", "у тренді"],
+  ["latest", "останні оновлення"],
+  ["newest", "нові справи"],
+  ["popular", "популярні"],
+  ["biggest", "найбільші"],
+];
+
+type SearchParams = Promise<{ sort?: string; page?: string; query?: string }>;
+
+export default async function Home({ searchParams }: { searchParams: SearchParams }) {
+  const params = await searchParams;
+  const sort = sorts.some(([value]) => value === params.sort)
+    ? (params.sort as CaseSort)
+    : "trending";
+  const page = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
+  const query = params.query?.trim();
+  const feed = await getCaseFeed(sort, page, query);
+  if (!feed) throw new Error("Не вдалося завантажити стрічку справ.");
+
+  const [lead, ...items] = feed.items;
   return (
-    <main className="shell">
-      <section className="hero">
-        <p className="eyebrow">Public cases, not a disposable feed</p>
-        <h1>Shkandal</h1>
-        <p className="lede">
-          A structured dossier system for Ukrainian public scandals, investigations, key
-          actors, and timelines.
+    <main className="pageShell">
+      <section className="feedIntro">
+        <div>
+          <p className="kicker">живий контекст замість одноразових новин</p>
+          <h1>Справи, за якими варто стежити</h1>
+        </div>
+        <p>
+          Автоматично зібрані досьє з хронологією, згаданими особами та прямими
+          посиланнями на відкриті джерела.
         </p>
-        <a className="healthLink" href={`${backendUrl}/healthz`}>
-          API health
-        </a>
       </section>
-      <section className="pipeline" aria-label="Pipeline">
-        {["Discover", "Extract", "Filter", "Resolve", "Review", "Publish"].map((step) => (
-          <div className="step" key={step}>
-            {step}
-          </div>
+
+      <form action="/" className="searchForm">
+        <label htmlFor="query">Пошук справи за назвою</label>
+        <div>
+          <input defaultValue={query} id="query" minLength={2} name="query" placeholder="Наприклад, закупівля дронів" />
+          <button type="submit">знайти</button>
+        </div>
+      </form>
+
+      {query ? (
+        <div className="resultHeader">
+          <p>
+            Результати для <strong>«{query}»</strong> · {feed.total_items}
+          </p>
+          <Link href="/">очистити пошук</Link>
+        </div>
+      ) : (
+        <nav aria-label="Сортування справ" className="sortTabs">
+          {sorts.map(([value, label]) => (
+            <Link
+              aria-current={sort === value ? "page" : undefined}
+              href={`/?sort=${value}`}
+              key={value}
+            >
+              {label}
+            </Link>
+          ))}
+        </nav>
+      )}
+
+      {lead ? <CaseCard item={lead} lead /> : <p className="emptyState">Справ не знайдено.</p>}
+      <section className="caseGrid">
+        {items.map((item) => (
+          <CaseCard item={item} key={item.slug} />
         ))}
       </section>
+
+      {feed.total_pages > 1 ? (
+        <nav aria-label="Сторінки" className="pagination">
+          {feed.page > 1 ? (
+            <Link href={`/?${new URLSearchParams({ ...(query ? { query } : { sort }), page: String(feed.page - 1) })}`}>
+              ← попередня
+            </Link>
+          ) : <span />}
+          <span>
+            {feed.page} / {feed.total_pages}
+          </span>
+          {feed.page < feed.total_pages ? (
+            <Link href={`/?${new URLSearchParams({ ...(query ? { query } : { sort }), page: String(feed.page + 1) })}`}>
+              наступна →
+            </Link>
+          ) : <span />}
+        </nav>
+      ) : null}
     </main>
   );
 }

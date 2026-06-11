@@ -22,6 +22,7 @@ class SourceInput:
     base_url: str
     language: str | None
     metadata: dict[str, Any]
+    logo_path: str | None = None
 
 
 @dataclass(frozen=True)
@@ -94,6 +95,7 @@ class SqlAlchemyArticleRepository:
                     name=source.name,
                     source_type=source.source_type,
                     base_url=source.base_url,
+                    logo_path=source.logo_path,
                     language=source.language,
                     metadata_=source.metadata,
                 )
@@ -103,6 +105,7 @@ class SqlAlchemyArticleRepository:
                         "name": source.name,
                         "source_type": source.source_type,
                         "base_url": source.base_url,
+                        "logo_path": source.logo_path,
                         "language": source.language,
                         "metadata": source.metadata,
                     },

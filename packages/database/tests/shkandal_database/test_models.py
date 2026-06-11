@@ -62,6 +62,7 @@ def test_key_indexes_are_registered() -> None:
     assert "ix_cases_status_last_updated_at" in index_names("cases")
     assert "ix_entities_aliases" in index_names("entities")
     assert "ix_case_events_case_id_event_date_parts" in index_names("case_events")
+    assert "ix_cases_active_title_uk_trgm" in index_names("cases")
 
 
 def test_foreign_keys_are_registered() -> None:
@@ -86,6 +87,7 @@ def test_metadata_columns_use_safe_python_names() -> None:
     assert LlmRun.metadata_.property.columns[0].name == "metadata"
     assert isinstance(Source.metadata_.property.columns[0].type, JSONB)
     assert isinstance(LlmRun.metadata_.property.columns[0].type, JSONB)
+    assert Source.logo_path.property.columns[0].nullable is True
 
 
 def test_no_direct_entity_event_table_exists() -> None:

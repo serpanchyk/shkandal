@@ -120,6 +120,16 @@ current database rows.
 - LLM stages should be separate jobs to make retries and inspection easier.
 - The public API reads current rows directly; there are no published snapshots in MVP.
 - Case view counting is anonymous aggregate counting.
+- The homepage defaults to `trending`; trending is seven-day linked-article
+  velocity, latest is newest linked-article publication time, popular is
+  all-time views, biggest is linked-article count, and newest is Case creation.
+- Undated articles remain evidence but do not affect latest or trending.
+- Public Case-title search is typo-tolerant and similarity-ranked.
+- Public Cases require a title, summary, and linked article. Public Entity pages
+  require a name, description, public Case link, and supporting article.
+- Case pages label linked Entities as mentioned people and organizations, not
+  participants, and show all supporting publisher types under `Джерела справи`.
+- Curated Source logos are frontend-owned assets referenced by nullable database paths.
 
 ## Testing Decisions
 

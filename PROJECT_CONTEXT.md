@@ -11,7 +11,8 @@ The implemented code includes the MVP PostgreSQL schema and migration layer plus
 initial media and institutional article discovery/fetch/extraction/storage,
 date-bounded high-cap backfills, stored-HTML publication-date repair, and the
 first article relevance classifier job handler. LLM prompts and public
-case/entity pages are future work. The LLM task architecture now exists in
+case/entity data is now exposed through a public backend API and rendered by the
+Next.js frontend. The LLM task architecture now exists in
 `worker-ml`, with LangChain prompt/chaining support and LiteLLM proxy routing,
 Entity and Event resolution jobs are now wired after Case resolution; public
 API and pages remain future work.
@@ -28,11 +29,13 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 
 ## Service Map
 
-- `backend`: FastAPI service exposing `GET /healthz` today; future public API and business boundary.
+- `backend`: FastAPI public API and application query boundary for feed, Case,
+  Entity, sitemap, and anonymous Case-view contracts.
 - `worker-ingestion`: two-hourly systemd-scheduled one-shot curated-source discovery from sitemaps, RSS/Atom feeds, and section pages; bounded fetch retries; date-bounded backfill traversal; fetching; generic-first extraction; publication-date repair from stored raw HTML; URL identity normalization; image URL extraction; and PostgreSQL upsert.
 - `worker-ml`: async worker entrypoint with article relevance, article cards,
   Case resolution/copy, and article-scoped global Entity/Event resolution.
-- `frontend`: Next.js TypeScript app with an API health link today; future public feed, case pages, and entity pages.
+- `frontend`: server-rendered Next.js public feed, Case pages, Entity pages,
+  provenance interactions, metadata, and sitemap.
 - `postgres`: source-of-truth database and Postgres-backed job store schema.
 - `packages/database`: shared async SQLAlchemy models, session helpers, and Alembic migrations.
 - `qdrant`: rebuildable 384-dimensional vector indexes for cases, entities, and events.
@@ -93,6 +96,8 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - Direct entity-event relations are out of MVP.
 - Public article cards link directly to original source pages; Shkandal does not publish copied full article pages.
 - Remote image URLs are stored, but images are not cached/proxied in MVP.
+- Curated Source logo asset paths are stored in PostgreSQL; logo files are
+  served from frontend-owned public assets.
 - Generated public content is Ukrainian and neutral/factual.
 
 ## Documentation Layout
@@ -108,4 +113,4 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 ## Known Next Work
 
 - Implement Qdrant collections for case, entity, and event cards.
-- Build public API and frontend for homepage feed, case pages, and entity pages.
+- Add browser-level integration coverage for the public frontend against seeded PostgreSQL.

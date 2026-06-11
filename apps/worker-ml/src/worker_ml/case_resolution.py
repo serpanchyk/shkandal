@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
-from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any, cast
 from uuid import UUID, uuid4
@@ -159,14 +158,14 @@ class ArticleCaseResolutionJobHandler:
     ) -> set[UUID]:
         resolved: dict[str, UUID] = {}
         affected: set[UUID] = set()
-        now = article.published_at or datetime.now(UTC)
+        published_at = article.published_at
         for link in output.existing_case_links:
             if link.case_id not in candidate_ids:
                 raise ValueError(f"existing link references non-candidate case: {link.case_id}")
             case_id = UUID(link.case_id)
             resolved[link.case_id] = case_id
             affected.add(case_id)
-            await session.execute(
+            inserted_id = await session.scalar(
                 insert(CaseArticle)
                 .values(
                     case_id=case_id,
@@ -178,15 +177,21 @@ class ArticleCaseResolutionJobHandler:
                 .on_conflict_do_nothing(
                     index_elements=[CaseArticle.case_id, CaseArticle.article_id]
                 )
+                .returning(CaseArticle.id)
             )
-            await session.execute(
-                update(Case)
-                .where(Case.id == case_id)
-                .values(
-                    article_count=Case.article_count + 1,
-                    last_updated_at=now,
+            if inserted_id is not None:
+                await session.execute(
+                    update(Case)
+                    .where(Case.id == case_id)
+                    .values(
+                        article_count=Case.article_count + 1,
+                        last_updated_at=(
+                            func.greatest(Case.last_updated_at, published_at)
+                            if published_at is not None
+                            else Case.last_updated_at
+                        ),
+                    )
                 )
-            )
         for decision in output.new_cases:
             case_id = uuid4()
             resolved[decision.new_case_ref] = case_id
@@ -198,8 +203,8 @@ class ArticleCaseResolutionJobHandler:
                     title_uk=decision.title_uk,
                     summary_uk=decision.summary_uk,
                     status="active",
-                    first_seen_at=now,
-                    last_updated_at=now,
+                    first_seen_at=published_at,
+                    last_updated_at=published_at,
                     article_count=1,
                 )
             )
@@ -290,7 +295,6 @@ class CaseCopyUpdateJobHandler:
             if output.title_action == "replace":
                 case.title_uk = cast(str, output.replacement_title_uk)
             case.summary_uk = output.summary_uk
-            case.last_updated_at = datetime.now(UTC)
             await self._vector_index.upsert_case(case.id, _case_payload(case))
             await session.commit()
             return output

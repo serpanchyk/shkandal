@@ -19,6 +19,14 @@ PostgreSQL container runtime.
 therefore the source of truth for bounded article-fetch retries; the ingestion
 worker does not rely on a URL remaining in a current feed to retry it.
 
+## Public Reader Indexes
+
+PostgreSQL owns public feed ordering and title search. Active Case titles have a
+`pg_trgm` GIN index for typo-tolerant search. `cases.last_updated_at` represents
+the newest linked article publication time; undated articles do not change it.
+Sources may store a nullable frontend-owned `logo_path`; image bytes do not live
+in PostgreSQL.
+
 ## Session Usage
 
 Create an async engine and session factory from settings:

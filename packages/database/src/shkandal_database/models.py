@@ -75,6 +75,7 @@ class Source(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     source_type: Mapped[str] = mapped_column(Text, nullable=False)
     base_url: Mapped[str] = mapped_column(Text, nullable=False)
+    logo_path: Mapped[str | None] = mapped_column(Text)
     language: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     metadata_: Mapped[dict[str, Any]] = mapped_column(
@@ -258,6 +259,13 @@ class Case(Base):
         Index("ix_cases_status_last_updated_at", "status", "last_updated_at"),
         Index("ix_cases_created_at", "created_at"),
         Index("ix_cases_article_count", "article_count"),
+        Index(
+            "ix_cases_active_title_uk_trgm",
+            "title_uk",
+            postgresql_using="gin",
+            postgresql_ops={"title_uk": "gin_trgm_ops"},
+            postgresql_where=text("status = 'active'"),
+        ),
     )
 
     id: Mapped[UUID] = uuid_pk_column()
