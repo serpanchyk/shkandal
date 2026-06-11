@@ -34,3 +34,7 @@ Current endpoints:
 - `POST /api/cases/{slug}/views`: anonymous aggregate view increment.
 - `GET /api/entities/{slug}`: composed public Entity page.
 - `GET /api/sitemap`: public-ready Case and Entity routes.
+
+See [Public Reader Experience](../public-reader-experience.md) for the complete
+frontend/backend reader contract, publication rules, runtime boundary, and
+verification approach.

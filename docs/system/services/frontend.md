@@ -23,3 +23,7 @@ The visual system uses a light-gray technical dossier interface with restrained
 blue-purple grain gradients, dark outlined containers, monospace identity
 typography, and readable sans-serif body copy. Case views are counted once per
 browser session through session storage.
+
+Frontend source lives under `apps/frontend`. See
+[Public Reader Experience](../public-reader-experience.md) for routes, runtime
+URLs, reader behavior, API integration, and verification.

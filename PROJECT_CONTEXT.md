@@ -4,18 +4,17 @@
 
 Shkandal is scaffolded as a monorepo with Python service shells, a Next.js
 frontend boundary, Docker Compose runtime infrastructure, shared config/logging,
-an async SQLAlchemy database package, Alembic migrations, smoke tests, and a
-curated source ingestion worker.
+an async SQLAlchemy database package, Alembic migrations, deterministic tests,
+and a curated source ingestion worker.
 
 The implemented code includes the MVP PostgreSQL schema and migration layer plus
 initial media and institutional article discovery/fetch/extraction/storage,
 date-bounded high-cap backfills, stored-HTML publication-date repair, and the
-first article relevance classifier job handler. LLM prompts and public
-case/entity data is now exposed through a public backend API and rendered by the
-Next.js frontend. The LLM task architecture now exists in
-`worker-ml`, with LangChain prompt/chaining support and LiteLLM proxy routing,
-Entity and Event resolution jobs are now wired after Case resolution; public
-API and pages remain future work.
+first article relevance classifier job handler. The LLM task architecture exists
+in `worker-ml`, with LangChain prompt/chaining support and LiteLLM proxy
+routing. Entity and Event resolution jobs run after Case resolution. Public
+Case and Entity data is exposed through a FastAPI API and rendered by the
+server-rendered Next.js frontend.
 
 ## Product Direction
 
@@ -113,4 +112,5 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 ## Known Next Work
 
 - Implement Qdrant collections for case, entity, and event cards.
-- Add browser-level integration coverage for the public frontend against seeded PostgreSQL.
+- Provision an isolated local browser-test database workflow; CI already runs
+  browser-level public-reader coverage against deterministic seeded PostgreSQL.

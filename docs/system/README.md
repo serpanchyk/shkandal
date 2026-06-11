@@ -25,10 +25,10 @@ Human review, user correction workflows, duplicate-case redirects, and advanced
 analytics are later layers. The MVP publishes automatically after an initial
 curated one-year backfill reaches a ready-enough checkpoint.
 
-The current implementation is a foundation scaffold. It defines service
-boundaries, runtime wiring, the PostgreSQL schema, and migration ownership, but
-does not yet implement the article pipeline, classifier, prompts, or public
-dossier pages.
+The current implementation includes ingestion, classifier and LLM-resolution
+workflows, the PostgreSQL evidence graph, a public FastAPI query boundary, and
+server-rendered public feed, Case, and Entity pages. Qdrant-backed candidate
+retrieval remains planned work.
 
 Foundation notes:
 
@@ -38,3 +38,4 @@ Foundation notes:
 - [Runtime](foundation/runtime.md)
 - [Scheduling](foundation/scheduling.md)
 - [Testing and CI](foundation/testing-ci.md)
+- [Public Reader Experience](public-reader-experience.md)

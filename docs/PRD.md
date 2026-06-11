@@ -159,10 +159,10 @@ current database rows.
 
 ## Further Notes
 
-The repo currently has foundation scaffolding only: service shells, common
-config/logging, Docker Compose, and smoke tests. The next implementation step is
-the PostgreSQL schema and migration layer, because the article/evidence graph is
-the central contract shared by ingestion, ML workers, backend, and frontend.
+The repository now implements the PostgreSQL evidence graph, ingestion and ML
+workflows, public FastAPI query boundary, and server-rendered public reader
+experience. The detailed frontend/backend contract is documented in
+`docs/system/public-reader-experience.md`.
 
 This PRD has been broken into GitHub issues #1 through #12 in
 `serpanchyk/shkandal`.

@@ -544,7 +544,27 @@ journalctl --user -u shkandal-ml-worker.service -f
 
 ## Frontend
 
-The frontend is normally run through Compose. For direct local frontend checks:
+The frontend source is under `apps/frontend`. It is normally run with the
+backend through Compose:
+
+```bash
+docker compose up --build frontend
+```
+
+Open <http://localhost:3000>. Compose starts the required backend and maps
+server-side frontend requests to `http://backend:8000`; browser-side view
+counting uses <http://localhost:8000>.
+
+For direct frontend development, start a backend at <http://localhost:8000>,
+then run:
+
+```bash
+cd apps/frontend
+npm install
+npm run dev
+```
+
+Open <http://localhost:3000>. For direct local frontend checks:
 
 ```bash
 cd apps/frontend
@@ -553,8 +573,20 @@ npm run lint
 npm run build
 ```
 
-The frontend reads `NEXT_PUBLIC_BACKEND_URL` from Compose and points at
-`http://localhost:8000` by default.
+The frontend uses `BACKEND_INTERNAL_URL` for server rendering,
+`NEXT_PUBLIC_BACKEND_URL` for browser requests, and `NEXT_PUBLIC_SITE_URL` for
+metadata and sitemap URLs. All default to local development URLs.
+
+Playwright tests write a deterministic public graph. Run them only against an
+isolated disposable PostgreSQL database:
+
+```bash
+cd apps/frontend
+npm run test:e2e
+```
+
+CI provisions the isolated database, applies migrations, seeds the graph,
+starts the backend, and runs Playwright automatically.
 
 ## Common Recovery Commands
 
@@ -586,8 +618,8 @@ Use reset commands only when the local data can be discarded.
 
 ## Current Scope
 
-The repository currently starts service shells and infrastructure, includes the
-initial PostgreSQL schema/migration layer, and implements curated media and
-institutional article ingestion from configured sitemaps, RSS/Atom feeds, and
-section pages. It does not yet implement classifier inference, LLM resolution,
-Qdrant indexing, or public dossier pages.
+The repository implements curated media and institutional ingestion, relevance
+classification, LLM article cards and Case/Entity/Event resolution, the
+PostgreSQL evidence graph, the FastAPI public reader API, and server-rendered
+public feed, Case, and Entity pages. Qdrant indexing and retrieval remain
+planned work.
