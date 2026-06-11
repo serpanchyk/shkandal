@@ -45,6 +45,7 @@ class MlJobPlanner:
         *,
         limit: int,
         max_attempts: int,
+        requeue_failed: bool = True,
     ) -> EnqueueStats:
         """Create one classify job for each article missing classifier output."""
 
@@ -66,6 +67,7 @@ class MlJobPlanner:
                 article_id=article_id,
                 payload={"article_id": str(article_id)},
                 max_attempts=max_attempts,
+                requeue_failed=requeue_failed,
             )
             if result.state == "inserted":
                 inserted_jobs += 1

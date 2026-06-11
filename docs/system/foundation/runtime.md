@@ -88,6 +88,11 @@ Both worker CLIs default to one-shot execution. Optional `--loop` modes remain
 available for direct/manual use. The ingestion heartbeat applies only to that
 optional loop mode, not to the scheduled systemd runtime.
 
+The ML worker also exposes an explicit finite `--backfill` mode. It repeatedly
+plans and processes all supported ML jobs, waits through deferred retries and
+shared provider cooldowns, and exits after no queued or running ML work remains.
+Exhausted jobs are preserved for inspection and make the command exit nonzero.
+
 The ML worker owns ML job creation. Ingestion only persists article evidence; it
 does not need to know classifier, prompt, embedding, or resolution job types.
 `worker-ml` should poll PostgreSQL for articles missing ML-derived state and

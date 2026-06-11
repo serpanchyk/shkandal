@@ -8,7 +8,7 @@ from random import SystemRandom
 from typing import Any, Literal
 from uuid import UUID
 
-from sqlalchemy import Select, and_, case, desc, or_, select, update
+from sqlalchemy import Select, and_, case, desc, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -49,6 +49,17 @@ class EnqueueJobResult:
     state: Literal["inserted", "existing", "requeued"]
 
 
+@dataclass(frozen=True)
+class JobQueueSummary:
+    """Current durable job counts for a selected set of job types."""
+
+    queued_jobs: int
+    running_jobs: int
+    blocked_jobs: int
+    failed_jobs: int
+    next_run_after: datetime | None
+
+
 class ArticleJobStore:
     """Store and claim durable typed-subject jobs."""
 
@@ -75,6 +86,7 @@ class ArticleJobStore:
         priority: int = 0,
         run_after: datetime | None = None,
         max_attempts: int = 3,
+        requeue_failed: bool = True,
     ) -> EnqueueJobResult:
         """Create an article job or requeue an existing failed job."""
 
@@ -88,6 +100,7 @@ class ArticleJobStore:
             run_after=run_after,
             max_attempts=max_attempts,
             increment_revision=False,
+            requeue_failed=requeue_failed,
         )
 
     async def enqueue_case_job(
@@ -112,6 +125,7 @@ class ArticleJobStore:
             run_after=run_after,
             max_attempts=max_attempts,
             increment_revision=True,
+            requeue_failed=True,
         )
 
     async def _enqueue_job(
@@ -126,6 +140,7 @@ class ArticleJobStore:
         run_after: datetime | None,
         max_attempts: int,
         increment_revision: bool,
+        requeue_failed: bool,
     ) -> EnqueueJobResult:
         async with async_session_scope(self._session_factory) as session:
             statement = (
@@ -178,6 +193,8 @@ class ArticleJobStore:
                 return EnqueueJobResult(job_id=existing_job.id, state="requeued")
             if existing_job.status != JOB_STATUS_FAILED:
                 return EnqueueJobResult(job_id=existing_job.id, state="existing")
+            if not requeue_failed:
+                return EnqueueJobResult(job_id=existing_job.id, state="existing")
 
             requeued_at = datetime.now(UTC)
             requeued_id = await session.scalar(
@@ -197,6 +214,32 @@ class ArticleJobStore:
             if requeued_id is None:
                 return EnqueueJobResult(job_id=existing_job.id, state="existing")
             return EnqueueJobResult(job_id=requeued_id, state="requeued")
+
+    async def summarize_jobs(self, *, job_types: tuple[str, ...]) -> JobQueueSummary:
+        """Return queue state for the selected job types."""
+
+        stale_before = datetime.now(UTC) - self._stale_job_timeout
+        blocked = and_(
+            Job.status == JOB_STATUS_RUNNING,
+            Job.locked_at < stale_before,
+            Job.attempt_count >= Job.max_attempts,
+        )
+        statement = select(
+            func.count().filter(Job.status == JOB_STATUS_QUEUED),
+            func.count().filter(Job.status == JOB_STATUS_RUNNING),
+            func.count().filter(blocked),
+            func.count().filter(Job.status == JOB_STATUS_FAILED),
+            func.min(Job.run_after).filter(Job.status == JOB_STATUS_QUEUED),
+        ).where(Job.job_type.in_(job_types))
+        async with self._session_factory() as session:
+            row = (await session.execute(statement)).one()
+        return JobQueueSummary(
+            queued_jobs=row[0],
+            running_jobs=row[1],
+            blocked_jobs=row[2],
+            failed_jobs=row[3],
+            next_run_after=row[4],
+        )
 
     async def claim_next_job(
         self,

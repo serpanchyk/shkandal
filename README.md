@@ -290,6 +290,10 @@ Explicit `Retry-After` values are honored; otherwise two ambiguous `429`
 responses within 15 minutes infer a one-hour cooldown. Other provider errors
 remain per-job failures. LLM requests time out after five minutes.
 
+For the initial historical run, `worker-ml --backfill` drains all supported ML
+jobs and waits through deferred retries or provider cooldowns. It preserves
+exhausted failed jobs for inspection and exits nonzero when any remain.
+
 ## Architecture
 
 The project is split into these services:

@@ -116,9 +116,21 @@ docker compose --profile jobs run --rm worker-ml
 python -m worker_ml.main --loop
 ```
 
+Run an explicit finite backfill to drain all queued, deferred, and downstream
+ML work:
+
+```bash
+docker compose --profile jobs run --rm worker-ml python -m worker_ml.main --backfill
+```
+
+Backfill mode waits through deferred retries and shared provider cooldowns. It
+does not reset exhausted failures; after all processable work is complete,
+remaining failed or stale blocked jobs produce a nonzero exit code.
+
 On servers, `shkandal-ml-worker.timer` starts a one-shot pass five minutes after
-the previous pass becomes inactive. `worker-ml` continues to depend on the Compose `llm-proxy` because
-article-card and resolution stages use its logical model aliases.
+the previous pass becomes inactive. `worker-ml` continues to depend on the
+Compose `llm-proxy` because article-card and resolution stages use its logical
+model aliases.
 
 Local model artifacts live under `artifacts/models/` in the repository working
 tree. Binary artifacts are ignored by Git and tracked by DVC; small manifests

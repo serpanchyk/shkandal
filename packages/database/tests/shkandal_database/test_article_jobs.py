@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 from uuid import uuid4
 
 import pytest
-from shkandal_database.jobs import ArticleJobStore
+from shkandal_database.jobs import ArticleJobStore, JobQueueSummary
 from sqlalchemy.dialects.postgresql.base import PGDialect
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -77,6 +77,49 @@ async def test_enqueue_article_job_requeues_failed_job() -> None:
     requeue_statement = session.scalar.await_args_list[1].args[0]
     assert requeue_statement.compile().params["status"] == "queued"
     assert requeue_statement.compile().params["max_attempts"] == 5
+
+
+@pytest.mark.asyncio
+async def test_enqueue_article_job_can_leave_failed_job_exhausted() -> None:
+    job_id = uuid4()
+    session_factory, session = _mock_session_factory()
+    session.scalar = AsyncMock(return_value=None)
+    existing_result = MagicMock()
+    existing_result.one_or_none.return_value = SimpleNamespace(id=job_id, status="failed")
+    session.execute = AsyncMock(return_value=existing_result)
+
+    result = await ArticleJobStore(session_factory).enqueue_article_job(
+        job_type="classify_article",
+        article_id=uuid4(),
+        requeue_failed=False,
+    )
+
+    assert result.state == "existing"
+    assert session.scalar.await_count == 1
+    assert session.execute.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_summarize_jobs_returns_selected_queue_state() -> None:
+    next_run_after = datetime(2026, 6, 11, 18, 0, tzinfo=UTC)
+    session_factory, session = _mock_session_factory()
+    result = MagicMock()
+    result.one.return_value = (3, 2, 1, 4, next_run_after)
+    session.execute = AsyncMock(return_value=result)
+
+    summary = await ArticleJobStore(session_factory).summarize_jobs(
+        job_types=("classify_article", "create_article_card")
+    )
+
+    assert summary == JobQueueSummary(
+        queued_jobs=3,
+        running_jobs=2,
+        blocked_jobs=1,
+        failed_jobs=4,
+        next_run_after=next_run_after,
+    )
+    statement = session.execute.await_args.args[0]
+    assert "jobs.job_type IN" in str(statement)
 
 
 @pytest.mark.asyncio

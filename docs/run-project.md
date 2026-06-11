@@ -285,6 +285,19 @@ article-card jobs:
 docker compose --profile jobs run --rm worker-ml
 ```
 
+To drain the full ML backlog before launch, including downstream jobs created
+while processing, run explicit backfill mode:
+
+```bash
+docker compose --profile jobs run --rm worker-ml python -m worker_ml.main --backfill
+```
+
+Backfill mode waits through deferred retries and provider cooldowns. It exits
+zero only after no queued or running ML jobs remain; exhausted failed jobs are
+left in PostgreSQL for inspection and produce a nonzero exit code. A stale
+running job that exhausted its final attempt is also reported as blocked and
+produces a nonzero exit code instead of making backfill wait forever.
+
 ### Smoke-test 10 article cards
 
 Put real Lapatonia and AWS credentials in the ignored LiteLLM env file. The

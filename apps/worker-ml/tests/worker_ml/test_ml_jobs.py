@@ -66,6 +66,27 @@ async def test_job_planner_counts_only_inserted_and_requeued_jobs() -> None:
     )
 
 
+@pytest.mark.asyncio
+async def test_job_planner_can_preserve_exhausted_jobs_for_backfill() -> None:
+    article_id = uuid4()
+    session = MagicMock()
+    session.scalars = AsyncMock(return_value=SimpleNamespace(all=lambda: [article_id]))
+    session_context = MagicMock()
+    session_context.__aenter__ = AsyncMock(return_value=session)
+    session_context.__aexit__ = AsyncMock(return_value=None)
+    session_factory = Mock(return_value=session_context)
+    job_store = Mock()
+    job_store.enqueue_article_job = AsyncMock(return_value=EnqueueJobResult(article_id, "existing"))
+
+    await MlJobPlanner(session_factory, job_store).enqueue_missing_classification_jobs(
+        limit=10,
+        max_attempts=3,
+        requeue_failed=False,
+    )
+
+    assert job_store.enqueue_article_job.await_args.kwargs["requeue_failed"] is False
+
+
 def test_job_planner_only_selects_successfully_fetched_articles() -> None:
     query = MlJobPlanner._articles_missing_relevance_query(limit=10)
 

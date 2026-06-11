@@ -9,7 +9,7 @@ from typing import Protocol
 
 from shkandal_common.logging import setup_logger
 from shkandal_database.config import DatabaseConfig
-from shkandal_database.jobs import ArticleJobStore, ClaimedJob
+from shkandal_database.jobs import ArticleJobStore, ClaimedJob, JobQueueSummary
 from shkandal_database.llm_cooldowns import LlmCooldownStore
 from shkandal_database.session import create_async_engine_from_config, create_async_sessionmaker
 from shkandal_vector_store import VectorStoreConfig, create_qdrant_client
@@ -291,6 +291,103 @@ async def run_worker(config: MlConfig | None = None) -> None:
         await engine.dispose()
 
 
+async def run_backfill(config: MlConfig | None = None) -> JobQueueSummary:
+    """Drain all current and newly-created ML jobs, then exit."""
+
+    settings = config or MlConfig()
+    logger = setup_logger(settings.service_name)
+    engine = create_async_engine_from_config(
+        DatabaseConfig(database_url=settings.postgres_database_url)
+    )
+    try:
+        session_factory = create_async_sessionmaker(engine)
+        cooldown_store = LlmCooldownStore(session_factory)
+        model = RelevanceModel.load(
+            settings.relevance_model_dir,
+            threshold=settings.relevance_threshold,
+        )
+        job_store = ArticleJobStore(
+            session_factory,
+            stale_job_timeout=settings.stale_job_timeout,
+        )
+        planner = MlJobPlanner(session_factory, job_store)
+        handlers = _create_handlers(
+            settings=settings,
+            session_factory=session_factory,
+            job_store=job_store,
+            model=model,
+        )
+        logger.info(
+            "worker_ml_backfill_started",
+            extra={
+                "service": settings.service_name,
+                "poll_interval_seconds": settings.poll_interval_seconds,
+                "enqueue_batch_size": settings.enqueue_batch_size,
+                "claim_batch_size": settings.claim_batch_size,
+            },
+        )
+        return await _drain_backfill(
+            settings=settings,
+            logger=logger,
+            planner=planner,
+            job_store=job_store,
+            cooldown_store=cooldown_store,
+            handlers=handlers,
+        )
+    finally:
+        await engine.dispose()
+
+
+async def _drain_backfill(
+    *,
+    settings: MlConfig,
+    logger: logging.Logger,
+    planner: MlJobPlanner,
+    job_store: ArticleJobStore,
+    cooldown_store: LlmCooldownStore,
+    handlers: Mapping[str, JobHandler],
+) -> JobQueueSummary:
+    while True:
+        if await _log_active_cooldown(cooldown_store=cooldown_store, logger=logger):
+            await asyncio.sleep(settings.poll_interval_seconds)
+            continue
+        stats = await _run_cycle(
+            settings=settings,
+            logger=logger,
+            planner=planner,
+            job_store=job_store,
+            cooldown_store=cooldown_store,
+            handlers=handlers,
+            requeue_failed=False,
+        )
+        summary = await job_store.summarize_jobs(job_types=SUPPORTED_JOB_TYPES)
+        active_running_jobs = summary.running_jobs - summary.blocked_jobs
+        if summary.queued_jobs == 0 and active_running_jobs == 0:
+            logger.info(
+                "worker_ml_backfill_finished",
+                extra={
+                    "failed_jobs": summary.failed_jobs,
+                    "blocked_jobs": summary.blocked_jobs,
+                },
+            )
+            return summary
+        if stats["processed_jobs"] == 0 and stats["ensured_jobs"] == 0:
+            logger.info(
+                "worker_ml_backfill_waiting",
+                extra={
+                    "queued_jobs": summary.queued_jobs,
+                    "running_jobs": active_running_jobs,
+                    "blocked_jobs": summary.blocked_jobs,
+                    "next_run_after": (
+                        summary.next_run_after.isoformat()
+                        if summary.next_run_after is not None
+                        else None
+                    ),
+                },
+            )
+            await asyncio.sleep(settings.poll_interval_seconds)
+
+
 async def _run_cycle(
     *,
     settings: MlConfig,
@@ -299,6 +396,7 @@ async def _run_cycle(
     job_store: ArticleJobStore,
     cooldown_store: LlmCooldownStore,
     handlers: Mapping[str, JobHandler],
+    requeue_failed: bool = True,
 ) -> dict[str, int]:
     if await _log_active_cooldown(cooldown_store=cooldown_store, logger=logger):
         return _empty_cycle_stats()
@@ -306,6 +404,7 @@ async def _run_cycle(
     enqueue_stats = await planner.enqueue_missing_classification_jobs(
         limit=settings.enqueue_batch_size,
         max_attempts=settings.job_max_attempts,
+        requeue_failed=requeue_failed,
     )
     if enqueue_stats.ensured_jobs:
         logger.info(
@@ -511,19 +610,30 @@ def _create_handlers(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run Shkandal ML processing.")
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--once",
         action="store_true",
         help=argparse.SUPPRESS,
     )
-    parser.add_argument(
+    mode.add_argument(
         "--loop",
         action="store_true",
         help="Poll continuously instead of exiting after one bounded cycle.",
     )
+    mode.add_argument(
+        "--backfill",
+        action="store_true",
+        help="Drain all ML jobs, waiting for deferred work, then exit.",
+    )
     args = parser.parse_args()
     if args.loop:
         asyncio.run(run_worker())
+        return
+    if args.backfill:
+        summary = asyncio.run(run_backfill())
+        if summary.failed_jobs or summary.blocked_jobs:
+            raise SystemExit(1)
         return
     asyncio.run(run_once())
 
