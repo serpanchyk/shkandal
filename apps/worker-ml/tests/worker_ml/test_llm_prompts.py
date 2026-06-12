@@ -12,7 +12,7 @@ def test_prompt_registry_loads_all_registered_prompts() -> None:
 
         assert registry.load_text(name)
         assert definition.name == name
-        assert set(definition.input_variables).issubset(set(prompt.input_variables))
+        assert set(definition.input_variables) == set(prompt.input_variables)
 
 
 def test_article_card_prompt_has_strict_case_candidate_rules() -> None:
@@ -37,9 +37,9 @@ def test_article_card_prompt_has_strict_case_candidate_rules() -> None:
 def test_repair_prompt_enforces_schema_limits_and_non_case_shape() -> None:
     prompt = PromptRegistry().load_text("repair")
 
-    assert "видали елементи списків з неприпустимими типами" in prompt
-    assert "якщо список перевищує максимум" in prompt
-    assert "не вигадуй значення enum" in prompt
+    assert "видали цей елемент зі списку" in prompt
+    assert "Якщо список перевищує максимум" in prompt
+    assert "Не вигадуй значення enum" in prompt
     assert "`is_case_candidate = false`" in prompt
 
 
