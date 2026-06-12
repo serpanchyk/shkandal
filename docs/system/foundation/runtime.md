@@ -7,6 +7,8 @@ Runtime dependencies:
 
 - PostgreSQL 16 for durable application data.
 - Qdrant for rebuildable case, entity, and event vector indexes.
+- Optional local Grafana, Prometheus, Loki, Alloy, and Blackbox Exporter
+  services under the Compose `observability` profile.
 
 Local PostgreSQL uses the Compose `postgres-data` named volume, so data survives
 container restarts and `docker compose down`. Use `docker compose down -v` only

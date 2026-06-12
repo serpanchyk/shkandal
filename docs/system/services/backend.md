@@ -29,11 +29,17 @@ possible so readers do not see event data without provenance.
 Current endpoints:
 
 - `GET /healthz`: returns service status.
+- `GET /metrics`: Prometheus request/process metrics and read-only durable
+  pipeline aggregates.
 - `GET /api/cases`: paginated feed and fuzzy Case-title search.
 - `GET /api/cases/{slug}`: composed public Case page.
 - `POST /api/cases/{slug}/views`: anonymous aggregate view increment.
 - `GET /api/entities/{slug}`: composed public Entity page.
 - `GET /api/sitemap`: public-ready Case and Entity routes.
+
+Request metrics use FastAPI route templates rather than raw URLs. Pipeline
+metrics expose aggregate job state, recent LLM run statuses, and shared durable
+LLM cooldown state without article, Case, URL, or error-message labels.
 
 See [Public Reader Experience](../public-reader-experience.md) for the complete
 frontend/backend reader contract, publication rules, runtime boundary, and

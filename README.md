@@ -23,6 +23,10 @@ tracked examples: root `.env` for shared application settings,
 `infra/postgres/.env` for database bootstrap credentials, and
 `infra/litellm/.env` for provider API keys. See `docs/run-project.md` for setup.
 
+An optional local `observability` Compose profile provides Grafana on port
+`3001`, Prometheus, Loki, Docker log collection, and a provisioned Shkandal
+overview dashboard.
+
 ## Core Concepts
 
 ### Case

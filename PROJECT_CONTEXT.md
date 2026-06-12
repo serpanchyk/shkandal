@@ -42,6 +42,9 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 ## Runtime Decisions
 
 - Docker Compose is the default runtime entrypoint.
+- An optional local Compose `observability` profile provides provisioned
+  Grafana, Prometheus, Loki, Alloy log collection, and real service health
+  probes. It does not change production scheduling or worker lifetimes.
 - Systemd timers schedule one-shot ingestion and ML worker containers on servers.
 - PostgreSQL is the source of truth and persists locally through the Compose
   `postgres-data` named volume.

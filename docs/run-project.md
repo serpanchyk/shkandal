@@ -101,6 +101,73 @@ Default ports:
 - postgres: `localhost:5432`
 - qdrant: <http://localhost:6333>
 
+## Local Observability
+
+Start the normal long-lived app services first:
+
+```bash
+docker compose up -d --build
+```
+
+Start or rebuild the optional observability profile:
+
+```bash
+docker compose --profile observability up -d --build
+```
+
+The profile also starts its required app services when they are not already
+running. Local endpoints:
+
+- Grafana: <http://localhost:3001>, default login `admin` / `admin`
+- Prometheus: <http://localhost:9090>
+- Loki readiness/debugging: <http://localhost:3100/ready>
+- Backend Prometheus metrics: <http://localhost:8000/metrics>
+
+Grafana automatically provisions the `Shkandal Local Overview` dashboard and
+Prometheus/Loki datasources. Use its log panels or Explore with queries such as:
+
+```logql
+{compose_service="backend"} | json
+{compose_service="worker-ml"} | json
+{compose_service="worker-ingestion"} | json
+{compose_service=~"llm-proxy|postgres|qdrant"}
+```
+
+Backend request metrics include request rate, route-template latency, and 5xx
+errors. Durable job metrics include counts by `job_type` and `status`, oldest
+queued age, recent LLM run status counts, and active LLM cooldown expiry.
+
+To debug stuck `worker-ml` work, check the dashboard's oldest queued age,
+running/failed job panels, and worker logs. Then inspect durable rows directly:
+
+```bash
+docker compose exec postgres psql -U shkandal -d shkandal -c \
+  "SELECT job_type, status, count(*), min(created_at), min(run_after), min(locked_at) FROM jobs GROUP BY job_type, status ORDER BY job_type, status;"
+```
+
+To debug provider failures or cooldowns, inspect the LLM error log panel and:
+
+```bash
+docker compose exec postgres psql -U shkandal -d shkandal -c \
+  "SELECT scope, cooldown_kind, resume_at, reason FROM llm_cooldowns;"
+docker compose exec postgres psql -U shkandal -d shkandal -c \
+  "SELECT run_type, status, count(*) FROM llm_runs WHERE created_at >= now() - interval '24 hours' GROUP BY run_type, status;"
+docker compose logs --tail 200 llm-proxy
+```
+
+Alloy reads the local Docker socket in read-only mode and captures container
+standard output while it is running. Keep it running before starting one-shot
+workers when their logs need to appear in Loki. Very short `docker compose run
+--rm` jobs can be deleted by Docker before Alloy attaches. During local log
+debugging, omit `--rm`, confirm the logs in Grafana, then remove the stopped
+one-shot container.
+
+To add monitoring for a new service, expose bounded Prometheus metrics or add a
+real Blackbox probe in `infra/observability/prometheus/prometheus.yml`, keep
+logs on standard output for Alloy discovery, and add only useful panels to the
+provisioned overview dashboard. Do not use raw IDs, URLs, article text, or full
+errors as metric labels.
+
 ## Logs
 
 Show recent logs for all services:

@@ -4,6 +4,10 @@ PostgreSQL is the source of truth for all durable application data. The local
 runtime is the `postgres` Docker Compose service backed by the `postgres-data`
 named volume.
 
+The backend `/metrics` endpoint performs read-only aggregate queries against
+`jobs`, `llm_runs`, and `llm_cooldowns` for local Prometheus monitoring. No
+observability-specific durable tables are required.
+
 Implemented MVP data areas:
 
 - sources and source types;
