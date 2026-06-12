@@ -1,5 +1,6 @@
 """Tests for prompt registry behavior."""
 
+import pytest
 from worker_ml.llm.prompts import PROMPTS, PromptRegistry
 
 
@@ -40,3 +41,21 @@ def test_repair_prompt_enforces_schema_limits_and_non_case_shape() -> None:
     assert "якщо список перевищує максимум" in prompt
     assert "не вигадуй значення enum" in prompt
     assert "`is_case_candidate = false`" in prompt
+
+
+@pytest.mark.parametrize(
+    ("prompt_name", "identity_field"),
+    [
+        ("entity_resolution", "existing_entity_id"),
+        ("event_resolution", "existing_event_id"),
+    ],
+)
+def test_identity_resolution_prompts_restrict_existing_ids_to_same_item_candidates(
+    prompt_name: str,
+    identity_field: str,
+) -> None:
+    prompt = PromptRegistry().load_text(prompt_name)
+
+    assert identity_field in prompt
+    assert "для того самого `provisional_ref`" in prompt
+    assert "`case_id`" in prompt

@@ -284,13 +284,13 @@ task failed and keep it eligible for later reprocessing.
 
 All runtime LLM calls go through the LiteLLM proxy. `worker-ml` requests logical
 per-stage aliases such as `shkandal-article-card` and `shkandal-repair`; the
-proxy owns provider credentials, throttling, routing, and fallback policy. The
-tracked proxy configuration maps all aliases to one shared MamayLM deployment
-through Lapatonia with a combined 60 RPM limit and falls back to Amazon Bedrock
-Gemma 3 27B when the primary provider fails. Timeout and internal-server
-failures are retried once; request errors and rate limits are not retried. Four
-Lapatonia failures within one hour start a shared one-hour in-memory cooldown;
-restarting `llm-proxy` clears it.
+proxy owns provider credentials, throttling, and routing policy. The tracked
+proxy configuration maps all aliases to one shared MamayLM deployment through
+Lapatonia with a combined 60 RPM limit. The Amazon Bedrock Gemma 3 27B model
+entry is retained but is not configured as a fallback. Timeout and
+internal-server failures are retried once; request errors and rate limits are
+not retried. Four Lapatonia failures within one hour start a shared one-hour
+in-memory cooldown; restarting `llm-proxy` clears it.
 Provider HTTP `429` responses that still reach `worker-ml` after proxy routing
 create a durable shared LLM cooldown: the rejected job is deferred without
 consuming an attempt and the current ML pass exits.

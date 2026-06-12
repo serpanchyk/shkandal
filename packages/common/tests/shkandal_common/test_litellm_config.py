@@ -16,7 +16,7 @@ PRIMARY_MODEL = "shkandal-lapatonia-primary"
 FALLBACK_MODEL = "shkandal-bedrock-fallback"
 
 
-def test_litellm_aliases_share_primary_cooldown_and_fallback() -> None:
+def test_litellm_aliases_share_primary_cooldown_without_fallback() -> None:
     config = yaml.safe_load(CONFIG_PATH.read_text())
 
     model_list = config["model_list"]
@@ -38,9 +38,4 @@ def test_litellm_aliases_share_primary_cooldown_and_fallback() -> None:
     assert set(router_settings["allowed_fails_policy"].values()) == {3}
     assert router_settings["cooldown_time"] == 3600
     assert router_settings["model_group_alias"] == dict.fromkeys(PUBLIC_ALIASES, PRIMARY_MODEL)
-    fallbacks = {
-        alias: models
-        for fallback in router_settings["fallbacks"]
-        for alias, models in fallback.items()
-    }
-    assert fallbacks == {alias: [FALLBACK_MODEL] for alias in PUBLIC_ALIASES}
+    assert "fallbacks" not in router_settings

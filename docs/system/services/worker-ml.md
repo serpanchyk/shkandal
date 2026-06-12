@@ -39,7 +39,7 @@ logical model aliases (`shkandal-article-card`, `shkandal-case-resolution`,
 routing, provider credentials, throttling, and fallback policy belong to the
 proxy configuration, not to `worker-ml`.
 
-When HTTP `429` still reaches the worker after LiteLLM fallback routing, the
+When HTTP `429` still reaches the worker after LiteLLM routing, the
 worker persists a shared LLM cooldown, defers the rejected job without consuming
 a job attempt, and ends the current pass. Later scheduled passes exit before
 model loading or job claiming until the cooldown expires. The worker honors
@@ -162,6 +162,9 @@ Case resolution and copy updates share one serialized mutation namespace, while
 Entity and Event mutations are serialized independently. Classification jobs
 are enqueued in bulk, and Entity/Event candidate embeddings and Qdrant searches
 are batched per article.
+When an identity-resolution response selects an existing ID outside the
+retrieved candidates for that provisional item, the worker creates a new
+source-grounded identity instead of merging incorrectly or repeatedly failing.
 Case-resolution retries idempotently ensure downstream Case-copy, Entity, and
 Event jobs when article-Case links already exist.
 

@@ -65,8 +65,8 @@ review and correction tooling are later quality layers, not blocking MVP stages.
   by default. Case, Entity, and Event mutation namespaces remain independently
   serialized, and stale pending LLM runs are failed during worker startup.
 - Claiming a job increments `attempt_count`; crashes count as attempts. Failed jobs with attempts remaining return to `queued` with `run_after`, and exhausted jobs become `failed`.
-- LLM calls go through a pinned LiteLLM proxy service. `worker-ml` uses logical per-stage aliases, while provider credentials, throttling, and routing belong to proxy configuration. The tracked proxy configuration maps every alias to one shared Lapatonia deployment with a combined 60 RPM limit, retries transient timeout/internal-server failures once, and falls back to Amazon Bedrock Gemma 3 27B when the primary provider fails. Four Lapatonia failures within one hour start a shared one-hour in-memory cooldown; restarting `llm-proxy` clears it. No secrets are committed.
-- Provider HTTP `429` responses that remain after LiteLLM fallback routing
+- LLM calls go through a pinned LiteLLM proxy service. `worker-ml` uses logical per-stage aliases, while provider credentials, throttling, and routing belong to proxy configuration. The tracked proxy configuration maps every alias to one shared Lapatonia deployment with a combined 60 RPM limit and retries transient timeout/internal-server failures once. The Amazon Bedrock Gemma 3 27B model entry is retained but is not configured as a fallback. Four Lapatonia failures within one hour start a shared one-hour in-memory cooldown; restarting `llm-proxy` clears it. No secrets are committed.
+- Provider HTTP `429` responses that remain after LiteLLM routing
   create a shared durable LLM cooldown. The current LLM job is deferred without
   consuming an attempt and the ML pass exits.
   Explicit `Retry-After` values are honored; the first ambiguous response waits

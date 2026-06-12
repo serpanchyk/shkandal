@@ -8,14 +8,18 @@ from worker_ml.identity_resolution import (
     _entity_payload,
     _event_payload,
     _merged_assignments,
+    _normalize_invalid_entity_links,
+    _normalize_invalid_event_links,
     _validate_coverage,
     _with_provisional_refs,
 )
 from worker_ml.llm.contracts import (
     EntityCaseAssignment,
     EntityResolutionDecision,
+    EntityResolutionOutput,
     EventCaseAssignment,
     EventResolutionDecision,
+    EventResolutionOutput,
 )
 
 
@@ -58,6 +62,83 @@ def test_resolution_rejects_assignment_to_unlinked_case() -> None:
 
     with pytest.raises(ValueError, match="unlinked Case"):
         _validate_coverage([{"provisional_ref": "event_a"}], [decision], {uuid4()})
+
+
+def test_invalid_entity_link_becomes_source_grounded_create() -> None:
+    case_id = uuid4()
+    output = EntityResolutionOutput(
+        entities=[
+            EntityResolutionDecision(
+                provisional_ref="entity_a",
+                action="link_existing",
+                existing_entity_id=str(case_id),
+                confidence=0.9,
+                reason_uk="Та сама сутність.",
+                case_assignments=[
+                    EntityCaseAssignment(case_id=str(case_id), relevance_reason_uk="Причина")
+                ],
+            )
+        ]
+    )
+
+    normalized = _normalize_invalid_entity_links(
+        [
+            {
+                "provisional_ref": "entity_a",
+                "name_uk": "Нова сутність",
+                "entity_type": "institution",
+                "aliases": ["НС"],
+                "description_uk": "Опис.",
+            }
+        ],
+        output,
+        {"entity_a": set()},
+    )
+
+    decision = normalized.entities[0]
+    assert decision.action == "create_new"
+    assert decision.existing_entity_id is None
+    assert decision.new_canonical_name_uk == "Нова сутність"
+    assert decision.entity_type == "institution"
+
+
+def test_invalid_event_link_becomes_source_grounded_create() -> None:
+    case_id = uuid4()
+    output = EventResolutionOutput(
+        events=[
+            EventResolutionDecision(
+                provisional_ref="event_a",
+                action="link_existing",
+                existing_event_id=str(case_id),
+                confidence=0.9,
+                reason_uk="Та сама подія.",
+                case_assignments=[
+                    EventCaseAssignment(case_id=str(case_id), relevance_reason_uk="Причина")
+                ],
+            )
+        ]
+    )
+
+    normalized = _normalize_invalid_event_links(
+        [
+            {
+                "provisional_ref": "event_a",
+                "title_uk": "Нова подія",
+                "description_uk": "Опис.",
+                "event_date": "2026-06",
+                "event_date_precision": "month",
+                "location_uk": "Київ",
+            }
+        ],
+        output,
+        {"event_a": set()},
+    )
+
+    decision = normalized.events[0]
+    assert decision.action == "create_new"
+    assert decision.existing_event_id is None
+    assert decision.new_title_uk == "Нова подія"
+    assert decision.event_date == "2026-06"
 
 
 def test_duplicate_provisionals_merge_case_assignments() -> None:

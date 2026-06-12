@@ -8,7 +8,7 @@ model_list:
   - model_name: shkandal-bedrock-fallback
     litellm_params:
       model: bedrock/converse/google.gemma-3-27b-it
-      aws_region_name: os.environ/AWS_REGION_NAME
+      aws_region_name: os.environ/AWS_REGION
 
 litellm_settings:
   drop_params: true
@@ -38,16 +38,3 @@ router_settings:
     shkandal-event-resolution: shkandal-lapatonia-primary
     shkandal-case-copy-update: shkandal-lapatonia-primary
     shkandal-repair: shkandal-lapatonia-primary
-  fallbacks:
-    - shkandal-article-card:
-        - shkandal-bedrock-fallback
-    - shkandal-case-resolution:
-        - shkandal-bedrock-fallback
-    - shkandal-entity-resolution:
-        - shkandal-bedrock-fallback
-    - shkandal-event-resolution:
-        - shkandal-bedrock-fallback
-    - shkandal-case-copy-update:
-        - shkandal-bedrock-fallback
-    - shkandal-repair:
-        - shkandal-bedrock-fallback

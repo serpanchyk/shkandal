@@ -300,13 +300,15 @@ produces a nonzero exit code instead of making backfill wait forever.
 
 ### Smoke-test 10 article cards
 
-Put real Lapatonia and AWS credentials in the ignored LiteLLM env file. The
+Put real Lapatonia credentials in the ignored LiteLLM env file. AWS credentials
+are optional while Bedrock fallback routing is disabled. The
 tracked LiteLLM configuration routes all logical aliases through one shared
 OpenAI-compatible Lapatonia deployment with a combined 60 RPM limit and falls
-back to Amazon Bedrock's Gemma 3 27B model immediately when a primary request
-fails. After four Lapatonia failures within one hour, every alias skips
-Lapatonia for one hour. The cooldown is in memory, so restarting `llm-proxy`
-clears it:
+back to no secondary provider when a primary request fails. The Amazon Bedrock
+Gemma 3 27B model entry and credential settings are retained for optional direct
+testing or future reactivation. After four Lapatonia failures within one hour,
+every alias remains unavailable for one hour. The cooldown is in memory, so
+restarting `llm-proxy` clears it:
 
 ```bash
 cp infra/litellm/.env.example infra/litellm/.env
@@ -314,7 +316,7 @@ cp infra/litellm/.env.example infra/litellm/.env
 # LAPATONIA_API_KEY=...
 # AWS_ACCESS_KEY_ID=...
 # AWS_SECRET_ACCESS_KEY=...
-# AWS_REGION_NAME=us-west-2
+# AWS_REGION=us-west-2
 ```
 
 The AWS identity needs `bedrock:InvokeModel` and

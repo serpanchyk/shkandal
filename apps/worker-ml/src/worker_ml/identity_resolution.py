@@ -98,18 +98,18 @@ class ArticleEntityResolutionJobHandler:
             )
             output = cast(EntityResolutionOutput, result.output)
             _validate_coverage(provisional, output.entities, case_ids)
+            candidate_ids = {
+                item["provisional_ref"]: {candidate["entity_id"] for candidate in item_candidates}
+                for item, item_candidates in zip(provisional, candidates, strict=True)
+            }
+            output = _normalize_invalid_entity_links(provisional, output, candidate_ids)
             affected = await _persist_entities(
                 session,
                 article_id=job.article_id,
                 provisional=provisional,
                 output=output,
                 run_id=result.run_id,
-                candidate_ids={
-                    item["provisional_ref"]: {
-                        candidate["entity_id"] for candidate in item_candidates
-                    }
-                    for item, item_candidates in zip(provisional, candidates, strict=True)
-                },
+                candidate_ids=candidate_ids,
             )
             await _rebuild_case_entities(session, affected)
             for entity_id in {entity_id for _, entity_id in affected}:
@@ -194,18 +194,18 @@ class ArticleEventResolutionJobHandler:
             )
             output = cast(EventResolutionOutput, result.output)
             _validate_coverage(provisional, output.events, case_ids)
+            candidate_ids = {
+                item["provisional_ref"]: {candidate["event_id"] for candidate in item_candidates}
+                for item, item_candidates in zip(provisional, candidates, strict=True)
+            }
+            output = _normalize_invalid_event_links(provisional, output, candidate_ids)
             affected = await _persist_events(
                 session,
                 article_id=job.article_id,
                 provisional=provisional,
                 output=output,
                 run_id=result.run_id,
-                candidate_ids={
-                    item["provisional_ref"]: {
-                        candidate["event_id"] for candidate in item_candidates
-                    }
-                    for item, item_candidates in zip(provisional, candidates, strict=True)
-                },
+                candidate_ids=candidate_ids,
             )
             await _rebuild_case_events(session, affected)
             for event_id in {event_id for _, event_id in affected}:
@@ -272,6 +272,71 @@ def _validate_coverage(
     for decision in decisions:
         if any(assignment.case_id not in allowed for assignment in decision.case_assignments):
             raise ValueError("resolution assigned an item to an unlinked Case")
+
+
+def _normalize_invalid_entity_links(
+    provisional: list[dict[str, Any]],
+    output: EntityResolutionOutput,
+    candidate_ids: dict[str, set[str]],
+) -> EntityResolutionOutput:
+    """Create a source-grounded Entity instead of merging an invalid identity."""
+
+    by_ref = {str(item["provisional_ref"]): item for item in provisional}
+    decisions = []
+    for decision in output.entities:
+        if decision.action in {"create_new", "reject"}:
+            decisions.append(decision)
+            continue
+        if decision.existing_entity_id in candidate_ids[decision.provisional_ref]:
+            decisions.append(decision)
+            continue
+        item = by_ref[decision.provisional_ref]
+        decisions.append(
+            decision.model_copy(
+                update={
+                    "action": "create_new",
+                    "existing_entity_id": None,
+                    "new_canonical_name_uk": str(item["name_uk"]),
+                    "entity_type": str(item["entity_type"]),
+                    "aliases": list(item.get("aliases", [])),
+                    "description_uk": str(item["description_uk"]),
+                }
+            )
+        )
+    return EntityResolutionOutput(entities=decisions)
+
+
+def _normalize_invalid_event_links(
+    provisional: list[dict[str, Any]],
+    output: EventResolutionOutput,
+    candidate_ids: dict[str, set[str]],
+) -> EventResolutionOutput:
+    """Create a source-grounded Event instead of merging an invalid identity."""
+
+    by_ref = {str(item["provisional_ref"]): item for item in provisional}
+    decisions = []
+    for decision in output.events:
+        if decision.action in {"create_new", "reject"}:
+            decisions.append(decision)
+            continue
+        if decision.existing_event_id in candidate_ids[decision.provisional_ref]:
+            decisions.append(decision)
+            continue
+        item = by_ref[decision.provisional_ref]
+        decisions.append(
+            decision.model_copy(
+                update={
+                    "action": "create_new",
+                    "existing_event_id": None,
+                    "new_title_uk": str(item["title_uk"]),
+                    "description_uk": str(item["description_uk"]),
+                    "event_date": item.get("event_date"),
+                    "event_date_precision": item.get("event_date_precision", "unknown"),
+                    "location_uk": item.get("location_uk"),
+                }
+            )
+        )
+    return EventResolutionOutput(events=decisions)
 
 
 async def _persist_entities(
