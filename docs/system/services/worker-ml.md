@@ -162,6 +162,8 @@ Case resolution and copy updates share one serialized mutation namespace, while
 Entity and Event mutations are serialized independently. Classification jobs
 are enqueued in bulk, and Entity/Event candidate embeddings and Qdrant searches
 are batched per article.
+Case-resolution retries idempotently ensure downstream Case-copy, Entity, and
+Event jobs when article-Case links already exist.
 
 Structured worker logs include job and cycle durations. LLM run metadata records
 request and repair durations. At startup, pending LLM runs older than the stale

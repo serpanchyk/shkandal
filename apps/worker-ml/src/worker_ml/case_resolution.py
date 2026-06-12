@@ -64,10 +64,19 @@ class ArticleCaseResolutionJobHandler:
             card = await get_case_candidate_card(session, article_id=job.article_id)
             if card is None:
                 return None
-            existing_link = await session.scalar(
-                select(CaseArticle.id).where(CaseArticle.article_id == job.article_id).limit(1)
+            existing_case_ids = set(
+                (
+                    await session.scalars(
+                        select(CaseArticle.case_id).where(CaseArticle.article_id == job.article_id)
+                    )
+                ).all()
             )
-            if existing_link is not None:
+            if existing_case_ids:
+                await _enqueue_resolution_followups(
+                    job_store=self._job_store,
+                    job=job,
+                    case_ids=existing_case_ids,
+                )
                 return None
             article_row = (
                 await session.execute(
@@ -109,20 +118,11 @@ class ArticleCaseResolutionJobHandler:
                     await self._vector_index.upsert_case(case.id, _case_payload(case))
             await session.commit()
 
-        for case_id in affected_case_ids:
-            await self._job_store.enqueue_case_job(
-                job_type=UPDATE_CASE_COPY_JOB,
-                case_id=case_id,
-                payload={"case_id": str(case_id)},
-                max_attempts=job.max_attempts,
-            )
-        for job_type in (RESOLVE_ARTICLE_ENTITIES_JOB, RESOLVE_ARTICLE_EVENTS_JOB):
-            await self._job_store.enqueue_article_job(
-                job_type=job_type,
-                article_id=job.article_id,
-                payload={"article_id": str(job.article_id)},
-                max_attempts=job.max_attempts,
-            )
+        await _enqueue_resolution_followups(
+            job_store=self._job_store,
+            job=job,
+            case_ids=affected_case_ids,
+        )
         return output
 
     async def _load_candidates(
@@ -320,6 +320,30 @@ class CaseCopyUpdateJobHandler:
 async def _try_case_lock(session: AsyncSession) -> bool:
     statement = select(func.pg_try_advisory_xact_lock(CASE_MUTATION_ADVISORY_LOCK))
     return bool(await session.scalar(statement))
+
+
+async def _enqueue_resolution_followups(
+    *,
+    job_store: ArticleJobStore,
+    job: ClaimedJob,
+    case_ids: set[UUID],
+) -> None:
+    if job.article_id is None:
+        raise ValueError("article-case resolution follow-ups require article_id")
+    for case_id in case_ids:
+        await job_store.enqueue_case_job(
+            job_type=UPDATE_CASE_COPY_JOB,
+            case_id=case_id,
+            payload={"case_id": str(case_id)},
+            max_attempts=job.max_attempts,
+        )
+    for job_type in (RESOLVE_ARTICLE_ENTITIES_JOB, RESOLVE_ARTICLE_EVENTS_JOB):
+        await job_store.enqueue_article_job(
+            job_type=job_type,
+            article_id=job.article_id,
+            payload={"article_id": str(job.article_id)},
+            max_attempts=job.max_attempts,
+        )
 
 
 def _case_payload(case: Case) -> CaseVectorPayload:

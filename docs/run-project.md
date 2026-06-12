@@ -461,8 +461,8 @@ docker compose up -d --build
 ```
 
 Applying migrations preserves existing database contents unless a specific
-migration explicitly documents otherwise. Migration `202606100001` only extends
-`llm_cooldowns`.
+migration explicitly documents otherwise. Migration `202606120003` makes
+`jobs.article_id` nullable so Case-scoped jobs can be inserted.
 
 Verify the services, timers, and latest worker logs:
 

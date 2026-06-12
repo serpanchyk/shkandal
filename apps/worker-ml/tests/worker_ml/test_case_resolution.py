@@ -1,8 +1,12 @@
+from unittest.mock import AsyncMock, Mock
 from uuid import UUID, uuid4
 
+import pytest
+from shkandal_database.jobs import ArticleJobStore, ClaimedJob
 from shkandal_database.models import Case
 from worker_ml.case_resolution import (
     _case_payload,
+    _enqueue_resolution_followups,
     _lifecycle_sample,
     _relation_endpoint,
 )
@@ -45,3 +49,32 @@ def test_case_payload_is_rebuildable_from_postgres_case() -> None:
     assert payload.title_uk == "Назва"
     assert payload.article_count == 3
     assert payload.metadata == {"source": "test"}
+
+
+@pytest.mark.asyncio
+async def test_resolution_followups_are_idempotently_ensured() -> None:
+    article_id = uuid4()
+    case_ids = {uuid4(), uuid4()}
+    job_store = Mock(spec=ArticleJobStore)
+    job_store.enqueue_case_job = AsyncMock()
+    job_store.enqueue_article_job = AsyncMock()
+
+    await _enqueue_resolution_followups(
+        job_store=job_store,
+        job=ClaimedJob(
+            id=uuid4(),
+            job_type="resolve_article_case",
+            article_id=article_id,
+            payload={},
+            attempt_count=1,
+            max_attempts=3,
+        ),
+        case_ids=case_ids,
+    )
+
+    assert job_store.enqueue_case_job.await_count == 2
+    assert job_store.enqueue_article_job.await_count == 2
+    assert {call.kwargs["job_type"] for call in job_store.enqueue_article_job.await_args_list} == {
+        "resolve_article_entities",
+        "resolve_article_events",
+    }
