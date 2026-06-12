@@ -156,6 +156,17 @@ that embedder with the shared Qdrant case, entity, and event repositories for
 typed upsert and search operations. Article-card generation and resolution jobs
 are separate pipeline stages; Case, Entity, and Event resolution are implemented.
 
+Each pass claims jobs with weighted fair scheduling so article-card backlog does
+not starve downstream resolution. Up to four jobs run concurrently by default.
+Case resolution and copy updates share one serialized mutation namespace, while
+Entity and Event mutations are serialized independently. Classification jobs
+are enqueued in bulk, and Entity/Event candidate embeddings and Qdrant searches
+are batched per article.
+
+Structured worker logs include job and cycle durations. LLM run metadata records
+request and repair durations. At startup, pending LLM runs older than the stale
+job timeout are marked failed as abandoned after worker interruption.
+
 The relevance classifier loads `manifest.json` and the sibling joblib pipeline
 from the configured `relevance_model_dir`. The current artifact was produced
 with scikit-learn `1.8.0`, so `worker-ml` pins that runtime version to avoid

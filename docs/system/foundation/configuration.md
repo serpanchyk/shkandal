@@ -40,8 +40,10 @@ configured for the proxy rather than application packages.
   `manifest.json` and a joblib pipeline.
 - `RELEVANCE_THRESHOLD`: positive-class probability threshold for accepting an
   article as a relevance candidate.
-- `STALE_JOB_TIMEOUT_SECONDS`, `JOB_MAX_ATTEMPTS`, `ENQUEUE_BATCH_SIZE`, and
-  `CLAIM_BATCH_SIZE`: job-store runtime controls for typed-subject ML jobs.
+- `STALE_JOB_TIMEOUT_SECONDS`, `JOB_MAX_ATTEMPTS`, `ENQUEUE_BATCH_SIZE`,
+  `CLAIM_BATCH_SIZE`, and `WORKER_CONCURRENCY`: job-store runtime controls for
+  typed-subject ML jobs. The worker defaults to four concurrent jobs while
+  serializing Case, Entity, and Event mutation namespaces independently.
 Runtime settings should select model endpoints and secrets through environment
 variables or file secrets, never committed values. `worker-ml` uses
 `LLM_API_BASE`, `LLM_API_KEY`, the five-minute default
@@ -52,7 +54,8 @@ as `LAPATONIA_API_KEY`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and
 `AWS_REGION_NAME`. The tracked proxy configuration routes every logical alias
 through one shared Lapatonia deployment with a combined 60 RPM limit and falls
 back to Amazon Bedrock's Gemma 3 27B model when the primary provider fails.
-Primary-provider retries are disabled, so fallback begins immediately. After
+The proxy retries timeout and internal-server failures once; request errors and
+rate limits are not retried. After
 four Lapatonia failures within one hour, LiteLLM cools down the shared deployment
 for one hour and every logical alias routes directly to Bedrock. This cooldown
 is held in LiteLLM memory; restarting `llm-proxy` clears it. Temporary AWS

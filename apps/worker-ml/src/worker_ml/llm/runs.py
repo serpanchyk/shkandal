@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from shkandal_database.models import LlmRun
 from shkandal_database.session import async_session_scope
 from sqlalchemy import update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from worker_ml.llm.contracts import LlmRunType
@@ -71,3 +72,30 @@ class LlmRunStore:
 
         async with async_session_scope(self._session_factory) as session:
             await session.execute(update(LlmRun).where(LlmRun.id == run_id).values(**values))
+
+    async def fail_stale_pending_runs(
+        self,
+        *,
+        stale_before: datetime,
+        finished_at: datetime | None = None,
+    ) -> int:
+        """Mark pending runs left behind by interrupted workers as failed."""
+
+        completed_at = finished_at or datetime.now(UTC)
+        async with async_session_scope(self._session_factory) as session:
+            result = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(LlmRun)
+                    .where(
+                        LlmRun.status == "pending",
+                        LlmRun.started_at < stale_before,
+                    )
+                    .values(
+                        status="failed",
+                        error_message="abandoned after worker interruption",
+                        finished_at=completed_at,
+                    )
+                ),
+            )
+            return int(result.rowcount or 0)

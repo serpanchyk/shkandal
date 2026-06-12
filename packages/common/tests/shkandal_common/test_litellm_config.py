@@ -25,7 +25,15 @@ def test_litellm_aliases_share_primary_cooldown_and_fallback() -> None:
     assert models_by_name[PRIMARY_MODEL]["rpm"] == 60
 
     router_settings = config["router_settings"]
-    assert router_settings["num_retries"] == 0
+    assert router_settings["num_retries"] == 1
+    assert router_settings["retry_policy"] == {
+        "BadRequestErrorRetries": 0,
+        "AuthenticationErrorRetries": 0,
+        "TimeoutErrorRetries": 1,
+        "RateLimitErrorRetries": 0,
+        "ContentPolicyViolationErrorRetries": 0,
+        "InternalServerErrorRetries": 1,
+    }
     assert router_settings["allowed_fails"] == 3
     assert set(router_settings["allowed_fails_policy"].values()) == {3}
     assert router_settings["cooldown_time"] == 3600

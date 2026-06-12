@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Sequence
 from decimal import Decimal
 from typing import Any, cast
@@ -77,7 +78,9 @@ class ArticleEntityResolutionJobHandler:
             provisional = _with_provisional_refs(card.card_json.get("entities", []), "entity")
             if not provisional:
                 return None
+            retrieval_started_at = time.monotonic()
             candidates = await self._load_candidates(session, provisional)
+            retrieval_duration_seconds = time.monotonic() - retrieval_started_at
             result = await self._runner.run_with_provenance(
                 run_type="entity_resolution",
                 model_name=self._model_name,
@@ -87,7 +90,11 @@ class ArticleEntityResolutionJobHandler:
                         EntityResolutionOutput.model_json_schema(), ensure_ascii=False
                     ),
                 },
-                metadata={"article_id": str(job.article_id), "job_id": str(job.id)},
+                metadata={
+                    "article_id": str(job.article_id),
+                    "job_id": str(job.id),
+                    "retrieval_duration_seconds": round(retrieval_duration_seconds, 6),
+                },
             )
             output = cast(EntityResolutionOutput, result.output)
             _validate_coverage(provisional, output.entities, case_ids)
@@ -115,26 +122,27 @@ class ArticleEntityResolutionJobHandler:
     async def _load_candidates(
         self, session: AsyncSession, provisional: list[dict[str, Any]]
     ) -> list[list[dict[str, Any]]]:
-        groups: list[list[dict[str, Any]]] = []
-        for item in provisional:
-            results = await self._vector_index.search_entities(
-                _entity_query(item), limit=MAX_IDENTITY_CANDIDATES
-            )
-            ids = [result.id for result in results]
-            rows = list((await session.scalars(select(Entity).where(Entity.id.in_(ids)))).all())
-            by_id = {row.id: row for row in rows}
-            groups.append(
-                [
-                    {
-                        "entity_id": str(result.id),
-                        "score": result.score,
-                        **_entity_payload(by_id[result.id]).model_dump(mode="json"),
-                    }
-                    for result in results
-                    if result.id in by_id
-                ]
-            )
-        return groups
+        result_groups = await self._vector_index.search_entities_batch(
+            [_entity_query(item) for item in provisional],
+            limit=MAX_IDENTITY_CANDIDATES,
+        )
+        candidate_ids = {result.id for group in result_groups for result in group}
+        rows = list(
+            (await session.scalars(select(Entity).where(Entity.id.in_(candidate_ids)))).all()
+        )
+        by_id = {row.id: row for row in rows}
+        return [
+            [
+                {
+                    "entity_id": str(result.id),
+                    "score": result.score,
+                    **_entity_payload(by_id[result.id]).model_dump(mode="json"),
+                }
+                for result in results
+                if result.id in by_id
+            ]
+            for results in result_groups
+        ]
 
 
 class ArticleEventResolutionJobHandler:
@@ -166,7 +174,9 @@ class ArticleEventResolutionJobHandler:
             provisional = _with_provisional_refs(card.card_json.get("events", []), "event")
             if not provisional:
                 return None
+            retrieval_started_at = time.monotonic()
             candidates = await self._load_candidates(session, provisional)
+            retrieval_duration_seconds = time.monotonic() - retrieval_started_at
             result = await self._runner.run_with_provenance(
                 run_type="event_resolution",
                 model_name=self._model_name,
@@ -176,7 +186,11 @@ class ArticleEventResolutionJobHandler:
                         EventResolutionOutput.model_json_schema(), ensure_ascii=False
                     ),
                 },
-                metadata={"article_id": str(job.article_id), "job_id": str(job.id)},
+                metadata={
+                    "article_id": str(job.article_id),
+                    "job_id": str(job.id),
+                    "retrieval_duration_seconds": round(retrieval_duration_seconds, 6),
+                },
             )
             output = cast(EventResolutionOutput, result.output)
             _validate_coverage(provisional, output.events, case_ids)
@@ -208,26 +222,25 @@ class ArticleEventResolutionJobHandler:
     async def _load_candidates(
         self, session: AsyncSession, provisional: list[dict[str, Any]]
     ) -> list[list[dict[str, Any]]]:
-        groups: list[list[dict[str, Any]]] = []
-        for item in provisional:
-            results = await self._vector_index.search_events(
-                _event_query(item), limit=MAX_IDENTITY_CANDIDATES
-            )
-            ids = [result.id for result in results]
-            rows = list((await session.scalars(select(Event).where(Event.id.in_(ids)))).all())
-            by_id = {row.id: row for row in rows}
-            groups.append(
-                [
-                    {
-                        "event_id": str(result.id),
-                        "score": result.score,
-                        **_event_payload(by_id[result.id]).model_dump(mode="json"),
-                    }
-                    for result in results
-                    if result.id in by_id
-                ]
-            )
-        return groups
+        result_groups = await self._vector_index.search_events_batch(
+            [_event_query(item) for item in provisional],
+            limit=MAX_IDENTITY_CANDIDATES,
+        )
+        candidate_ids = {result.id for group in result_groups for result in group}
+        rows = list((await session.scalars(select(Event).where(Event.id.in_(candidate_ids)))).all())
+        by_id = {row.id: row for row in rows}
+        return [
+            [
+                {
+                    "event_id": str(result.id),
+                    "score": result.score,
+                    **_event_payload(by_id[result.id]).model_dump(mode="json"),
+                }
+                for result in results
+                if result.id in by_id
+            ]
+            for results in result_groups
+        ]
 
 
 async def _load_card_and_cases(

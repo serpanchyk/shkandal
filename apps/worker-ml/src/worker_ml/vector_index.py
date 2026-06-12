@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -122,6 +123,21 @@ class VectorIndexService:
             score_threshold=score_threshold,
         )
 
+    async def search_entities_batch(
+        self,
+        query_texts: list[str],
+        *,
+        limit: int,
+    ) -> list[list[VectorSearchResult[EntityVectorPayload]]]:
+        """Embed entity queries in one batch and search them concurrently."""
+
+        vectors = self.embedder.embed_queries(query_texts)
+        return list(
+            await asyncio.gather(
+                *(self.entity_repository.search(vector, limit=limit) for vector in vectors)
+            )
+        )
+
     async def search_events(
         self,
         query_text: str,
@@ -135,6 +151,21 @@ class VectorIndexService:
             self.embedder.embed_query(query_text),
             limit=limit,
             score_threshold=score_threshold,
+        )
+
+    async def search_events_batch(
+        self,
+        query_texts: list[str],
+        *,
+        limit: int,
+    ) -> list[list[VectorSearchResult[EventVectorPayload]]]:
+        """Embed event queries in one batch and search them concurrently."""
+
+        vectors = self.embedder.embed_queries(query_texts)
+        return list(
+            await asyncio.gather(
+                *(self.event_repository.search(vector, limit=limit) for vector in vectors)
+            )
         )
 
 

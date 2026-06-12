@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Sequence
 from decimal import Decimal
 from typing import Any, cast
@@ -76,7 +77,9 @@ class ArticleCaseResolutionJobHandler:
                 )
             ).one()
             article, source = article_row
+            retrieval_started_at = time.monotonic()
             candidates = await self._load_candidates(session, card)
+            retrieval_duration_seconds = time.monotonic() - retrieval_started_at
             result = await self._runner.run_with_provenance(
                 run_type="case_resolution",
                 model_name=self._model_name,
@@ -86,7 +89,11 @@ class ArticleCaseResolutionJobHandler:
                         CaseResolutionOutput.model_json_schema(), ensure_ascii=False
                     ),
                 },
-                metadata={"article_id": str(job.article_id), "job_id": str(job.id)},
+                metadata={
+                    "article_id": str(job.article_id),
+                    "job_id": str(job.id),
+                    "retrieval_duration_seconds": round(retrieval_duration_seconds, 6),
+                },
             )
             output = cast(CaseResolutionOutput, result.output)
             affected_case_ids = await self._persist_resolution(
@@ -135,13 +142,17 @@ class ArticleCaseResolutionJobHandler:
             ).all()
         )
         by_id = {case.id: case for case in cases}
+        evidence_titles = await _representative_article_titles_by_case(
+            session,
+            set(by_id),
+        )
         return [
             {
                 "case_id": str(result.id),
                 "score": result.score,
                 "title_uk": by_id[result.id].title_uk,
                 "summary_uk": by_id[result.id].summary_uk,
-                "evidence_titles": await _representative_article_titles(session, result.id),
+                "evidence_titles": evidence_titles.get(result.id, []),
             }
             for result in results
             if result.id in by_id
@@ -271,7 +282,9 @@ class CaseCopyUpdateJobHandler:
             case = await session.get(Case, job.case_id)
             if case is None:
                 return None
+            retrieval_started_at = time.monotonic()
             cards = await _case_article_cards(session, case.id)
+            retrieval_duration_seconds = time.monotonic() - retrieval_started_at
             result = await self._runner.run_with_provenance(
                 run_type="case_copy_update",
                 model_name=self._model_name,
@@ -289,7 +302,11 @@ class CaseCopyUpdateJobHandler:
                         CaseCopyUpdateOutput.model_json_schema(), ensure_ascii=False
                     ),
                 },
-                metadata={"case_id": str(case.id), "job_id": str(job.id)},
+                metadata={
+                    "case_id": str(case.id),
+                    "job_id": str(job.id),
+                    "retrieval_duration_seconds": round(retrieval_duration_seconds, 6),
+                },
             )
             output = cast(CaseCopyUpdateOutput, result.output)
             if output.title_action == "replace":
@@ -356,19 +373,38 @@ def _relation_endpoint(
     return UUID(key)
 
 
-async def _representative_article_titles(session: AsyncSession, case_id: UUID) -> list[str]:
-    return list(
-        (
-            await session.scalars(
-                select(ArticleCard.title_uk)
-                .join(Article, Article.id == ArticleCard.article_id)
-                .join(CaseArticle, CaseArticle.article_id == Article.id)
-                .where(CaseArticle.case_id == case_id)
-                .order_by(Article.published_at.asc().nulls_last())
-                .limit(8)
-            )
-        ).all()
+async def _representative_article_titles_by_case(
+    session: AsyncSession,
+    case_ids: set[UUID],
+) -> dict[UUID, list[str]]:
+    if not case_ids:
+        return {}
+    rank = (
+        func.row_number()
+        .over(
+            partition_by=CaseArticle.case_id,
+            order_by=(Article.published_at.asc().nulls_last(), Article.created_at.asc()),
+        )
+        .label("position")
     )
+    ranked = (
+        select(CaseArticle.case_id, ArticleCard.title_uk, rank)
+        .join(Article, Article.id == CaseArticle.article_id)
+        .join(ArticleCard, ArticleCard.article_id == Article.id)
+        .where(CaseArticle.case_id.in_(case_ids))
+        .subquery()
+    )
+    rows = (
+        await session.execute(
+            select(ranked.c.case_id, ranked.c.title_uk)
+            .where(ranked.c.position <= 8)
+            .order_by(ranked.c.case_id, ranked.c.position)
+        )
+    ).all()
+    grouped: dict[UUID, list[str]] = {case_id: [] for case_id in case_ids}
+    for case_id, title in rows:
+        grouped[case_id].append(title)
+    return grouped
 
 
 async def _case_article_cards(session: AsyncSession, case_id: UUID) -> list[dict[str, Any]]:

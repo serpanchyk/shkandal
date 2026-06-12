@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -179,25 +180,35 @@ class LlmTaskRunner:
 
         raw_text = ""
         raw_json: dict[str, Any] | None = None
+        request_duration_seconds: float | None = None
+        repair_duration_seconds: float | None = None
         try:
+            request_started_at = time.monotonic()
             raw_text = str(await invoke_chain(self._chain_for(run_type), dict(variables)))
+            request_duration_seconds = time.monotonic() - request_started_at
             await self._record_successful_request()
             raw_json = parse_json_object(raw_text)
             parsed = output_model.model_validate(raw_json)
         except (ValueError, ValidationError) as exc:
             try:
+                repair_started_at = time.monotonic()
                 repaired_json, repair_error = await self._repair(
                     output_model=output_model,
                     validation_error=str(exc),
                     invalid_output=raw_text,
                 )
+                repair_duration_seconds = time.monotonic() - repair_started_at
             except LlmRateLimitError as rate_limit_exc:
                 await self._finish_rate_limited_run(
                     run_id=run_id,
                     raw_text=raw_text,
                     raw_json=raw_json,
                     error=rate_limit_exc,
-                    metadata=metadata,
+                    metadata=_timing_metadata(
+                        metadata,
+                        request_duration_seconds=request_duration_seconds,
+                        repair_duration_seconds=repair_duration_seconds,
+                    ),
                 )
                 raise
             if repaired_json is None:
@@ -207,7 +218,11 @@ class LlmTaskRunner:
                         status="failed",
                         raw_output=raw_json or {"text": raw_text},
                         error_message=repair_error or str(exc),
-                        metadata=metadata,
+                        metadata=_timing_metadata(
+                            metadata,
+                            request_duration_seconds=request_duration_seconds,
+                            repair_duration_seconds=repair_duration_seconds,
+                        ),
                     )
                 raise ValueError(repair_error or str(exc)) from exc
 
@@ -218,15 +233,25 @@ class LlmTaskRunner:
                     status="repaired",
                     raw_output=raw_json or {"text": raw_text},
                     repaired_output=repaired_json,
-                    metadata=metadata,
+                    metadata=_timing_metadata(
+                        metadata,
+                        request_duration_seconds=request_duration_seconds,
+                        repair_duration_seconds=repair_duration_seconds,
+                    ),
                 )
             return LlmTaskResult(output=parsed, run_id=run_id)
         except Exception as exc:
             if self._run_store is not None and run_id is not None:
-                failed_metadata = metadata
+                if request_duration_seconds is None:
+                    request_duration_seconds = time.monotonic() - request_started_at
+                failed_metadata = _timing_metadata(
+                    metadata,
+                    request_duration_seconds=request_duration_seconds,
+                    repair_duration_seconds=repair_duration_seconds,
+                )
                 if isinstance(exc, LlmRateLimitError):
                     failed_metadata = {
-                        **(metadata or {}),
+                        **failed_metadata,
                         "rate_limited": True,
                         "retry_after_seconds": exc.retry_after_seconds,
                     }
@@ -244,7 +269,11 @@ class LlmTaskRunner:
                 run_id=run_id,
                 status="succeeded",
                 raw_output=raw_json,
-                metadata=metadata,
+                metadata=_timing_metadata(
+                    metadata,
+                    request_duration_seconds=request_duration_seconds,
+                    repair_duration_seconds=repair_duration_seconds,
+                ),
             )
         return LlmTaskResult(output=parsed, run_id=run_id)
 
@@ -337,6 +366,20 @@ def parse_json_object(text: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError("LLM output must be a JSON object")
     return value
+
+
+def _timing_metadata(
+    metadata: dict[str, Any] | None,
+    *,
+    request_duration_seconds: float | None,
+    repair_duration_seconds: float | None,
+) -> dict[str, Any]:
+    values = dict(metadata or {})
+    if request_duration_seconds is not None:
+        values["request_duration_seconds"] = round(request_duration_seconds, 6)
+    if repair_duration_seconds is not None:
+        values["repair_duration_seconds"] = round(repair_duration_seconds, 6)
+    return values
 
 
 async def invoke_chain(chain: AsyncTextChain, variables: Mapping[str, Any]) -> Any:

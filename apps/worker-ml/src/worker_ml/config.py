@@ -10,6 +10,7 @@ class MlConfig(BaseServiceConfig):
     poll_interval_seconds: int = 30
     enqueue_batch_size: int = 500
     claim_batch_size: int = 50
+    worker_concurrency: int = 4
     stale_job_timeout_seconds: int = 1800
     job_max_attempts: int = 3
     relevance_model_dir: str = "artifacts/models/relevance/tfidf_logistic_noise_assigned"

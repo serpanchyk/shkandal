@@ -89,7 +89,7 @@ services:
     restart: unless-stopped
 
   llm-proxy:
-    image: docker.litellm.ai/berriai/litellm:main-latest
+    image: docker.litellm.ai/berriai/litellm@sha256:7c311546c25e7bb6e8cafede9fcd3d0d622ac636b5c9418befaa32e85dfb0186
     command: ["--config", "/app/config.yaml"]
     env_file:
       - ./infra/litellm/.env

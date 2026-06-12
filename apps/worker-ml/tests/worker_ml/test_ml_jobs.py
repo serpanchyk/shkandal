@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 from uuid import uuid4
 
 import pytest
-from shkandal_database.jobs import EnqueueJobResult
+from shkandal_database.jobs import BulkEnqueueJobResult
 from worker_ml.classifier import RelevanceModel, build_classifier_text
 from worker_ml.jobs import (
     CLASSIFY_ARTICLE_JOB,
@@ -44,12 +44,12 @@ async def test_job_planner_counts_only_inserted_and_requeued_jobs() -> None:
     session_context.__aexit__ = AsyncMock(return_value=None)
     session_factory = Mock(return_value=session_context)
     job_store = Mock()
-    job_store.enqueue_article_job = AsyncMock(
-        side_effect=[
-            EnqueueJobResult(article_ids[0], "inserted"),
-            EnqueueJobResult(article_ids[1], "existing"),
-            EnqueueJobResult(article_ids[2], "requeued"),
-        ]
+    job_store.enqueue_article_jobs = AsyncMock(
+        return_value=BulkEnqueueJobResult(
+            inserted_jobs=1,
+            requeued_jobs=1,
+            existing_jobs=1,
+        )
     )
 
     stats = await MlJobPlanner(session_factory, job_store).enqueue_missing_classification_jobs(
@@ -76,7 +76,13 @@ async def test_job_planner_can_preserve_exhausted_jobs_for_backfill() -> None:
     session_context.__aexit__ = AsyncMock(return_value=None)
     session_factory = Mock(return_value=session_context)
     job_store = Mock()
-    job_store.enqueue_article_job = AsyncMock(return_value=EnqueueJobResult(article_id, "existing"))
+    job_store.enqueue_article_jobs = AsyncMock(
+        return_value=BulkEnqueueJobResult(
+            inserted_jobs=0,
+            requeued_jobs=0,
+            existing_jobs=1,
+        )
+    )
 
     await MlJobPlanner(session_factory, job_store).enqueue_missing_classification_jobs(
         limit=10,
@@ -84,7 +90,7 @@ async def test_job_planner_can_preserve_exhausted_jobs_for_backfill() -> None:
         requeue_failed=False,
     )
 
-    assert job_store.enqueue_article_job.await_args.kwargs["requeue_failed"] is False
+    assert job_store.enqueue_article_jobs.await_args.kwargs["requeue_failed"] is False
 
 
 def test_job_planner_only_selects_successfully_fetched_articles() -> None:

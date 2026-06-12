@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import logging
+import time
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
@@ -50,6 +51,19 @@ SUPPORTED_JOB_TYPES = (
     RESOLVE_ARTICLE_EVENTS_JOB,
     UPDATE_CASE_COPY_JOB,
 )
+JOB_TYPE_SCHEDULE = (
+    CREATE_ARTICLE_CARD_JOB,
+    CLASSIFY_ARTICLE_JOB,
+    RESOLVE_ARTICLE_CASES_JOB,
+    CREATE_ARTICLE_CARD_JOB,
+    CLASSIFY_ARTICLE_JOB,
+    UPDATE_CASE_COPY_JOB,
+    CREATE_ARTICLE_CARD_JOB,
+    RESOLVE_ARTICLE_CASES_JOB,
+    RESOLVE_ARTICLE_ENTITIES_JOB,
+    RESOLVE_ARTICLE_EVENTS_JOB,
+    CREATE_ARTICLE_CARD_JOB,
+)
 
 
 class JobHandler(Protocol):
@@ -59,7 +73,7 @@ class JobHandler(Protocol):
         """Process one claimed job."""
 
 
-async def run_once(config: MlConfig | None = None) -> dict[str, int]:
+async def run_once(config: MlConfig | None = None) -> dict[str, int | float]:
     """Enqueue and process one bounded batch of ML jobs."""
 
     settings = config or MlConfig()
@@ -86,6 +100,11 @@ async def run_once(config: MlConfig | None = None) -> dict[str, int]:
             session_factory=session_factory,
             job_store=job_store,
             model=model,
+        )
+        await _cleanup_stale_llm_runs(
+            settings=settings,
+            logger=logger,
+            run_store=LlmRunStore(session_factory),
         )
         return await _run_cycle(
             settings=settings,
@@ -178,6 +197,11 @@ async def process_next_job(
             job_store=job_store,
             model=model,
         )
+        await _cleanup_stale_llm_runs(
+            settings=settings,
+            logger=logger,
+            run_store=LlmRunStore(session_factory),
+        )
         try:
             await handlers[claimed_job.job_type].handle(claimed_job)
         except LlmRateLimitError as exc:
@@ -265,6 +289,11 @@ async def run_worker(config: MlConfig | None = None) -> None:
             job_store=job_store,
             model=model,
         )
+        await _cleanup_stale_llm_runs(
+            settings=settings,
+            logger=logger,
+            run_store=LlmRunStore(session_factory),
+        )
         logger.info(
             "worker_ml_started",
             extra={
@@ -272,6 +301,7 @@ async def run_worker(config: MlConfig | None = None) -> None:
                 "poll_interval_seconds": settings.poll_interval_seconds,
                 "enqueue_batch_size": settings.enqueue_batch_size,
                 "claim_batch_size": settings.claim_batch_size,
+                "worker_concurrency": settings.worker_concurrency,
                 "relevance_model_dir": settings.relevance_model_dir,
             },
         )
@@ -317,6 +347,11 @@ async def run_backfill(config: MlConfig | None = None) -> JobQueueSummary:
             job_store=job_store,
             model=model,
         )
+        await _cleanup_stale_llm_runs(
+            settings=settings,
+            logger=logger,
+            run_store=LlmRunStore(session_factory),
+        )
         logger.info(
             "worker_ml_backfill_started",
             extra={
@@ -324,6 +359,7 @@ async def run_backfill(config: MlConfig | None = None) -> JobQueueSummary:
                 "poll_interval_seconds": settings.poll_interval_seconds,
                 "enqueue_batch_size": settings.enqueue_batch_size,
                 "claim_batch_size": settings.claim_batch_size,
+                "worker_concurrency": settings.worker_concurrency,
             },
         )
         return await _drain_backfill(
@@ -397,7 +433,8 @@ async def _run_cycle(
     cooldown_store: LlmCooldownStore,
     handlers: Mapping[str, JobHandler],
     requeue_failed: bool = True,
-) -> dict[str, int]:
+) -> dict[str, int | float]:
+    cycle_started_at = time.monotonic()
     if await _log_active_cooldown(cooldown_store=cooldown_store, logger=logger):
         return _empty_cycle_stats()
 
@@ -419,82 +456,188 @@ async def _run_cycle(
             },
         )
 
-    processed_jobs = 0
-    failed_jobs = 0
-    for _ in range(settings.claim_batch_size):
-        claimed_job = await job_store.claim_next_job(
-            worker_id=settings.service_name,
-            job_types=SUPPORTED_JOB_TYPES,
-        )
-        if claimed_job is None:
-            break
-
-        try:
-            await handlers[claimed_job.job_type].handle(claimed_job)
-        except LlmRateLimitError as exc:
-            resume_at = await _defer_for_rate_limit(
-                job=claimed_job,
-                error=exc,
-                job_store=job_store,
-                cooldown_store=cooldown_store,
-            )
-            logger.warning(
-                "worker_ml_llm_rate_limited",
-                extra={
-                    "job_id": str(claimed_job.id),
-                    "job_type": claimed_job.job_type,
-                    "article_id": str(claimed_job.article_id),
-                    "resume_at": resume_at.isoformat(),
-                },
-            )
-            break
-        except (CaseMutationBusyError, IdentityMutationBusyError) as exc:
-            await job_store.defer_job(
-                job_id=claimed_job.id,
-                run_after=datetime.now(UTC) + timedelta(seconds=10),
-                reason=str(exc),
-            )
-            continue
-        except Exception as exc:
-            await job_store.fail_job(
-                job_id=claimed_job.id,
-                error_message=str(exc),
-                attempt_count=claimed_job.attempt_count,
-                max_attempts=claimed_job.max_attempts,
-            )
-            failed_jobs += 1
-            logger.exception(
-                "worker_ml_job_failed",
-                extra={
-                    "job_id": str(claimed_job.id),
-                    "job_type": claimed_job.job_type,
-                    "article_id": str(claimed_job.article_id),
-                },
-            )
-            continue
-
-        await job_store.complete_job(
-            job_id=claimed_job.id,
-            processed_revision=_processed_revision(claimed_job),
-        )
-        processed_jobs += 1
-        logger.info(
-            "worker_ml_job_succeeded",
-            extra={
-                "job_id": str(claimed_job.id),
-                "job_type": claimed_job.job_type,
-                "article_id": str(claimed_job.article_id),
-            },
-        )
+    executor = _CycleExecutor(
+        settings=settings,
+        logger=logger,
+        job_store=job_store,
+        cooldown_store=cooldown_store,
+        handlers=handlers,
+    )
+    processed_jobs, failed_jobs = await executor.run()
 
     stats = {
         "scanned_articles": enqueue_stats.scanned_articles,
         "ensured_jobs": enqueue_stats.ensured_jobs,
         "processed_jobs": processed_jobs,
         "failed_jobs": failed_jobs,
+        "duration_seconds": round(time.monotonic() - cycle_started_at, 6),
     }
     logger.info("worker_ml_cycle_finished", extra=stats)
     return stats
+
+
+class _CycleExecutor:
+    """Claim jobs fairly and execute them with bounded concurrency."""
+
+    def __init__(
+        self,
+        *,
+        settings: MlConfig,
+        logger: logging.Logger,
+        job_store: ArticleJobStore,
+        cooldown_store: LlmCooldownStore,
+        handlers: Mapping[str, JobHandler],
+    ) -> None:
+        self._settings = settings
+        self._logger = logger
+        self._job_store = job_store
+        self._cooldown_store = cooldown_store
+        self._handlers = handlers
+        self._claim_lock = asyncio.Lock()
+        self._rate_limit_lock = asyncio.Lock()
+        self._stop_claiming = asyncio.Event()
+        self._schedule_index = 0
+        self._claimed_jobs = 0
+        self.processed_jobs = 0
+        self.failed_jobs = 0
+        case_limit = asyncio.Semaphore(1)
+        self._namespace_limits = {
+            RESOLVE_ARTICLE_CASES_JOB: case_limit,
+            UPDATE_CASE_COPY_JOB: case_limit,
+            RESOLVE_ARTICLE_ENTITIES_JOB: asyncio.Semaphore(1),
+            RESOLVE_ARTICLE_EVENTS_JOB: asyncio.Semaphore(1),
+        }
+        self._rate_limit_resume_at: datetime | None = None
+
+    async def run(self) -> tuple[int, int]:
+        concurrency = max(1, self._settings.worker_concurrency)
+        async with asyncio.TaskGroup() as group:
+            for _ in range(concurrency):
+                group.create_task(self._worker())
+        return self.processed_jobs, self.failed_jobs
+
+    async def _worker(self) -> None:
+        while not self._stop_claiming.is_set():
+            job = await self._claim_next()
+            if job is None:
+                return
+            limit = self._namespace_limits.get(job.job_type)
+            if limit is None:
+                await self._execute(job)
+            else:
+                async with limit:
+                    await self._execute(job)
+
+    async def _claim_next(self) -> ClaimedJob | None:
+        async with self._claim_lock:
+            reached_limit = self._claimed_jobs >= self._settings.claim_batch_size
+            if self._stop_claiming.is_set() or reached_limit:
+                return None
+            attempted: set[str] = set()
+            while len(attempted) < len(SUPPORTED_JOB_TYPES):
+                job_type = JOB_TYPE_SCHEDULE[self._schedule_index]
+                self._schedule_index = (self._schedule_index + 1) % len(JOB_TYPE_SCHEDULE)
+                if job_type in attempted:
+                    continue
+                attempted.add(job_type)
+                job = await self._job_store.claim_next_job(
+                    worker_id=self._settings.service_name,
+                    job_types=(job_type,),
+                )
+                if job is not None:
+                    self._claimed_jobs += 1
+                    return job
+            return None
+
+    async def _execute(self, job: ClaimedJob) -> None:
+        started_at = time.monotonic()
+        try:
+            await self._handlers[job.job_type].handle(job)
+        except LlmRateLimitError as exc:
+            resume_at = await self._defer_rate_limited_job(job, exc)
+            self._logger.warning(
+                "worker_ml_llm_rate_limited",
+                extra={
+                    "job_id": str(job.id),
+                    "job_type": job.job_type,
+                    "article_id": str(job.article_id),
+                    "resume_at": resume_at.isoformat(),
+                    "duration_seconds": round(time.monotonic() - started_at, 6),
+                },
+            )
+        except (CaseMutationBusyError, IdentityMutationBusyError) as exc:
+            await self._job_store.defer_job(
+                job_id=job.id,
+                run_after=datetime.now(UTC) + timedelta(seconds=10),
+                reason=str(exc),
+            )
+        except Exception as exc:
+            await self._job_store.fail_job(
+                job_id=job.id,
+                error_message=str(exc),
+                attempt_count=job.attempt_count,
+                max_attempts=job.max_attempts,
+            )
+            self.failed_jobs += 1
+            self._logger.exception(
+                "worker_ml_job_failed",
+                extra={
+                    "job_id": str(job.id),
+                    "job_type": job.job_type,
+                    "article_id": str(job.article_id),
+                    "duration_seconds": round(time.monotonic() - started_at, 6),
+                },
+            )
+        else:
+            await self._job_store.complete_job(
+                job_id=job.id,
+                processed_revision=_processed_revision(job),
+            )
+            self.processed_jobs += 1
+            self._logger.info(
+                "worker_ml_job_succeeded",
+                extra={
+                    "job_id": str(job.id),
+                    "job_type": job.job_type,
+                    "article_id": str(job.article_id),
+                    "duration_seconds": round(time.monotonic() - started_at, 6),
+                },
+            )
+
+    async def _defer_rate_limited_job(
+        self,
+        job: ClaimedJob,
+        error: LlmRateLimitError,
+    ) -> datetime:
+        self._stop_claiming.set()
+        async with self._rate_limit_lock:
+            if self._rate_limit_resume_at is None:
+                self._rate_limit_resume_at = await _defer_for_rate_limit(
+                    job=job,
+                    error=error,
+                    job_store=self._job_store,
+                    cooldown_store=self._cooldown_store,
+                )
+            else:
+                await self._job_store.defer_job(
+                    job_id=job.id,
+                    run_after=self._rate_limit_resume_at,
+                    reason=str(error),
+                )
+            return self._rate_limit_resume_at
+
+
+async def _cleanup_stale_llm_runs(
+    *,
+    settings: MlConfig,
+    logger: logging.Logger,
+    run_store: LlmRunStore,
+) -> None:
+    cleaned_runs = await run_store.fail_stale_pending_runs(
+        stale_before=datetime.now(UTC) - settings.stale_job_timeout
+    )
+    if cleaned_runs:
+        logger.warning("worker_ml_stale_llm_runs_failed", extra={"cleaned_runs": cleaned_runs})
 
 
 async def _defer_for_rate_limit(
@@ -531,7 +674,7 @@ async def _log_active_cooldown(
     return True
 
 
-def _empty_cycle_stats() -> dict[str, int]:
+def _empty_cycle_stats() -> dict[str, int | float]:
     return {
         "scanned_articles": 0,
         "ensured_jobs": 0,

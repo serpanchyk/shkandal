@@ -2,6 +2,7 @@ import asyncio
 import sys
 from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -65,22 +66,16 @@ async def test_run_cycle_enqueues_and_processes_bounded_batch() -> None:
         },
     )
 
-    assert result == {
-        "scanned_articles": 10,
-        "ensured_jobs": 4,
-        "processed_jobs": 3,
-        "failed_jobs": 0,
-    }
+    assert result["scanned_articles"] == 10
+    assert result["ensured_jobs"] == 4
+    assert result["processed_jobs"] == 3
+    assert result["failed_jobs"] == 0
+    assert result["duration_seconds"] >= 0
     assert job_store.claim_next_job.await_count == 3
     assert classification_handler.handle.await_count == 2
     article_card_handler.handle.assert_awaited_once_with(claimed_jobs[1])
-    assert job_store.claim_next_job.await_args.kwargs["job_types"] == (
-        "classify_article",
-        "create_article_card",
-        "resolve_article_cases",
-        "resolve_article_entities",
-        "resolve_article_events",
-        "update_case_copy",
+    assert all(
+        len(call.kwargs["job_types"]) == 1 for call in job_store.claim_next_job.await_args_list
     )
     assert job_store.complete_job.await_count == 3
 
@@ -134,7 +129,7 @@ async def test_run_cycle_defers_rate_limited_job_and_ends_pass() -> None:
     )
 
     result = await _run_cycle(
-        settings=MlConfig(claim_batch_size=2),
+        settings=MlConfig(claim_batch_size=2, worker_concurrency=1),
         logger=Mock(),
         planner=planner,
         job_store=job_store,
@@ -150,6 +145,188 @@ async def test_run_cycle_defers_rate_limited_job_and_ends_pass() -> None:
     job_store.defer_job.assert_awaited_once()
     job_store.claim_next_job.assert_awaited_once()
     classification_handler.handle.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_cycle_executes_at_most_configured_concurrency() -> None:
+    planner = Mock(spec=MlJobPlanner)
+    planner.enqueue_missing_classification_jobs = AsyncMock(
+        return_value=EnqueueStats(0, 0, 0, 0, 0)
+    )
+    jobs = [
+        SimpleNamespace(
+            id=f"job-{index}",
+            article_id=f"article-{index}",
+            job_type="create_article_card",
+            attempt_count=1,
+            max_attempts=3,
+        )
+        for index in range(8)
+    ]
+    active = 0
+    max_active = 0
+
+    async def claim_next_job(**kwargs: Any) -> object | None:
+        if kwargs["job_types"] != ("create_article_card",) or not jobs:
+            return None
+        return jobs.pop()
+
+    async def handle(_job: object) -> None:
+        nonlocal active, max_active
+        active += 1
+        max_active = max(max_active, active)
+        await asyncio.sleep(0.01)
+        active -= 1
+
+    job_store = Mock(spec=ArticleJobStore)
+    job_store.claim_next_job = AsyncMock(side_effect=claim_next_job)
+    job_store.complete_job = AsyncMock()
+    job_store.fail_job = AsyncMock()
+    cooldown_store = Mock(spec=LlmCooldownStore)
+    cooldown_store.active_resume_at = AsyncMock(return_value=None)
+    handler = Mock()
+    handler.handle = AsyncMock(side_effect=handle)
+
+    result = await _run_cycle(
+        settings=MlConfig(claim_batch_size=8, worker_concurrency=4),
+        logger=Mock(),
+        planner=planner,
+        job_store=job_store,
+        cooldown_store=cooldown_store,
+        handlers={"create_article_card": handler},
+    )
+
+    assert result["processed_jobs"] == 8
+    assert max_active == 4
+
+
+@pytest.mark.asyncio
+async def test_run_cycle_claims_downstream_work_while_cards_remain() -> None:
+    planner = Mock(spec=MlJobPlanner)
+    planner.enqueue_missing_classification_jobs = AsyncMock(
+        return_value=EnqueueStats(0, 0, 0, 0, 0)
+    )
+    card_jobs = [
+        SimpleNamespace(
+            id=f"card-{index}",
+            article_id=f"card-article-{index}",
+            job_type="create_article_card",
+            attempt_count=1,
+            max_attempts=3,
+        )
+        for index in range(10)
+    ]
+    case_job: SimpleNamespace | None = SimpleNamespace(
+        id="case-job",
+        article_id="case-article",
+        job_type="resolve_article_cases",
+        attempt_count=1,
+        max_attempts=3,
+    )
+
+    async def claim_next_job(**kwargs: Any) -> object | None:
+        job_type = kwargs["job_types"][0]
+        if job_type == "create_article_card" and card_jobs:
+            return card_jobs.pop()
+        if job_type == "resolve_article_cases":
+            nonlocal case_job
+            claimed, case_job = case_job, None
+            return claimed
+        return None
+
+    job_store = Mock(spec=ArticleJobStore)
+    job_store.claim_next_job = AsyncMock(side_effect=claim_next_job)
+    job_store.complete_job = AsyncMock()
+    job_store.fail_job = AsyncMock()
+    cooldown_store = Mock(spec=LlmCooldownStore)
+    cooldown_store.active_resume_at = AsyncMock(return_value=None)
+    card_handler = Mock()
+    card_handler.handle = AsyncMock()
+    case_handler = Mock()
+    case_handler.handle = AsyncMock()
+
+    await _run_cycle(
+        settings=MlConfig(claim_batch_size=3, worker_concurrency=1),
+        logger=Mock(),
+        planner=planner,
+        job_store=job_store,
+        cooldown_store=cooldown_store,
+        handlers={
+            "create_article_card": card_handler,
+            "resolve_article_cases": case_handler,
+        },
+    )
+
+    case_handler.handle.assert_awaited_once()
+    assert card_jobs
+
+
+@pytest.mark.asyncio
+async def test_run_cycle_serializes_case_namespace_jobs() -> None:
+    planner = Mock(spec=MlJobPlanner)
+    planner.enqueue_missing_classification_jobs = AsyncMock(
+        return_value=EnqueueStats(0, 0, 0, 0, 0)
+    )
+    jobs_by_type = {
+        "resolve_article_cases": [
+            SimpleNamespace(
+                id="case-job",
+                article_id="case-article",
+                job_type="resolve_article_cases",
+                attempt_count=1,
+                max_attempts=3,
+            )
+        ],
+        "update_case_copy": [
+            SimpleNamespace(
+                id="copy-job",
+                article_id=None,
+                case_id="case-id",
+                job_type="update_case_copy",
+                attempt_count=1,
+                max_attempts=3,
+                requested_revision=1,
+            )
+        ],
+    }
+    active = 0
+    max_active = 0
+
+    async def claim_next_job(**kwargs: Any) -> object | None:
+        jobs = jobs_by_type.get(kwargs["job_types"][0], [])
+        return jobs.pop() if jobs else None
+
+    async def handle(_job: object) -> None:
+        nonlocal active, max_active
+        active += 1
+        max_active = max(max_active, active)
+        await asyncio.sleep(0.01)
+        active -= 1
+
+    job_store = Mock(spec=ArticleJobStore)
+    job_store.claim_next_job = AsyncMock(side_effect=claim_next_job)
+    job_store.complete_job = AsyncMock()
+    job_store.fail_job = AsyncMock()
+    cooldown_store = Mock(spec=LlmCooldownStore)
+    cooldown_store.active_resume_at = AsyncMock(return_value=None)
+    case_handler = Mock()
+    case_handler.handle = AsyncMock(side_effect=handle)
+    copy_handler = Mock()
+    copy_handler.handle = AsyncMock(side_effect=handle)
+
+    await _run_cycle(
+        settings=MlConfig(claim_batch_size=2, worker_concurrency=4),
+        logger=Mock(),
+        planner=planner,
+        job_store=job_store,
+        cooldown_store=cooldown_store,
+        handlers={
+            "resolve_article_cases": case_handler,
+            "update_case_copy": copy_handler,
+        },
+    )
+
+    assert max_active == 1
 
 
 @pytest.mark.asyncio
@@ -365,6 +542,7 @@ async def test_run_backfill_builds_resources_once_and_disposes_engine(
     monkeypatch.setattr(entrypoint, "MlJobPlanner", Mock(return_value=planner))
     monkeypatch.setattr(entrypoint, "_create_handlers", Mock(return_value=handlers))
     monkeypatch.setattr(entrypoint, "_drain_backfill", drain_backfill)
+    monkeypatch.setattr(entrypoint, "_cleanup_stale_llm_runs", AsyncMock())
 
     result = await entrypoint.run_backfill(MlConfig(service_name="backfill-test"))
 
@@ -430,6 +608,7 @@ async def test_backfill_waits_for_deferred_jobs(monkeypatch: pytest.MonkeyPatch)
     )
     sleep = AsyncMock()
     monkeypatch.setattr(entrypoint, "_run_cycle", run_cycle)
+    monkeypatch.setattr(entrypoint, "_cleanup_stale_llm_runs", AsyncMock())
     monkeypatch.setattr(asyncio, "sleep", sleep)
     job_store = Mock(spec=ArticleJobStore)
     job_store.summarize_jobs = AsyncMock(
@@ -566,6 +745,7 @@ async def test_worker_loop_sleeps_when_cycle_is_idle(monkeypatch: pytest.MonkeyP
     cooldown_store.active_resume_at = AsyncMock(return_value=None)
     monkeypatch.setattr(entrypoint, "LlmCooldownStore", Mock(return_value=cooldown_store))
     monkeypatch.setattr(entrypoint, "_run_cycle", run_cycle)
+    monkeypatch.setattr(entrypoint, "_cleanup_stale_llm_runs", AsyncMock())
     monkeypatch.setattr(asyncio, "sleep", sleep)
 
     with pytest.raises(asyncio.CancelledError):
@@ -604,3 +784,7 @@ def test_llm_config_defaults_to_litellm_proxy_aliases() -> None:
     assert fields["llm_event_resolution_model"].default == "shkandal-event-resolution"
     assert fields["llm_case_copy_update_model"].default == "shkandal-case-copy-update"
     assert fields["llm_repair_model"].default == "shkandal-repair"
+
+
+def test_worker_concurrency_defaults_to_four() -> None:
+    assert MlConfig.model_fields["worker_concurrency"].default == 4

@@ -14,7 +14,14 @@ litellm_settings:
   drop_params: true
 
 router_settings:
-  num_retries: 0
+  num_retries: 1
+  retry_policy:
+    BadRequestErrorRetries: 0
+    AuthenticationErrorRetries: 0
+    TimeoutErrorRetries: 1
+    RateLimitErrorRetries: 0
+    ContentPolicyViolationErrorRetries: 0
+    InternalServerErrorRetries: 1
   allowed_fails: 3
   allowed_fails_policy:
     BadRequestErrorAllowedFails: 3

@@ -50,6 +50,15 @@ class EnqueueJobResult:
 
 
 @dataclass(frozen=True)
+class BulkEnqueueJobResult:
+    """Counts from ensuring a batch of article jobs exists."""
+
+    inserted_jobs: int
+    requeued_jobs: int
+    existing_jobs: int
+
+
+@dataclass(frozen=True)
 class JobQueueSummary:
     """Current durable job counts for a selected set of job types."""
 
@@ -101,6 +110,79 @@ class ArticleJobStore:
             max_attempts=max_attempts,
             increment_revision=False,
             requeue_failed=requeue_failed,
+        )
+
+    async def enqueue_article_jobs(
+        self,
+        *,
+        job_type: str,
+        article_ids: list[UUID],
+        max_attempts: int = 3,
+        requeue_failed: bool = True,
+    ) -> BulkEnqueueJobResult:
+        """Ensure many article jobs in one transaction."""
+
+        if not article_ids:
+            return BulkEnqueueJobResult(0, 0, 0)
+
+        async with async_session_scope(self._session_factory) as session:
+            inserted = [
+                article_id
+                for article_id in (
+                    await session.scalars(
+                        insert(Job)
+                        .values(
+                            [
+                                {
+                                    "job_type": job_type,
+                                    "article_id": article_id,
+                                    "status": JOB_STATUS_QUEUED,
+                                    "payload": {"article_id": str(article_id)},
+                                    "max_attempts": max_attempts,
+                                }
+                                for article_id in article_ids
+                            ]
+                        )
+                        .on_conflict_do_nothing(
+                            index_elements=[Job.job_type, Job.article_id],
+                            index_where=Job.article_id.is_not(None),
+                        )
+                        .returning(Job.article_id)
+                    )
+                ).all()
+                if article_id is not None
+            ]
+            requeued: list[UUID] = []
+            if requeue_failed:
+                requeued = [
+                    article_id
+                    for article_id in (
+                        await session.scalars(
+                            update(Job)
+                            .where(
+                                Job.job_type == job_type,
+                                Job.article_id.in_(article_ids),
+                                Job.status == JOB_STATUS_FAILED,
+                            )
+                            .values(
+                                status=JOB_STATUS_QUEUED,
+                                run_after=None,
+                                locked_at=None,
+                                locked_by=None,
+                                last_error=None,
+                                max_attempts=max_attempts,
+                                updated_at=datetime.now(UTC),
+                            )
+                            .returning(Job.article_id)
+                        )
+                    ).all()
+                    if article_id is not None
+                ]
+
+        return BulkEnqueueJobResult(
+            inserted_jobs=len(inserted),
+            requeued_jobs=len(requeued),
+            existing_jobs=len(article_ids) - len(inserted) - len(requeued),
         )
 
     async def enqueue_case_job(

@@ -58,30 +58,19 @@ class MlJobPlanner:
                 ).all()
             )
 
-        inserted_jobs = 0
-        requeued_jobs = 0
-        existing_jobs = 0
-        for article_id in article_ids:
-            result = await self._job_store.enqueue_article_job(
-                job_type=CLASSIFY_ARTICLE_JOB,
-                article_id=article_id,
-                payload={"article_id": str(article_id)},
-                max_attempts=max_attempts,
-                requeue_failed=requeue_failed,
-            )
-            if result.state == "inserted":
-                inserted_jobs += 1
-            elif result.state == "requeued":
-                requeued_jobs += 1
-            else:
-                existing_jobs += 1
+        result = await self._job_store.enqueue_article_jobs(
+            job_type=CLASSIFY_ARTICLE_JOB,
+            article_ids=article_ids,
+            max_attempts=max_attempts,
+            requeue_failed=requeue_failed,
+        )
 
         return EnqueueStats(
             scanned_articles=len(article_ids),
-            ensured_jobs=inserted_jobs + requeued_jobs,
-            inserted_jobs=inserted_jobs,
-            requeued_jobs=requeued_jobs,
-            existing_jobs=existing_jobs,
+            ensured_jobs=result.inserted_jobs + result.requeued_jobs,
+            inserted_jobs=result.inserted_jobs,
+            requeued_jobs=result.requeued_jobs,
+            existing_jobs=result.existing_jobs,
         )
 
     @staticmethod

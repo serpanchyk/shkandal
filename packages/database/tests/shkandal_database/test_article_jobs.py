@@ -37,6 +37,28 @@ async def test_enqueue_article_job_returns_inserted_for_new_job() -> None:
     assert result.state == "inserted"
 
 
+@pytest.mark.asyncio
+async def test_bulk_enqueue_article_jobs_counts_states_in_one_transaction() -> None:
+    article_ids = [uuid4(), uuid4(), uuid4()]
+    session_factory, session = _mock_session_factory()
+    session.scalars = AsyncMock(
+        side_effect=[
+            SimpleNamespace(all=lambda: [article_ids[0]]),
+            SimpleNamespace(all=lambda: [article_ids[1]]),
+        ]
+    )
+
+    result = await ArticleJobStore(session_factory).enqueue_article_jobs(
+        job_type="classify_article",
+        article_ids=article_ids,
+    )
+
+    assert result.inserted_jobs == 1
+    assert result.requeued_jobs == 1
+    assert result.existing_jobs == 1
+    assert session.scalars.await_count == 2
+
+
 @pytest.mark.parametrize("status", ["queued", "running", "succeeded"])
 @pytest.mark.asyncio
 async def test_enqueue_article_job_returns_existing_for_untouched_job(status: str) -> None:
