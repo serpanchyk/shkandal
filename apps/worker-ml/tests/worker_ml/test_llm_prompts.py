@@ -59,3 +59,66 @@ def test_identity_resolution_prompts_restrict_existing_ids_to_same_item_candidat
     assert identity_field in prompt
     assert "для того самого `provisional_ref`" in prompt
     assert "`case_id`" in prompt
+
+
+def test_entity_resolution_prompt_rejects_non_global_actors() -> None:
+    prompt = PromptRegistry().load_text("entity_resolution")
+
+    assert "стабільний реальний актор" in prompt
+    assert "посади без імені" in prompt
+    assert "анонімних осіб" in prompt
+    assert "«приватна компанія»" in prompt
+    assert "лише місце події" in prompt
+    assert "Не створюй `unknown_actor`" in prompt
+
+
+def test_entity_resolution_prompt_separates_identity_from_article_role() -> None:
+    prompt = PromptRegistry().load_text("entity_resolution")
+
+    assert "Схожість тексту" in prompt
+    assert "не доводять тотожність" in prompt
+    assert "не перетворюй роль зі статті на alias" in prompt
+    assert "а не переказувати\nйого роль чи дію у конкретній справі" in prompt
+    assert "Якщо стабільний опис неможливо сформувати з контексту" in prompt
+
+
+def test_entity_resolution_prompt_limits_mutations_and_case_assignments() -> None:
+    prompt = PromptRegistry().load_text("entity_resolution")
+
+    assert "`rename_existing` або `retype_existing` лише коли кандидат точно" in prompt
+    assert "Не використовуй rename для стилістичної переваги" in prompt
+    assert "Кожна прийнята сутність повинна мати щонайменше один" in prompt
+    assert "Використовуй лише `case_id` з `linked_cases`" in prompt
+    assert "побіжну згадку, фон, місце події або історичний контекст" in prompt
+
+
+def test_event_resolution_prompt_rejects_non_occurrences() -> None:
+    prompt = PromptRegistry().load_text("event_resolution")
+
+    assert "конкретна реальна occurrence" in prompt
+    assert "«Подія 1»" in prompt
+    assert "переказ усієї статті як одну подію" in prompt
+    assert "стани без конкретної дії" in prompt
+    assert "занадто широкі multi-event summaries" in prompt
+    assert "неможливо відрізнити від інших схожих подій" in prompt
+
+
+def test_event_resolution_prompt_requires_compatible_identity_anchors() -> None:
+    prompt = PromptRegistry().load_text("event_resolution")
+
+    assert "Відсутній anchor не є конфліктом" in prompt
+    assert "Відомий суперечливий anchor забороняє merge" in prompt
+    assert "процесуальний етап" in prompt
+    assert "та сама справа" in prompt
+    assert "недостатні для merge" in prompt
+    assert "Не виправляй existing event автоматично" in prompt
+
+
+def test_event_resolution_prompt_preserves_date_and_case_assignment_rules() -> None:
+    prompt = PromptRegistry().load_text("event_resolution")
+
+    assert "Не використовуй дату публікації як дату" in prompt
+    assert '`event_date_precision = "unknown"`' in prompt
+    assert "`YYYY-MM-DD`" in prompt
+    assert "Використовуй лише `case_id` з `linked_cases`" in prompt
+    assert "справді є частиною event chain" in prompt
