@@ -422,3 +422,12 @@ def test_media_source_catalog_uses_current_known_sitemap_roots() -> None:
         "https://www.slovoidilo.ua/sitemap_index_uk.xml",
         "https://www.slovoidilo.ua/news_sitemap_uk.xml",
     )
+    assert sources["rbc"].sitemap_urls == ("https://www.rbc.ua/static/sitemap/newsukr.xml",)
+    assert sources["censor"].rss_urls == (
+        "https://assets.censor.net/rss/censor.net/rss_uk_news.xml",
+    )
+    assert sources["tsn"].sitemap_urls == ("https://tsn.ua/sitemap/google_news_uk.xml",)
+    assert sources["24tv"].sitemap_urls == (
+        "https://24tv.ua/resources/xml/subdomain_sitemaps/24/sitemap-latest-news.xml",
+    )
+    assert sources["unian"].sitemap_urls == ("https://www.unian.ua/sitemap.last.news.xml",)

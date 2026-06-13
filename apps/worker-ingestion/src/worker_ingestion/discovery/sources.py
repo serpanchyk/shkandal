@@ -31,6 +31,12 @@ Verified RSS feeds are configured for daily low-cost discovery where they expose
 parser-valid article URLs. No reliable RSS/Atom feed was found for hromadske,
 suspilne, slovoidilo, chesno, hcac, nazk, arma, gp, npu, court-gov,
 supreme-court, rnbo, or the blocked sources.
+
+Forward-only media validation, 2026-06-13:
+
+RBC-Ukraine, Censor.NET, TSN, 24 Channel, and UNIAN use rolling current-news
+feeds or sitemaps only. Historical sitemap indexes are intentionally not
+configured because these sources were added without a backfill.
 """
 
 from __future__ import annotations
@@ -193,6 +199,51 @@ CURATED_SOURCES: tuple[SourceConfig, ...] = (
         sitemap_urls=("https://www.chesno.org/sitemap.xml",),
         sitemap_url_patterns=(r"https://www\.chesno\.org/sitemap-posts\.xml",),
         body_selectors=("div.publication-row", "article"),
+    ),
+    SourceConfig(
+        slug="rbc",
+        name="РБК-Україна",
+        base_url="https://www.rbc.ua",
+        sitemap_urls=("https://www.rbc.ua/static/sitemap/newsukr.xml",),
+        include_url_patterns=(r"https://www\.rbc\.ua/(?:rus|ukr)/.+\.html$",),
+        exclude_url_patterns=(r"/rus/top/", r"/ukr/top/"),
+        discovery_notes="Rolling Ukrainian current-news sitemap only; no historical backfill.",
+    ),
+    SourceConfig(
+        slug="censor",
+        name="Цензор.НЕТ",
+        base_url="https://censor.net",
+        rss_urls=("https://assets.censor.net/rss/censor.net/rss_uk_news.xml",),
+        include_url_patterns=(r"https://censor\.net/ua/news/\d+/.+",),
+        discovery_notes="Rolling Ukrainian news RSS only; no historical backfill.",
+    ),
+    SourceConfig(
+        slug="tsn",
+        name="ТСН",
+        base_url="https://tsn.ua",
+        sitemap_urls=("https://tsn.ua/sitemap/google_news_uk.xml",),
+        include_url_patterns=(r"https://tsn\.ua/(?!ru/).+\.html$",),
+        exclude_url_patterns=(r"/article/print",),
+        discovery_notes="Rolling Ukrainian Google News sitemap only; no historical backfill.",
+    ),
+    SourceConfig(
+        slug="24tv",
+        name="24 Канал",
+        base_url="https://24tv.ua",
+        sitemap_urls=(
+            "https://24tv.ua/resources/xml/subdomain_sitemaps/24/sitemap-latest-news.xml",
+        ),
+        include_url_patterns=(r"https://24tv\.ua/.+_n\d+$",),
+        discovery_notes="Rolling Ukrainian latest-news sitemap only; no historical backfill.",
+    ),
+    SourceConfig(
+        slug="unian",
+        name="УНІАН",
+        base_url="https://www.unian.ua",
+        sitemap_urls=("https://www.unian.ua/sitemap.last.news.xml",),
+        include_url_patterns=(r"https://www\.unian\.ua/.+-\d+\.html$",),
+        exclude_url_patterns=(r"/m/",),
+        discovery_notes="Rolling Ukrainian current-news sitemap only; no historical backfill.",
     ),
     SourceConfig(
         slug="nabu",

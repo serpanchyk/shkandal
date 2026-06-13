@@ -14,6 +14,11 @@ def test_curated_source_catalog_contains_unique_slugs_and_expected_types() -> No
         "law_enforcement",
     }
     assert {source.slug for source in CURATED_SOURCES} >= {
+        "rbc",
+        "censor",
+        "tsn",
+        "24tv",
+        "unian",
         "nabu",
         "hcac",
         "dbr",
@@ -37,7 +42,7 @@ def test_media_source_catalog_contains_unique_slugs() -> None:
     slugs = [source.slug for source in MEDIA_SOURCES]
 
     assert len(slugs) == len(set(slugs))
-    assert len(MEDIA_SOURCES) == 13
+    assert len(MEDIA_SOURCES) == 18
     assert all(source.source_type == "media" for source in MEDIA_SOURCES)
 
 
@@ -58,6 +63,15 @@ def test_media_source_catalog_uses_current_known_sitemap_roots() -> None:
         "https://www.slovoidilo.ua/sitemap_index_uk.xml",
         "https://www.slovoidilo.ua/news_sitemap_uk.xml",
     )
+    assert sources["rbc"].sitemap_urls == ("https://www.rbc.ua/static/sitemap/newsukr.xml",)
+    assert sources["censor"].rss_urls == (
+        "https://assets.censor.net/rss/censor.net/rss_uk_news.xml",
+    )
+    assert sources["tsn"].sitemap_urls == ("https://tsn.ua/sitemap/google_news_uk.xml",)
+    assert sources["24tv"].sitemap_urls == (
+        "https://24tv.ua/resources/xml/subdomain_sitemaps/24/sitemap-latest-news.xml",
+    )
+    assert sources["unian"].sitemap_urls == ("https://www.unian.ua/sitemap.last.news.xml",)
 
 
 def test_source_catalog_configures_verified_rss_feeds() -> None:
@@ -74,6 +88,9 @@ def test_source_catalog_configures_verified_rss_feeds() -> None:
     assert sources["tyzhden"].rss_urls == ("https://tyzhden.ua/feed/",)
     assert sources["ccu"].rss_urls == ("https://ccu.gov.ua/rss.xml",)
     assert sources["rada"].rss_urls == ("https://www.rada.gov.ua/rss/",)
+    assert sources["censor"].rss_urls == (
+        "https://assets.censor.net/rss/censor.net/rss_uk_news.xml",
+    )
 
 
 def test_source_config_defaults_to_ukrainian_media_article_selector() -> None:

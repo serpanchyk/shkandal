@@ -52,7 +52,7 @@ Configured source groups:
 
 - media: `pravda`, `hromadske`, `radiosvoboda`, `suspilne`, `bihus`,
   `antac`, `nashigroshi`, `babel`, `texty`, `espreso`, `slovoidilo`,
-  `tyzhden`, `chesno`;
+  `tyzhden`, `chesno`, `rbc`, `censor`, `tsn`, `24tv`, `unian`;
 - law enforcement: `nabu`, `dbr`, `gp`, `ssu`, `npu`;
 - courts: `hcac`, `court-gov`, `supreme-court`, `ccu`;
 - institutions: `nazk`, `arma`;
