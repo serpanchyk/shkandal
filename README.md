@@ -115,6 +115,8 @@ A case page should contain:
 - short automatic-generation disclaimer.
 - compact `Джерела справи` logo strip for all supporting Source types, backed
   by `/sources/{source-slug}.png` assets with initials as a missing-file fallback;
+- local dry-run-first website icon synchronization that normalizes raster icons
+  into frontend-owned Source PNG assets and updates PostgreSQL paths on apply;
 - header-based Case search and a rolling known-date Event feed on the homepage.
 
 Case titles and summaries should be durable identity fields, not rewritten after every new article. Most change should appear through the event timeline. Regenerate title/summary only when the meaning of the case changes.

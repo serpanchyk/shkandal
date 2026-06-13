@@ -103,6 +103,8 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - Remote image URLs are stored, but images are not cached/proxied in MVP.
 - Curated Source logo asset paths use `/sources/{source-slug}.png` in
   PostgreSQL; logo files are served from frontend-owned public assets.
+- A local dry-run-first ingestion script discovers website raster icons,
+  normalizes them to PNG, and updates Source logo assets and paths on apply.
 - Generated public content is Ukrainian and neutral/factual.
 
 ## Documentation Layout

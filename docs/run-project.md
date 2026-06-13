@@ -333,6 +333,18 @@ uv run python apps/worker-ingestion/scripts/article_coverage_report.py
 uv run python apps/worker-ingestion/scripts/article_coverage_report.py --source tyzhden --since 2026-01-01 --until 2026-06-03
 ```
 
+Preview website icon discovery for stored Sources, then explicitly overwrite
+frontend PNG assets and update `sources.logo_path`:
+
+```bash
+uv run python apps/worker-ingestion/scripts/sync_source_logos.py
+uv run python apps/worker-ingestion/scripts/sync_source_logos.py --source pravda --apply
+uv run python apps/worker-ingestion/scripts/sync_source_logos.py --apply
+```
+
+This is local scripts-only tooling because it writes to
+`apps/frontend/public/sources/`.
+
 Failed article fetches retry after 1 hour, 6 hours, and then daily, stopping
 after five total attempts. Inspect exhausted rows or explicitly reset them for
 another retry sequence:

@@ -179,3 +179,17 @@ another retry sequence:
 uv run python apps/worker-ingestion/scripts/reset_failed_fetches.py --source pravda
 uv run python apps/worker-ingestion/scripts/reset_failed_fetches.py --source pravda --apply
 ```
+
+Discover website icons for every stored Source and preview the PNG assets that
+would be written. Applying the command overwrites
+`apps/frontend/public/sources/{slug}.png` and updates the corresponding
+`sources.logo_path`; individual source failures do not stop later sources:
+
+```bash
+uv run python apps/worker-ingestion/scripts/sync_source_logos.py
+uv run python apps/worker-ingestion/scripts/sync_source_logos.py --source pravda --apply
+uv run python apps/worker-ingestion/scripts/sync_source_logos.py --apply
+```
+
+This remains local scripts-only tooling because the production ingestion image
+does not contain the frontend source tree.
