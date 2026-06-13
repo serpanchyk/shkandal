@@ -164,10 +164,11 @@ that embedder with the shared Qdrant case, entity, and event repositories for
 typed upsert and search operations. Article-card generation and resolution jobs
 are separate pipeline stages; Case, Entity, and Event resolution are implemented.
 
-Each pass claims jobs in strict pipeline priority order: article-card creation,
+Each pass rotates through pipeline-priority order: article-card creation,
 Case-copy update, Case resolution, Entity resolution, Event resolution, then
-classification. An earlier-stage backlog intentionally delays later-stage work.
-Up to four jobs run concurrently by default.
+classification. The rotation preserves that order without allowing an
+earlier-stage backlog to starve later-stage work. Up to four jobs run
+concurrently by default.
 Case resolution and copy updates share one serialized mutation namespace, while
 Entity and Event mutations are serialized independently. Classification jobs
 are enqueued in bulk, and Entity/Event candidate embeddings and Qdrant searches

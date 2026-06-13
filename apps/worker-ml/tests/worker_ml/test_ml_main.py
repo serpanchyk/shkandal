@@ -201,7 +201,7 @@ async def test_run_cycle_executes_at_most_configured_concurrency() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_cycle_drains_higher_priority_cards_before_downstream_work() -> None:
+async def test_run_cycle_claims_downstream_work_while_cards_remain() -> None:
     planner = Mock(spec=MlJobPlanner)
     planner.enqueue_missing_classification_jobs = AsyncMock(
         return_value=EnqueueStats(0, 0, 0, 0, 0)
@@ -257,8 +257,8 @@ async def test_run_cycle_drains_higher_priority_cards_before_downstream_work() -
         },
     )
 
-    case_handler.handle.assert_not_awaited()
-    assert len(card_jobs) == 7
+    case_handler.handle.assert_awaited_once()
+    assert card_jobs
 
 
 @pytest.mark.asyncio

@@ -51,7 +51,7 @@ SUPPORTED_JOB_TYPES = (
     RESOLVE_ARTICLE_EVENTS_JOB,
     UPDATE_CASE_COPY_JOB,
 )
-JOB_TYPE_PRIORITY = (
+JOB_TYPE_SCHEDULE = (
     CREATE_ARTICLE_CARD_JOB,
     UPDATE_CASE_COPY_JOB,
     RESOLVE_ARTICLE_CASES_JOB,
@@ -492,6 +492,7 @@ class _CycleExecutor:
         self._claim_lock = asyncio.Lock()
         self._rate_limit_lock = asyncio.Lock()
         self._stop_claiming = asyncio.Event()
+        self._schedule_index = 0
         self._claimed_jobs = 0
         self.processed_jobs = 0
         self.failed_jobs = 0
@@ -528,7 +529,13 @@ class _CycleExecutor:
             reached_limit = self._claimed_jobs >= self._settings.claim_batch_size
             if self._stop_claiming.is_set() or reached_limit:
                 return None
-            for job_type in JOB_TYPE_PRIORITY:
+            attempted: set[str] = set()
+            while len(attempted) < len(JOB_TYPE_SCHEDULE):
+                job_type = JOB_TYPE_SCHEDULE[self._schedule_index]
+                self._schedule_index = (self._schedule_index + 1) % len(JOB_TYPE_SCHEDULE)
+                if job_type in attempted:
+                    continue
+                attempted.add(job_type)
                 job = await self._job_store.claim_next_job(
                     worker_id=self._settings.service_name,
                     job_types=(job_type,),
