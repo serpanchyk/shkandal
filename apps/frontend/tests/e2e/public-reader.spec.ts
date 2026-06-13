@@ -7,12 +7,41 @@ test("reader can sort and fuzzy-search the Case feed", async ({ page }) => {
   await expect(page.getByRole("img", { name: "Shkandal" })).toBeVisible();
   await expect(page.getByText("Тестова подія").first()).toBeVisible();
   await expect(page.getByText(/case-e2e|e2e-public-case/)).toHaveCount(0);
+  await expect(page.locator('[data-case-variant="lead"]')).toHaveCount(1);
+  await expect(page.locator('[data-case-variant="supporting"]')).toHaveCount(4);
+  await expect(page.locator('[data-case-variant="list"]')).toHaveCount(15);
   await page.getByRole("link", { name: "останні оновлення" }).click();
   await expect(page).toHaveURL(/sort=latest/);
 
   await page.getByLabel("Пошук справи за назвою").fill("корупційна");
   await page.getByRole("button", { name: "знайти" }).click();
   await expect(page.getByRole("heading", { name: "Корупційна справа для перевірки" })).toBeVisible();
+  await expect(page.locator('[data-case-variant="lead"]')).toHaveCount(0);
+  await expect(page.locator('[data-case-variant="list"]')).toHaveCount(1);
+});
+
+test("reader can page through the Case feed without the featured layout repeating", async ({
+  page,
+}) => {
+  await page.goto("/?sort=latest");
+
+  const pagination = page.getByRole("navigation", { name: "Сторінки" });
+  await expect(pagination.getByRole("link", { name: "1", exact: true })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expect(pagination.locator(".paginationEllipsis")).toHaveCount(1);
+  await expect(pagination.getByRole("link", { name: "9", exact: true })).toBeVisible();
+  await pagination.getByRole("link", { name: "2", exact: true }).click();
+
+  await expect(page).toHaveURL(/sort=latest.*page=2/);
+  await expect(page.locator('[data-case-variant="lead"]')).toHaveCount(0);
+  await expect(page.locator('[data-case-variant="supporting"]')).toHaveCount(0);
+  await expect(page.locator('[data-case-variant="list"]')).toHaveCount(20);
+  await expect(pagination.getByRole("link", { name: "2", exact: true })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
 });
 
 test("reader can inspect the global project explanation", async ({ page }) => {

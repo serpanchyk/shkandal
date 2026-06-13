@@ -1,7 +1,7 @@
 """Seed a deterministic public graph for browser tests."""
 
 from asyncio import run
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from shkandal_database.config import DatabaseConfig
@@ -34,6 +34,36 @@ async def seed() -> None:
     engine = create_async_engine_from_config(DatabaseConfig())
     session_factory = create_async_sessionmaker(engine)
     published_at = datetime(2026, 6, 11, 12, tzinfo=UTC)
+    supplemental_feed_rows = []
+    for index in range(1, 165):
+        article_id = UUID(f"21000000-0000-0000-0000-{index:012d}")
+        case_id = UUID(f"31000000-0000-0000-0000-{index:012d}")
+        supplemental_published_at = published_at - timedelta(hours=index)
+        supplemental_feed_rows.extend(
+            [
+                Article(
+                    id=article_id,
+                    source_id=SOURCE_ID,
+                    url=f"https://www.pravda.com.ua/news/e2e-feed-{index}",
+                    identity_url=f"https://www.pravda.com.ua/news/e2e-feed-{index}",
+                    title=f"Джерельний матеріал стрічки {index}",
+                    published_at=supplemental_published_at,
+                    remote_image_url=None,
+                ),
+                Case(
+                    id=case_id,
+                    slug=f"e2e-feed-case-{index:02d}",
+                    title_uk=f"Публічне досьє стрічки {index:02d}",
+                    summary_uk="Детермінована справа для перевірки композиції головної сторінки.",
+                    status="active",
+                    first_seen_at=supplemental_published_at,
+                    last_updated_at=supplemental_published_at,
+                    article_count=1,
+                    event_count=0,
+                ),
+                CaseArticle(case_id=case_id, article_id=article_id),
+            ]
+        )
     async with session_factory() as session:
         session.add_all(
             [
@@ -108,6 +138,7 @@ async def seed() -> None:
                     event_day=11,
                     supporting_article_count=1,
                 ),
+                *supplemental_feed_rows,
             ]
         )
         await session.commit()

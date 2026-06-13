@@ -10,12 +10,32 @@ const dateFormat = new Intl.DateTimeFormat("uk-UA", {
   year: "numeric",
 });
 
-export function CaseCard({ item }: { item: CaseFeedItem }) {
+export type CaseCardVariant = "lead" | "supporting" | "list";
+
+export function CaseCard({
+  item,
+  variant,
+}: {
+  item: CaseFeedItem;
+  variant: CaseCardVariant;
+}) {
   return (
-    <article className="caseCard">
+    <article className={`caseCard caseCard--${variant}`} data-case-variant={variant}>
       {item.image_url ? (
         <div className="caseCardImage">
-          <Image alt="" fill sizes="(max-width: 800px) 100vw, (max-width: 1100px) 50vw, 33vw" src={item.image_url} unoptimized />
+          <Image
+            alt=""
+            fill
+            sizes={
+              variant === "lead"
+                ? "(max-width: 800px) 100vw, 60vw"
+                : variant === "list"
+                  ? "(max-width: 800px) 100vw, 240px"
+                  : "(max-width: 800px) 100vw, 40vw"
+            }
+            src={item.image_url}
+            unoptimized
+          />
         </div>
       ) : null}
       <div className="caseCardBody">

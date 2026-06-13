@@ -16,8 +16,10 @@ Implemented MVP surfaces:
 
 The frontend server-renders current API data without page-data caching. The
 homepage defaults to trending Cases, supports five sort modes, page-number
-navigation, header-based fuzzy Case-title search, a three-column compact Case
-grid, and an animated rolling list of the newest known-date Events. Case pages show a compact
+navigation, header-based fuzzy Case-title search, a featured first-page layout
+with one lead Case and four supporting Cases, a compact one-row-per-Case feed,
+and an animated rolling list of the newest known-date Events. Search results and
+later feed pages use only the compact list. Case pages show a compact
 `Джерела справи` Source-logo strip, oldest-to-newest timeline with inline
 expandable provenance, source-backed mentioned Entities, related Cases, and
 newest-first linked articles.

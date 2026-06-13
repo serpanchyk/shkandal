@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { CaseCard } from "@/components/case-card";
 import { EventTicker } from "@/components/event-ticker";
+import { Pagination } from "@/components/pagination";
 import { getCaseFeed, getLatestEvents, type CaseSort } from "@/lib/api";
 import { formatCount } from "@/lib/ukrainian";
 
@@ -25,6 +26,9 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
   const [feed, events] = await Promise.all([getCaseFeed(sort, page, query), getLatestEvents()]);
   if (!feed) throw new Error("Не вдалося завантажити стрічку справ.");
   if (!events) throw new Error("Не вдалося завантажити останні події.");
+  const hasFeaturedCases = !query && feed.page === 1;
+  const featuredCases = hasFeaturedCases ? feed.items.slice(0, 5) : [];
+  const listedCases = hasFeaturedCases ? feed.items.slice(5) : feed.items;
 
   return (
     <main className="pageShell">
@@ -58,28 +62,30 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         </nav>
       )}
 
-      {feed.items.length ? <section className="caseGrid">
-        {feed.items.map((item) => (
-          <CaseCard item={item} key={item.slug} />
-        ))}
-      </section> : <p className="emptyState">Справ не знайдено.</p>}
+      {featuredCases.length ? (
+        <section aria-label="Головні справи" className="featuredCases">
+          <CaseCard item={featuredCases[0]} variant="lead" />
+          {featuredCases.length > 1 ? (
+            <div className="supportingCases">
+              {featuredCases.slice(1).map((item) => (
+                <CaseCard item={item} key={item.slug} variant="supporting" />
+              ))}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      {listedCases.length ? (
+        <section aria-label={hasFeaturedCases ? "Більше справ" : "Справи"} className="caseList">
+          {hasFeaturedCases ? <h2 className="caseListHeading">Більше справ</h2> : null}
+          {listedCases.map((item) => (
+            <CaseCard item={item} key={item.slug} variant="list" />
+          ))}
+        </section>
+      ) : feed.items.length ? null : <p className="emptyState">Справ не знайдено.</p>}
 
       {feed.total_pages > 1 ? (
-        <nav aria-label="Сторінки" className="pagination">
-          {feed.page > 1 ? (
-            <Link href={`/?${new URLSearchParams({ ...(query ? { query } : { sort }), page: String(feed.page - 1) })}`}>
-              ← попередня
-            </Link>
-          ) : <span />}
-          <span>
-            {feed.page} / {feed.total_pages}
-          </span>
-          {feed.page < feed.total_pages ? (
-            <Link href={`/?${new URLSearchParams({ ...(query ? { query } : { sort }), page: String(feed.page + 1) })}`}>
-              наступна →
-            </Link>
-          ) : <span />}
-        </nav>
+        <Pagination page={feed.page} query={query} sort={sort} totalPages={feed.total_pages} />
       ) : null}
     </main>
   );
