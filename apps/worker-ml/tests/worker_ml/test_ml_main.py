@@ -201,7 +201,7 @@ async def test_run_cycle_executes_at_most_configured_concurrency() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_cycle_claims_downstream_work_while_cards_remain() -> None:
+async def test_run_cycle_drains_higher_priority_cards_before_downstream_work() -> None:
     planner = Mock(spec=MlJobPlanner)
     planner.enqueue_missing_classification_jobs = AsyncMock(
         return_value=EnqueueStats(0, 0, 0, 0, 0)
@@ -257,8 +257,103 @@ async def test_run_cycle_claims_downstream_work_while_cards_remain() -> None:
         },
     )
 
-    case_handler.handle.assert_awaited_once()
-    assert card_jobs
+    case_handler.handle.assert_not_awaited()
+    assert len(card_jobs) == 7
+
+
+@pytest.mark.asyncio
+async def test_run_cycle_claims_jobs_in_pipeline_priority_order() -> None:
+    planner = Mock(spec=MlJobPlanner)
+    planner.enqueue_missing_classification_jobs = AsyncMock(
+        return_value=EnqueueStats(0, 0, 0, 0, 0)
+    )
+    jobs_by_type = {
+        "create_article_card": [
+            SimpleNamespace(
+                id="card-job",
+                article_id="article-id",
+                job_type="create_article_card",
+                attempt_count=1,
+                max_attempts=3,
+            )
+        ],
+        "update_case_copy": [
+            SimpleNamespace(
+                id="copy-job",
+                article_id=None,
+                case_id="case-id",
+                job_type="update_case_copy",
+                attempt_count=1,
+                max_attempts=3,
+                requested_revision=1,
+            )
+        ],
+        "resolve_article_cases": [
+            SimpleNamespace(
+                id="case-job",
+                article_id="article-id",
+                job_type="resolve_article_cases",
+                attempt_count=1,
+                max_attempts=3,
+            )
+        ],
+        "resolve_article_entities": [
+            SimpleNamespace(
+                id="entity-job",
+                article_id="article-id",
+                job_type="resolve_article_entities",
+                attempt_count=1,
+                max_attempts=3,
+            )
+        ],
+        "resolve_article_events": [
+            SimpleNamespace(
+                id="event-job",
+                article_id="article-id",
+                job_type="resolve_article_events",
+                attempt_count=1,
+                max_attempts=3,
+            )
+        ],
+    }
+
+    async def claim_next_job(**kwargs: Any) -> object | None:
+        jobs = jobs_by_type.get(kwargs["job_types"][0], [])
+        return jobs.pop() if jobs else None
+
+    job_store = Mock(spec=ArticleJobStore)
+    job_store.claim_next_job = AsyncMock(side_effect=claim_next_job)
+    job_store.complete_job = AsyncMock()
+    job_store.fail_job = AsyncMock()
+    cooldown_store = Mock(spec=LlmCooldownStore)
+    cooldown_store.active_resume_at = AsyncMock(return_value=None)
+    handled_job_types: list[str] = []
+
+    async def handle(job: Any) -> None:
+        handled_job_types.append(job.job_type)
+
+    handlers = {}
+    for job_type in jobs_by_type:
+        handler = Mock()
+        handler.handle = AsyncMock(side_effect=handle)
+        handlers[job_type] = handler
+
+    await _run_cycle(
+        settings=MlConfig(claim_batch_size=5, worker_concurrency=1),
+        logger=Mock(),
+        planner=planner,
+        job_store=job_store,
+        cooldown_store=cooldown_store,
+        handlers=handlers,
+    )
+
+    assert handled_job_types == [
+        "create_article_card",
+        "update_case_copy",
+        "resolve_article_cases",
+        "resolve_article_entities",
+        "resolve_article_events",
+    ]
 
 
 @pytest.mark.asyncio
