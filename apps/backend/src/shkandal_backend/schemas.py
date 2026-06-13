@@ -71,6 +71,15 @@ class EventPreview(PublicModel):
     supporting_articles: list[ArticlePreview]
 
 
+class LatestEvent(PublicModel):
+    title_uk: str
+    event_year: int
+    event_month: int | None
+    event_day: int | None
+    event_date_precision: str
+    location_uk: str | None
+
+
 class RelatedCasePreview(PublicModel):
     slug: str
     title_uk: str

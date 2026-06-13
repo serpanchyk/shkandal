@@ -63,6 +63,15 @@ export type EventPreview = {
   supporting_articles: ArticlePreview[];
 };
 
+export type LatestEvent = {
+  title_uk: string;
+  event_year: number;
+  event_month: number | null;
+  event_day: number | null;
+  event_date_precision: string;
+  location_uk: string | null;
+};
+
 export type CasePage = {
   slug: string;
   title_uk: string;
@@ -105,6 +114,10 @@ export function getCaseFeed(sort: CaseSort, page: number, query?: string) {
   const params = new URLSearchParams({ sort, page: String(page) });
   if (query) params.set("query", query);
   return request<CaseFeedPage>(`/api/cases?${params}`);
+}
+
+export function getLatestEvents() {
+  return request<LatestEvent[]>("/api/events/latest");
 }
 
 export function getCase(slug: string) {

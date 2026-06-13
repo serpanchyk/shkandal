@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ArticleCard } from "@/components/article-card";
+import { SourceLogo } from "@/components/source-logo";
 import { ViewCounter } from "@/components/view-counter";
 import { getCase } from "@/lib/api";
+import { formatCount } from "@/lib/ukrainian";
 
 type Params = Promise<{ slug: string }>;
 
@@ -40,13 +41,13 @@ export default async function CasePage({ params }: { params: Params }) {
       <ViewCounter slug={slug} />
       <Link className="backLink" href="/">← усі справи</Link>
       <header className="dossierHero">
-        <p className="kicker">досьє / {dossier.slug}</p>
+        <p className="kicker">досьє суспільно важливої справи</p>
         <h1>{dossier.title_uk}</h1>
         <p className="dossierSummary">{dossier.summary_uk}</p>
         <div className="metrics">
-          <span>{dossier.article_count} матеріалів</span>
-          <span>{dossier.event_count} подій</span>
-          <span>{dossier.view_count} переглядів</span>
+          <span>{formatCount(dossier.article_count, ["матеріал", "матеріали", "матеріалів"])}</span>
+          <span>{formatCount(dossier.event_count, ["подія", "події", "подій"])}</span>
+          <span>{formatCount(dossier.view_count, ["перегляд", "перегляди", "переглядів"])}</span>
         </div>
       </header>
 
@@ -57,8 +58,8 @@ export default async function CasePage({ params }: { params: Params }) {
         </div>
         <div className="sourceLogos">
           {dossier.sources.map((source) => (
-            <a href={source.homepage_url} key={source.slug} rel="noopener noreferrer" target="_blank" title={`${source.name}: ${source.article_count} матеріалів`}>
-              {source.logo_path ? <Image alt={source.name} height={34} src={source.logo_path} width={34} /> : <span>{source.name.slice(0, 2)}</span>}
+            <a href={source.homepage_url} key={source.slug} rel="noopener noreferrer" target="_blank" title={`${source.name}: ${formatCount(source.article_count ?? 0, ["матеріал", "матеріали", "матеріалів"])}`}>
+              <SourceLogo name={source.name} path={source.logo_path} />
               <span className="srOnly">{source.name}</span>
             </a>
           ))}
@@ -79,7 +80,7 @@ export default async function CasePage({ params }: { params: Params }) {
                 {event.description_uk ? <p>{event.description_uk}</p> : null}
                 {event.location_uk ? <p className="location">місце / {event.location_uk}</p> : null}
                 <details>
-                  <summary>джерела події / {event.supporting_articles.length}</summary>
+                  <summary>{formatCount(event.supporting_articles.length, ["джерело події", "джерела події", "джерел події"])}</summary>
                   <div className="articleList">
                     {event.supporting_articles.map((article) => <ArticleCard article={article} key={article.url} />)}
                   </div>
@@ -98,7 +99,7 @@ export default async function CasePage({ params }: { params: Params }) {
         <div className="entityGrid">
           {dossier.entities.map((entity) => (
             <Link className="entityCard" href={`/entities/${entity.slug}`} key={entity.slug}>
-              <span>{entity.entity_type} / {entity.mention_count} згадок</span>
+              <span>{entity.entity_type} / {formatCount(entity.mention_count, ["згадка", "згадки", "згадок"])}</span>
               <h3>{entity.canonical_name_uk}</h3>
               {entity.description_uk ? <p>{entity.description_uk}</p> : null}
             </Link>

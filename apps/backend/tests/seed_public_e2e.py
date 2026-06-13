@@ -43,7 +43,7 @@ async def seed() -> None:
                     name="Українська правда",
                     source_type="media",
                     base_url="https://www.pravda.com.ua",
-                    logo_path="/sources/pravda.svg",
+                    logo_path="/sources/pravda.png",
                     language="uk",
                 ),
                 Article(

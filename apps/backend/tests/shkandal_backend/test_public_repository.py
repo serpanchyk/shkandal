@@ -73,7 +73,7 @@ def _source() -> Source:
         name="Українська правда",
         source_type="media",
         base_url="https://www.pravda.com.ua",
-        logo_path="/sources/pravda.svg",
+        logo_path="/sources/pravda.png",
     )
 
 
@@ -113,6 +113,25 @@ async def test_case_feed_uses_similarity_order_for_search() -> None:
     assert result.query == "справа"
     assert result.page == 2
     assert result.items == []
+
+
+async def test_latest_events_returns_known_dated_rows() -> None:
+    event = Event(
+        id=uuid4(),
+        slug="event-a",
+        title_uk="Подія",
+        event_year=2026,
+        event_month=6,
+        event_day=11,
+        event_date_precision="day",
+        location_uk="Київ",
+    )
+
+    result = await _repository(FakeSession(executes=[[event]])).latest_events()
+
+    assert result[0].title_uk == "Подія"
+    assert result[0].event_year == 2026
+    assert result[0].location_uk == "Київ"
 
 
 async def test_case_page_composes_public_helpers(monkeypatch) -> None:

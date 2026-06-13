@@ -57,6 +57,10 @@ class SourceConfig:
     logo_path: str | None = None
     metadata: dict[str, str] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        if self.logo_path is None:
+            object.__setattr__(self, "logo_path", f"/sources/{self.slug}.png")
+
 
 CURATED_SOURCES: tuple[SourceConfig, ...] = (
     SourceConfig(
@@ -75,7 +79,7 @@ CURATED_SOURCES: tuple[SourceConfig, ...] = (
         exclude_url_patterns=(r"/rus/", r"/eng/"),
         body_selectors=("div.post_news_text", "article"),
         crawl_delay_seconds=0.5,
-        logo_path="/sources/pravda.svg",
+        logo_path="/sources/pravda.png",
     ),
     SourceConfig(
         slug="hromadske",
@@ -85,7 +89,7 @@ CURATED_SOURCES: tuple[SourceConfig, ...] = (
         sitemap_url_patterns=(r"https://hromadske\.ua/sitemaps/posts/\d{4}/\d{1,2}\.xml",),
         exclude_url_patterns=(r"/ru/", r"/en/"),
         body_selectors=("div.s-content", "article"),
-        logo_path="/sources/hromadske.svg",
+        logo_path="/sources/hromadske.png",
     ),
     SourceConfig(
         slug="radiosvoboda",
@@ -95,7 +99,7 @@ CURATED_SOURCES: tuple[SourceConfig, ...] = (
         sitemap_url_patterns=(r"https://www\.radiosvoboda\.org/sitemap_9_latest\.xml\.gz",),
         rss_urls=("https://www.radiosvoboda.org/rss/",),
         body_selectors=("div.wsw", "article"),
-        logo_path="/sources/radiosvoboda.svg",
+        logo_path="/sources/radiosvoboda.png",
     ),
     SourceConfig(
         slug="suspilne",
@@ -104,7 +108,7 @@ CURATED_SOURCES: tuple[SourceConfig, ...] = (
         sitemap_urls=("https://suspilne.media/sitemap.xml",),
         sitemap_url_patterns=(r"https://suspilne\.media/suspilne/sitemap/post-sitemap\d+\.xml",),
         body_selectors=("div.l-article-content__container-inner", "article"),
-        logo_path="/sources/suspilne.svg",
+        logo_path="/sources/suspilne.png",
     ),
     SourceConfig(
         slug="bihus",
@@ -114,7 +118,7 @@ CURATED_SOURCES: tuple[SourceConfig, ...] = (
         sitemap_url_patterns=(r"https://bihus\.info/post-sitemap\d+\.xml",),
         rss_urls=("https://bihus.info/feed/",),
         body_selectors=("div.bi-single-content", "article"),
-        logo_path="/sources/bihus.svg",
+        logo_path="/sources/bihus.png",
     ),
     SourceConfig(
         slug="antac",

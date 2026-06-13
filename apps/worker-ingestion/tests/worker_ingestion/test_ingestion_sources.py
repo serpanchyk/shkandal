@@ -30,6 +30,7 @@ def test_curated_source_catalog_contains_unique_slugs_and_expected_types() -> No
         "president",
         "rnbo",
     }
+    assert all(source.logo_path == f"/sources/{source.slug}.png" for source in CURATED_SOURCES)
 
 
 def test_media_source_catalog_contains_unique_slugs() -> None:

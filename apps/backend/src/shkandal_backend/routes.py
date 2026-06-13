@@ -10,6 +10,7 @@ from shkandal_backend.schemas import (
     CasePage,
     CaseSort,
     EntityPage,
+    LatestEvent,
     SitemapEntry,
     ViewCount,
 )
@@ -32,6 +33,11 @@ async def cases(
     page: Annotated[int, Query(ge=1)] = 1,
 ) -> CaseFeedPage:
     return await repository.case_feed(sort=sort, query=query, page=page)
+
+
+@router.get("/events/latest", response_model=list[LatestEvent])
+async def latest_events(repository: Repository) -> list[LatestEvent]:
+    return await repository.latest_events()
 
 
 @router.get("/cases/{slug}", response_model=CasePage)

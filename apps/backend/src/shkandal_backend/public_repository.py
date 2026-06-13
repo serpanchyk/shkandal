@@ -38,6 +38,7 @@ from shkandal_backend.schemas import (
     EntityPage,
     EntityPreview,
     EventPreview,
+    LatestEvent,
     RelatedCasePreview,
     SitemapEntry,
     SourcePreview,
@@ -52,6 +53,8 @@ DISCLAIMER_UK = (
 
 class PublicRepository(Protocol):
     async def case_feed(self, *, sort: CaseSort, query: str | None, page: int) -> CaseFeedPage: ...
+
+    async def latest_events(self) -> list[LatestEvent]: ...
 
     async def case_page(self, slug: str) -> CasePage | None: ...
 
@@ -157,6 +160,37 @@ class SqlAlchemyPublicRepository:
                 total_items=total or 0,
                 total_pages=ceil((total or 0) / PAGE_SIZE),
             )
+
+    async def latest_events(self) -> list[LatestEvent]:
+        async with self._session_factory() as session:
+            rows = (
+                await session.scalars(
+                    select(Event)
+                    .join(CaseEvent, CaseEvent.event_id == Event.id)
+                    .join(Case, Case.id == CaseEvent.case_id)
+                    .where(Event.event_year.is_not(None), _public_case_predicate())
+                    .distinct()
+                    .order_by(
+                        Event.event_year.desc(),
+                        Event.event_month.desc().nulls_last(),
+                        Event.event_day.desc().nulls_last(),
+                        Event.created_at.desc(),
+                    )
+                    .limit(50)
+                )
+            ).all()
+            return [
+                LatestEvent(
+                    title_uk=event.title_uk,
+                    event_year=event.event_year,
+                    event_month=event.event_month,
+                    event_day=event.event_day,
+                    event_date_precision=event.event_date_precision,
+                    location_uk=event.location_uk,
+                )
+                for event in rows
+                if event.event_year is not None
+            ]
 
     async def case_page(self, slug: str) -> CasePage | None:
         async with self._session_factory() as session:

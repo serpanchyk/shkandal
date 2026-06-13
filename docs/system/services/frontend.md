@@ -14,15 +14,17 @@ Implemented MVP surfaces:
 
 The frontend server-renders current API data without page-data caching. The
 homepage defaults to trending Cases, supports five sort modes, page-number
-navigation, and fuzzy Case-title search. Case pages show a compact
+navigation, header-based fuzzy Case-title search, a three-column compact Case
+grid, and an animated rolling list of the newest known-date Events. Case pages show a compact
 `Джерела справи` Source-logo strip, oldest-to-newest timeline with inline
 expandable provenance, source-backed mentioned Entities, related Cases, and
 newest-first linked articles.
 
 The visual system uses a light-gray technical dossier interface with restrained
-blue-purple grain gradients, dark outlined containers, monospace identity
+blue-purple grain gradients, a visible grain texture, dark outlined containers, monospace identity
 typography, and readable sans-serif body copy. Case views are counted once per
-browser session through session storage.
+browser session through session storage. Generated database slugs stay in
+stable routes but are not shown as reader-facing labels.
 
 Frontend source lives under `apps/frontend`. See
 [Public Reader Experience](../public-reader-experience.md) for routes, runtime

@@ -101,8 +101,8 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - Direct entity-event relations are out of MVP.
 - Public article cards link directly to original source pages; Shkandal does not publish copied full article pages.
 - Remote image URLs are stored, but images are not cached/proxied in MVP.
-- Curated Source logo asset paths are stored in PostgreSQL; logo files are
-  served from frontend-owned public assets.
+- Curated Source logo asset paths use `/sources/{source-slug}.png` in
+  PostgreSQL; logo files are served from frontend-owned public assets.
 - Generated public content is Ukrainian and neutral/factual.
 
 ## Documentation Layout

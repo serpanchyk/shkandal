@@ -113,7 +113,9 @@ A case page should contain:
 - event source popup with linked articles;
 - compact linked-articles/source section near the bottom;
 - short automatic-generation disclaimer.
-- compact `Джерела справи` logo strip for all supporting Source types.
+- compact `Джерела справи` logo strip for all supporting Source types, backed
+  by `/sources/{source-slug}.png` assets with initials as a missing-file fallback;
+- header-based Case search and a rolling known-date Event feed on the homepage.
 
 Case titles and summaries should be durable identity fields, not rewritten after every new article. Most change should appear through the event timeline. Regenerate title/summary only when the meaning of the case changes.
 

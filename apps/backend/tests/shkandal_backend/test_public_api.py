@@ -9,6 +9,7 @@ from shkandal_backend.schemas import (
     CaseFeedPage,
     CasePage,
     EntityPage,
+    LatestEvent,
     RelatedCasePreview,
     SitemapEntry,
     SourcePreview,
@@ -21,7 +22,7 @@ def _source() -> SourcePreview:
         name="Українська правда",
         source_type="media",
         homepage_url="https://www.pravda.com.ua",
-        logo_path="/sources/pravda.svg",
+        logo_path="/sources/pravda.png",
         article_count=1,
     )
 
@@ -81,6 +82,18 @@ class FakePublicRepository:
             disclaimer_uk="Автоматично зібрано.",
         )
 
+    async def latest_events(self) -> list[LatestEvent]:
+        return [
+            LatestEvent(
+                title_uk="Нова подія",
+                event_year=2026,
+                event_month=6,
+                event_day=12,
+                event_date_precision="day",
+                location_uk=None,
+            )
+        ]
+
     async def entity_page(self, slug: str) -> EntityPage | None:
         if slug == "missing":
             return None
@@ -125,7 +138,8 @@ def test_feed_defaults_to_trending_and_accepts_search_paging() -> None:
 def test_public_pages_and_view_counter_return_contracts() -> None:
     client, _ = _client()
 
-    assert client.get("/api/cases/case-a").json()["sources"][0]["logo_path"].endswith(".svg")
+    assert client.get("/api/events/latest").json()[0]["title_uk"] == "Нова подія"
+    assert client.get("/api/cases/case-a").json()["sources"][0]["logo_path"].endswith(".png")
     assert client.get("/api/entities/person-a").json()["canonical_name_uk"] == "Особа"
     assert client.post("/api/cases/case-a/views").json() == {"view_count": 6}
     assert client.get("/api/sitemap").json()[0]["path"] == "/cases/case-a"

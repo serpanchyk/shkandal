@@ -1,7 +1,9 @@
 import Link from "next/link";
 
 import { CaseCard } from "@/components/case-card";
-import { getCaseFeed, type CaseSort } from "@/lib/api";
+import { EventTicker } from "@/components/event-ticker";
+import { getCaseFeed, getLatestEvents, type CaseSort } from "@/lib/api";
+import { formatCount } from "@/lib/ukrainian";
 
 const sorts: Array<[CaseSort, string]> = [
   ["trending", "у тренді"],
@@ -20,10 +22,10 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     : "trending";
   const page = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
   const query = params.query?.trim();
-  const feed = await getCaseFeed(sort, page, query);
+  const [feed, events] = await Promise.all([getCaseFeed(sort, page, query), getLatestEvents()]);
   if (!feed) throw new Error("Не вдалося завантажити стрічку справ.");
+  if (!events) throw new Error("Не вдалося завантажити останні події.");
 
-  const [lead, ...items] = feed.items;
   return (
     <main className="pageShell">
       <section className="feedIntro">
@@ -31,24 +33,14 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
           <p className="kicker">живий контекст замість одноразових новин</p>
           <h1>Справи, за якими варто стежити</h1>
         </div>
-        <p>
-          Автоматично зібрані досьє з хронологією, згаданими особами та прямими
-          посиланнями на відкриті джерела.
-        </p>
+        <EventTicker events={events} />
       </section>
-
-      <form action="/" className="searchForm">
-        <label htmlFor="query">Пошук справи за назвою</label>
-        <div>
-          <input defaultValue={query} id="query" minLength={2} name="query" placeholder="Наприклад, закупівля дронів" />
-          <button type="submit">знайти</button>
-        </div>
-      </form>
 
       {query ? (
         <div className="resultHeader">
           <p>
-            Результати для <strong>«{query}»</strong> · {feed.total_items}
+            Результати для <strong>«{query}»</strong> ·{" "}
+            {formatCount(feed.total_items, ["справа", "справи", "справ"])}
           </p>
           <Link href="/">очистити пошук</Link>
         </div>
@@ -66,12 +58,11 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         </nav>
       )}
 
-      {lead ? <CaseCard item={lead} lead /> : <p className="emptyState">Справ не знайдено.</p>}
-      <section className="caseGrid">
-        {items.map((item) => (
+      {feed.items.length ? <section className="caseGrid">
+        {feed.items.map((item) => (
           <CaseCard item={item} key={item.slug} />
         ))}
-      </section>
+      </section> : <p className="emptyState">Справ не знайдено.</p>}
 
       {feed.total_pages > 1 ? (
         <nav aria-label="Сторінки" className="pagination">

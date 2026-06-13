@@ -65,9 +65,10 @@ public Case, and has a supporting article. Source type is display context, not a
 trust score; all supporting publisher types may appear under
 `Джерела справи`.
 
-Curated Source logo paths are nullable PostgreSQL metadata. The corresponding
-logo files are frontend-owned static assets under
-`apps/frontend/public/sources/`.
+Curated Source logo paths are nullable PostgreSQL metadata using the
+`/sources/{source-slug}.png` convention. The corresponding logo files are
+frontend-owned static assets under `apps/frontend/public/sources/`; missing
+files fall back to Source initials in the reader UI.
 
 ## API Contract
 
@@ -75,6 +76,8 @@ The backend exposes strict Pydantic response contracts:
 
 - `GET /api/cases?sort=trending&page=1&query=...`: feed, sorting, pagination,
   and optional fuzzy title search;
+- `GET /api/events/latest`: up to 50 newest known-date Events linked to public
+  Cases, ordered by occurrence date;
 - `GET /api/cases/{slug}`: composed Case page;
 - `POST /api/cases/{slug}/views`: anonymous aggregate view increment;
 - `GET /api/entities/{slug}`: composed Entity page;
@@ -127,4 +130,3 @@ starts the backend, and executes the browser tests.
 
 Local Playwright execution must use an isolated disposable database because the
 seed script writes a deterministic graph.
-
