@@ -165,6 +165,10 @@ are batched per article.
 When an identity-resolution response selects an existing ID outside the
 retrieved candidates for that provisional item, the worker creates a new
 source-grounded identity instead of merging incorrectly or repeatedly failing.
+Event links also persist date and location anchors from the source article card,
+not resolver-generated replacements. If those source anchors conflict with a
+retrieved Event candidate, the worker creates a new source-grounded Event
+instead of merging incompatible occurrences.
 Case-resolution retries idempotently ensure downstream Case-copy, Entity, and
 Event jobs when article-Case links already exist.
 

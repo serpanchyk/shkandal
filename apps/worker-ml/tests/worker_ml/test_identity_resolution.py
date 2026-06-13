@@ -8,6 +8,7 @@ from worker_ml.identity_resolution import (
     _entity_payload,
     _event_payload,
     _merged_assignments,
+    _normalize_event_link_anchors,
     _normalize_invalid_entity_links,
     _normalize_invalid_event_links,
     _validate_coverage,
@@ -139,6 +140,106 @@ def test_invalid_event_link_becomes_source_grounded_create() -> None:
     assert decision.existing_event_id is None
     assert decision.new_title_uk == "Нова подія"
     assert decision.event_date == "2026-06"
+
+
+def test_conflicting_event_date_link_becomes_source_grounded_create() -> None:
+    case_id = uuid4()
+    event_id = uuid4()
+    output = EventResolutionOutput(
+        events=[
+            EventResolutionDecision(
+                provisional_ref="event_a",
+                action="link_existing",
+                existing_event_id=str(event_id),
+                event_date="2026-07",
+                event_date_precision="month",
+                confidence=0.9,
+                reason_uk="Та сама подія.",
+                case_assignments=[
+                    EventCaseAssignment(case_id=str(case_id), relevance_reason_uk="Причина")
+                ],
+            )
+        ]
+    )
+
+    normalized = _normalize_event_link_anchors(
+        [
+            {
+                "provisional_ref": "event_a",
+                "title_uk": "Нова подія",
+                "description_uk": "Опис.",
+                "event_date": "2026-07",
+                "event_date_precision": "month",
+                "location_uk": "Київ",
+            }
+        ],
+        output,
+        [
+            [
+                {
+                    "event_id": str(event_id),
+                    "event_year": 2026,
+                    "event_month": 6,
+                    "event_day": None,
+                }
+            ]
+        ],
+    )
+
+    decision = normalized.events[0]
+    assert decision.action == "create_new"
+    assert decision.existing_event_id is None
+    assert decision.new_title_uk == "Нова подія"
+    assert decision.event_date == "2026-07"
+
+
+def test_event_link_anchors_are_source_grounded_before_persistence() -> None:
+    case_id = uuid4()
+    event_id = uuid4()
+    output = EventResolutionOutput(
+        events=[
+            EventResolutionDecision(
+                provisional_ref="event_a",
+                action="link_existing",
+                existing_event_id=str(event_id),
+                event_date="2026-07",
+                event_date_precision="month",
+                confidence=0.9,
+                reason_uk="Та сама подія.",
+                case_assignments=[
+                    EventCaseAssignment(case_id=str(case_id), relevance_reason_uk="Причина")
+                ],
+            )
+        ]
+    )
+
+    normalized = _normalize_event_link_anchors(
+        [
+            {
+                "provisional_ref": "event_a",
+                "title_uk": "Відома подія",
+                "description_uk": "Опис.",
+                "event_date": "2026-06",
+                "event_date_precision": "month",
+            }
+        ],
+        output,
+        [
+            [
+                {
+                    "event_id": str(event_id),
+                    "event_year": 2026,
+                    "event_month": 6,
+                    "event_day": None,
+                }
+            ]
+        ],
+    )
+
+    decision = normalized.events[0]
+    assert decision.action == "link_existing"
+    assert decision.event_date == "2026-06"
+    assert decision.event_date_precision == "month"
 
 
 def test_duplicate_provisionals_merge_case_assignments() -> None:

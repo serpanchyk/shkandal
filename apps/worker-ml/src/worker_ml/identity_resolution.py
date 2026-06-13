@@ -199,6 +199,7 @@ class ArticleEventResolutionJobHandler:
                 for item, item_candidates in zip(provisional, candidates, strict=True)
             }
             output = _normalize_invalid_event_links(provisional, output, candidate_ids)
+            output = _normalize_event_link_anchors(provisional, output, candidates)
             affected = await _persist_events(
                 session,
                 article_id=job.article_id,
@@ -322,21 +323,94 @@ def _normalize_invalid_event_links(
         if decision.existing_event_id in candidate_ids[decision.provisional_ref]:
             decisions.append(decision)
             continue
+        decisions.append(_source_grounded_event_create(decision, by_ref[decision.provisional_ref]))
+    return EventResolutionOutput(events=decisions)
+
+
+def _normalize_event_link_anchors(
+    provisional: list[dict[str, Any]],
+    output: EventResolutionOutput,
+    candidates: list[list[dict[str, Any]]],
+) -> EventResolutionOutput:
+    """Ground linked Event anchors in source evidence and reject conflicting merges."""
+
+    by_ref = {str(item["provisional_ref"]): item for item in provisional}
+    candidates_by_ref = {
+        str(item["provisional_ref"]): {
+            str(candidate["event_id"]): candidate for candidate in item_candidates
+        }
+        for item, item_candidates in zip(provisional, candidates, strict=True)
+    }
+    decisions = []
+    for decision in output.events:
+        if decision.action != "link_existing":
+            decisions.append(decision)
+            continue
         item = by_ref[decision.provisional_ref]
+        event_date = item.get("event_date")
+        precision = str(item.get("event_date_precision", "unknown"))
+        location = item.get("location_uk")
+        year, month, day = _date_parts(event_date, precision)
+        candidate = candidates_by_ref[decision.provisional_ref].get(str(decision.existing_event_id))
+        if candidate is not None and (
+            _event_date_conflicts(candidate, year, month, day)
+            or _event_location_conflicts(candidate, location)
+        ):
+            decisions.append(_source_grounded_event_create(decision, item))
+            continue
         decisions.append(
             decision.model_copy(
                 update={
-                    "action": "create_new",
-                    "existing_event_id": None,
-                    "new_title_uk": str(item["title_uk"]),
-                    "description_uk": str(item["description_uk"]),
-                    "event_date": item.get("event_date"),
-                    "event_date_precision": item.get("event_date_precision", "unknown"),
-                    "location_uk": item.get("location_uk"),
+                    "event_date": event_date,
+                    "event_date_precision": precision,
+                    "location_uk": location,
                 }
             )
         )
     return EventResolutionOutput(events=decisions)
+
+
+def _source_grounded_event_create(
+    decision: EventResolutionDecision, item: dict[str, Any]
+) -> EventResolutionDecision:
+    return decision.model_copy(
+        update={
+            "action": "create_new",
+            "existing_event_id": None,
+            "new_title_uk": str(item["title_uk"]),
+            "description_uk": str(item["description_uk"]),
+            "event_date": item.get("event_date"),
+            "event_date_precision": item.get("event_date_precision", "unknown"),
+            "location_uk": item.get("location_uk"),
+        }
+    )
+
+
+def _event_date_conflicts(
+    candidate: dict[str, Any],
+    year: int | None,
+    month: int | None,
+    day: int | None,
+) -> bool:
+    incoming = (year, month, day)
+    current = (
+        candidate.get("event_year"),
+        candidate.get("event_month"),
+        candidate.get("event_day"),
+    )
+    return any(
+        current_part is not None and incoming_part is not None and current_part != incoming_part
+        for current_part, incoming_part in zip(current, incoming, strict=True)
+    )
+
+
+def _event_location_conflicts(candidate: dict[str, Any], location: Any) -> bool:
+    current = candidate.get("location_uk")
+    return (
+        isinstance(current, str)
+        and isinstance(location, str)
+        and current.casefold() != location.casefold()
+    )
 
 
 async def _persist_entities(
