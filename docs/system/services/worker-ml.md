@@ -171,6 +171,15 @@ retrieved Event candidate, the worker creates a new source-grounded Event
 instead of merging incompatible occurrences.
 Case-resolution retries idempotently ensure downstream Case-copy, Entity, and
 Event jobs when article-Case links already exist.
+Optional Case relations that reference existing Cases outside the retrieved
+candidate set are discarded without aborting otherwise valid article-Case
+resolution. Primary links to unretrieved Cases remain invalid.
+
+Case-copy jobs are revisioned. A newly requested revision receives a fresh
+attempt budget once the previous revision is no longer running. If a newer
+revision arrives during a running attempt, completion or failure requeues that
+newer revision with a fresh attempt budget. Exhausted queued jobs are not
+claimed and are reported as blocked work.
 
 Structured worker logs include job and cycle durations. LLM run metadata records
 request and repair durations. At startup, pending LLM runs older than the stale

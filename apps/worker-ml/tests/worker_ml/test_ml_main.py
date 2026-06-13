@@ -498,6 +498,7 @@ def test_backfill_flag_exits_nonzero_for_blocked_jobs(monkeypatch: pytest.Monkey
             blocked_jobs=1,
             failed_jobs=0,
             next_run_after=None,
+            blocked_running_jobs=1,
         )
     )
     monkeypatch.setattr(sys, "argv", ["worker-ml", "--backfill"])
@@ -710,6 +711,7 @@ async def test_backfill_returns_when_only_blocked_jobs_remain(
             blocked_jobs=1,
             failed_jobs=0,
             next_run_after=None,
+            blocked_running_jobs=1,
         )
     )
     cooldown_store = Mock(spec=LlmCooldownStore)

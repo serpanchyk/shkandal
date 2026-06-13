@@ -41,6 +41,7 @@ NoiseReason = Literal[
     "policy_law",
     "routine_regulatory",
     "routine_crime",
+    "foreign_no_ukraine_nexus",
 ]
 
 

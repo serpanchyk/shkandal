@@ -341,6 +341,7 @@ def _normalize_event_link_anchors(
         }
         for item, item_candidates in zip(provisional, candidates, strict=True)
     }
+    accepted_anchors: dict[str, dict[str, Any]] = {}
     decisions = []
     for decision in output.events:
         if decision.action != "link_existing":
@@ -352,12 +353,15 @@ def _normalize_event_link_anchors(
         location = item.get("location_uk")
         year, month, day = _date_parts(event_date, precision)
         candidate = candidates_by_ref[decision.provisional_ref].get(str(decision.existing_event_id))
-        if candidate is not None and (
-            _event_date_conflicts(candidate, year, month, day)
-            or _event_location_conflicts(candidate, location)
+        event_id = str(decision.existing_event_id)
+        anchors = accepted_anchors.get(event_id, candidate)
+        if anchors is not None and (
+            _event_date_conflicts(anchors, year, month, day)
+            or _event_location_conflicts(anchors, location)
         ):
             decisions.append(_source_grounded_event_create(decision, item))
             continue
+        accepted_anchors[event_id] = _merge_event_anchors(anchors, year, month, day, location)
         decisions.append(
             decision.model_copy(
                 update={
@@ -368,6 +372,21 @@ def _normalize_event_link_anchors(
             )
         )
     return EventResolutionOutput(events=decisions)
+
+
+def _merge_event_anchors(
+    current: dict[str, Any] | None,
+    year: int | None,
+    month: int | None,
+    day: int | None,
+    location: Any,
+) -> dict[str, Any]:
+    anchors = dict(current or {})
+    anchors["event_year"] = anchors.get("event_year") or year
+    anchors["event_month"] = anchors.get("event_month") or month
+    anchors["event_day"] = anchors.get("event_day") or day
+    anchors["location_uk"] = anchors.get("location_uk") or location
+    return anchors
 
 
 def _source_grounded_event_create(

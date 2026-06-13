@@ -98,6 +98,7 @@ async def test_enqueue_article_job_requeues_failed_job() -> None:
     assert result.state == "requeued"
     requeue_statement = session.scalar.await_args_list[1].args[0]
     assert requeue_statement.compile().params["status"] == "queued"
+    assert requeue_statement.compile().params["attempt_count"] == 0
     assert requeue_statement.compile().params["max_attempts"] == 5
 
 
@@ -126,7 +127,7 @@ async def test_summarize_jobs_returns_selected_queue_state() -> None:
     next_run_after = datetime(2026, 6, 11, 18, 0, tzinfo=UTC)
     session_factory, session = _mock_session_factory()
     result = MagicMock()
-    result.one.return_value = (3, 2, 1, 4, next_run_after)
+    result.one.return_value = (3, 2, 1, 4, next_run_after, 1)
     session.execute = AsyncMock(return_value=result)
 
     summary = await ArticleJobStore(session_factory).summarize_jobs(
@@ -139,9 +140,12 @@ async def test_summarize_jobs_returns_selected_queue_state() -> None:
         blocked_jobs=1,
         failed_jobs=4,
         next_run_after=next_run_after,
+        blocked_running_jobs=1,
     )
     statement = session.execute.await_args.args[0]
     assert "jobs.job_type IN" in str(statement)
+    assert "jobs.attempt_count < jobs.max_attempts" in str(statement)
+    assert "jobs.attempt_count >= jobs.max_attempts" in str(statement)
 
 
 @pytest.mark.asyncio
@@ -163,6 +167,61 @@ async def test_enqueue_case_job_requests_another_revision() -> None:
     statement = session.execute.await_args_list[1].args[0]
     assert "requested_revision + " in str(statement)
     assert statement.compile().params["status"] == "running"
+
+
+@pytest.mark.parametrize("status", ["queued", "succeeded", "failed"])
+@pytest.mark.asyncio
+async def test_enqueue_case_job_gives_non_running_revision_fresh_attempts(status: str) -> None:
+    job_id = uuid4()
+    session_factory, session = _mock_session_factory()
+    session.scalar = AsyncMock(return_value=None)
+    existing_result = MagicMock()
+    existing_result.one_or_none.return_value = SimpleNamespace(id=job_id, status=status)
+    session.execute = AsyncMock(return_value=existing_result)
+
+    await ArticleJobStore(session_factory).enqueue_case_job(
+        job_type="update_case_copy",
+        case_id=uuid4(),
+    )
+
+    statement = session.execute.await_args_list[1].args[0]
+    params = statement.compile().params
+    assert params["status"] == "queued"
+    assert params["attempt_count"] == 0
+    assert params["last_error"] is None
+
+
+@pytest.mark.asyncio
+async def test_complete_superseded_revision_requeues_with_fresh_attempts() -> None:
+    session_factory, session = _mock_session_factory()
+    session.execute = AsyncMock()
+
+    await ArticleJobStore(session_factory).complete_job(
+        job_id=uuid4(),
+        processed_revision=2,
+    )
+
+    statement = session.execute.await_args.args[0]
+    assert "requested_revision > " in str(statement)
+    assert "attempt_count" in str(statement)
+
+
+@pytest.mark.asyncio
+async def test_fail_superseded_revision_requeues_with_fresh_attempts() -> None:
+    session_factory, session = _mock_session_factory()
+    session.execute = AsyncMock()
+
+    await ArticleJobStore(session_factory).fail_job(
+        job_id=uuid4(),
+        error_message="invalid output",
+        attempt_count=3,
+        max_attempts=3,
+        processed_revision=2,
+    )
+
+    statement = session.execute.await_args.args[0]
+    assert "requested_revision > " in str(statement)
+    assert "attempt_count" in str(statement)
 
 
 def test_retry_delay_uses_configured_backoff_without_jitter() -> None:
@@ -191,6 +250,7 @@ def test_claim_query_uses_skip_locked() -> None:
 
     assert "FOR UPDATE SKIP LOCKED" in compiled
     assert "jobs.job_type IN" in compiled
+    assert "jobs.attempt_count < jobs.max_attempts" in compiled
 
 
 @pytest.mark.asyncio

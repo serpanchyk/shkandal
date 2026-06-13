@@ -8,8 +8,10 @@ from worker_ml.case_resolution import (
     _case_payload,
     _enqueue_resolution_followups,
     _lifecycle_sample,
+    _normalize_invalid_case_relations,
     _relation_endpoint,
 )
+from worker_ml.llm.contracts import CaseResolutionOutput
 
 
 def test_lifecycle_sample_preserves_first_last_and_full_span() -> None:
@@ -29,6 +31,49 @@ def test_relation_endpoint_resolves_new_ref_or_existing_uuid() -> None:
 
     assert _relation_endpoint(None, "new_1", {"new_1": new_case_id}) == new_case_id
     assert _relation_endpoint(str(existing_case_id), None, {}) == existing_case_id
+
+
+def test_invalid_optional_case_relations_are_discarded() -> None:
+    candidate_id = uuid4()
+    invalid_id = uuid4()
+    output = CaseResolutionOutput.model_validate(
+        {
+            "existing_case_links": [
+                {
+                    "case_id": str(candidate_id),
+                    "link_reason_uk": "Та сама справа.",
+                    "confidence": 0.9,
+                }
+            ],
+            "new_cases": [
+                {
+                    "new_case_ref": "new_case",
+                    "title_uk": "Нова справа",
+                    "summary_uk": "Опис.",
+                    "link_reason_uk": "Окрема справа.",
+                    "confidence": 0.8,
+                }
+            ],
+            "case_relations": [
+                {
+                    "case_a_id": str(candidate_id),
+                    "case_b_new_ref": "new_case",
+                    "relation_type": "related",
+                },
+                {
+                    "case_a_id": str(invalid_id),
+                    "case_b_new_ref": "new_case",
+                    "relation_type": "related",
+                },
+            ],
+        }
+    )
+
+    normalized = _normalize_invalid_case_relations(output, {str(candidate_id)})
+
+    assert normalized.existing_case_links == output.existing_case_links
+    assert normalized.new_cases == output.new_cases
+    assert normalized.case_relations == output.case_relations[:1]
 
 
 def test_case_payload_is_rebuildable_from_postgres_case() -> None:

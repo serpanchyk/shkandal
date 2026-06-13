@@ -47,7 +47,14 @@ def test_article_card_contract_accepts_representative_json() -> None:
 
 @pytest.mark.parametrize(
     "noise_reason",
-    ["culture", "diplomacy", "policy_law", "routine_regulatory", "routine_crime"],
+    [
+        "culture",
+        "diplomacy",
+        "policy_law",
+        "routine_regulatory",
+        "routine_crime",
+        "foreign_no_ukraine_nexus",
+    ],
 )
 def test_article_card_contract_accepts_non_case_card_without_case_signals(
     noise_reason: str,

@@ -233,6 +233,7 @@ async def process_next_job(
                 error_message=str(exc),
                 attempt_count=claimed_job.attempt_count,
                 max_attempts=claimed_job.max_attempts,
+                processed_revision=_processed_revision(claimed_job),
             )
             logger.exception(
                 "worker_ml_job_failed",
@@ -397,7 +398,7 @@ async def _drain_backfill(
             requeue_failed=False,
         )
         summary = await job_store.summarize_jobs(job_types=SUPPORTED_JOB_TYPES)
-        active_running_jobs = summary.running_jobs - summary.blocked_jobs
+        active_running_jobs = summary.running_jobs - summary.blocked_running_jobs
         if summary.queued_jobs == 0 and active_running_jobs == 0:
             logger.info(
                 "worker_ml_backfill_finished",
@@ -577,6 +578,7 @@ class _CycleExecutor:
                 error_message=str(exc),
                 attempt_count=job.attempt_count,
                 max_attempts=job.max_attempts,
+                processed_revision=_processed_revision(job),
             )
             self.failed_jobs += 1
             self._logger.exception(

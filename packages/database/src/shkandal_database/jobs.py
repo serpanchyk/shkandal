@@ -67,6 +67,7 @@ class JobQueueSummary:
     blocked_jobs: int
     failed_jobs: int
     next_run_after: datetime | None
+    blocked_running_jobs: int = 0
 
 
 class ArticleJobStore:
@@ -166,6 +167,7 @@ class ArticleJobStore:
                             )
                             .values(
                                 status=JOB_STATUS_QUEUED,
+                                attempt_count=0,
                                 run_after=None,
                                 locked_at=None,
                                 locked_by=None,
@@ -267,6 +269,12 @@ class ArticleJobStore:
                     "run_after": run_after,
                     "last_error": None,
                 }
+                if existing_job.status != JOB_STATUS_RUNNING:
+                    update_values.update(
+                        attempt_count=0,
+                        locked_at=None,
+                        locked_by=None,
+                    )
                 if payload is not None:
                     update_values["payload"] = payload
                 await session.execute(
@@ -284,6 +292,7 @@ class ArticleJobStore:
                 .where(Job.id == existing_job.id, Job.status == JOB_STATUS_FAILED)
                 .values(
                     status=JOB_STATUS_QUEUED,
+                    attempt_count=0,
                     run_after=run_after,
                     locked_at=None,
                     locked_by=None,
@@ -301,17 +310,27 @@ class ArticleJobStore:
         """Return queue state for the selected job types."""
 
         stale_before = datetime.now(UTC) - self._stale_job_timeout
-        blocked = and_(
+        processable_queued = and_(
+            Job.status == JOB_STATUS_QUEUED,
+            Job.attempt_count < Job.max_attempts,
+        )
+        blocked_running = and_(
             Job.status == JOB_STATUS_RUNNING,
             Job.locked_at < stale_before,
             Job.attempt_count >= Job.max_attempts,
         )
+        blocked_queued = and_(
+            Job.status == JOB_STATUS_QUEUED,
+            Job.attempt_count >= Job.max_attempts,
+        )
+        blocked = or_(blocked_running, blocked_queued)
         statement = select(
-            func.count().filter(Job.status == JOB_STATUS_QUEUED),
+            func.count().filter(processable_queued),
             func.count().filter(Job.status == JOB_STATUS_RUNNING),
             func.count().filter(blocked),
             func.count().filter(Job.status == JOB_STATUS_FAILED),
-            func.min(Job.run_after).filter(Job.status == JOB_STATUS_QUEUED),
+            func.min(Job.run_after).filter(processable_queued),
+            func.count().filter(blocked_running),
         ).where(Job.job_type.in_(job_types))
         async with self._session_factory() as session:
             row = (await session.execute(statement)).one()
@@ -321,6 +340,7 @@ class ArticleJobStore:
             blocked_jobs=row[2],
             failed_jobs=row[3],
             next_run_after=row[4],
+            blocked_running_jobs=row[5],
         )
 
     async def claim_next_job(
@@ -416,6 +436,10 @@ class ArticleJobStore:
                         (Job.requested_revision > processed_revision, finished_at),
                         else_=Job.run_after,
                     ),
+                    attempt_count=case(
+                        (Job.requested_revision > processed_revision, 0),
+                        else_=Job.attempt_count,
+                    ),
                     locked_at=None,
                     locked_by=None,
                     last_error=None,
@@ -430,21 +454,35 @@ class ArticleJobStore:
         error_message: str,
         attempt_count: int,
         max_attempts: int,
+        processed_revision: int | None = None,
         now: datetime | None = None,
     ) -> None:
         """Record job failure and either retry or exhaust the job."""
 
         failed_at = now or datetime.now(UTC)
         exhausted = attempt_count >= max_attempts
+        status: Any = JOB_STATUS_FAILED if exhausted else JOB_STATUS_QUEUED
+        stored_attempt_count: Any = Job.attempt_count
+        if processed_revision is not None:
+            newer_revision = Job.requested_revision > processed_revision
+            status = case((newer_revision, JOB_STATUS_QUEUED), else_=status)
+            stored_attempt_count = case((newer_revision, 0), else_=Job.attempt_count)
         values: dict[str, Any] = {
-            "status": JOB_STATUS_FAILED if exhausted else JOB_STATUS_QUEUED,
+            "status": status,
+            "attempt_count": stored_attempt_count,
             "locked_at": None,
             "locked_by": None,
             "last_error": error_message,
             "updated_at": failed_at,
         }
-        if not exhausted:
-            values["run_after"] = failed_at + self.retry_delay(attempt_count)
+        retry_at = failed_at + self.retry_delay(attempt_count)
+        if processed_revision is not None:
+            values["run_after"] = case(
+                (Job.requested_revision > processed_revision, failed_at),
+                else_=retry_at if not exhausted else Job.run_after,
+            )
+        elif not exhausted:
+            values["run_after"] = retry_at
 
         async with async_session_scope(self._session_factory) as session:
             await session.execute(update(Job).where(Job.id == job_id).values(**values))
@@ -494,6 +532,7 @@ class ArticleJobStore:
     ) -> Select[tuple[UUID]]:
         queued = and_(
             Job.status == JOB_STATUS_QUEUED,
+            Job.attempt_count < Job.max_attempts,
             or_(Job.run_after.is_(None), Job.run_after <= now),
         )
         stale_running = and_(

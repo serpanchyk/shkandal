@@ -105,12 +105,14 @@ class ArticleCaseResolutionJobHandler:
                 },
             )
             output = cast(CaseResolutionOutput, result.output)
+            candidate_ids = {candidate["case_id"] for candidate in candidates}
+            output = _normalize_invalid_case_relations(output, candidate_ids)
             affected_case_ids = await self._persist_resolution(
                 session,
                 article=article,
                 output=output,
                 run_id=result.run_id,
-                candidate_ids={candidate["case_id"] for candidate in candidates},
+                candidate_ids=candidate_ids,
             )
             for case_id in affected_case_ids:
                 case = await session.get(Case, case_id)
@@ -253,6 +255,21 @@ class ArticleCaseResolutionJobHandler:
                 )
             )
         return affected
+
+
+def _normalize_invalid_case_relations(
+    output: CaseResolutionOutput,
+    candidate_ids: set[str],
+) -> CaseResolutionOutput:
+    """Discard optional relations that reference an unretrieved existing Case."""
+
+    relations = [
+        relation
+        for relation in output.case_relations
+        if (relation.case_a_id is None or relation.case_a_id in candidate_ids)
+        and (relation.case_b_id is None or relation.case_b_id in candidate_ids)
+    ]
+    return output.model_copy(update={"case_relations": relations})
 
 
 class CaseCopyUpdateJobHandler:

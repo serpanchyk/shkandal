@@ -242,6 +242,58 @@ def test_event_link_anchors_are_source_grounded_before_persistence() -> None:
     assert decision.event_date_precision == "month"
 
 
+def test_conflicting_links_to_same_event_become_separate_source_grounded_events() -> None:
+    case_id = uuid4()
+    event_id = uuid4()
+    output = EventResolutionOutput(
+        events=[
+            EventResolutionDecision(
+                provisional_ref=provisional_ref,
+                action="link_existing",
+                existing_event_id=str(event_id),
+                confidence=0.9,
+                reason_uk="Та сама подія.",
+                case_assignments=[
+                    EventCaseAssignment(case_id=str(case_id), relevance_reason_uk="Причина")
+                ],
+            )
+            for provisional_ref in ("event_june", "event_july")
+        ]
+    )
+    provisional = [
+        {
+            "provisional_ref": "event_june",
+            "title_uk": "Червнева подія",
+            "description_uk": "Опис.",
+            "event_date": "2026-06",
+            "event_date_precision": "month",
+        },
+        {
+            "provisional_ref": "event_july",
+            "title_uk": "Липнева подія",
+            "description_uk": "Опис.",
+            "event_date": "2026-07",
+            "event_date_precision": "month",
+        },
+    ]
+    candidate = {
+        "event_id": str(event_id),
+        "event_year": 2026,
+        "event_month": None,
+        "event_day": None,
+    }
+
+    normalized = _normalize_event_link_anchors(
+        provisional,
+        output,
+        [[candidate], [candidate]],
+    )
+
+    assert normalized.events[0].action == "link_existing"
+    assert normalized.events[1].action == "create_new"
+    assert normalized.events[1].new_title_uk == "Липнева подія"
+
+
 def test_duplicate_provisionals_merge_case_assignments() -> None:
     case_a, case_b = uuid4(), uuid4()
     decisions = [

@@ -32,6 +32,7 @@ def test_article_card_prompt_has_strict_case_candidate_rules() -> None:
     assert "відстежуваної зовнішньої політики України" in prompt
     assert '`noise_reason = "policy_law"`' in prompt
     assert '`noise_reason = "routine_regulatory"`' in prompt
+    assert '`noise_reason = "foreign_no_ukraine_nexus"`' in prompt
     assert "`Полтавапаливо`" in prompt
 
 
@@ -123,3 +124,9 @@ def test_event_resolution_prompt_preserves_date_and_case_assignment_rules() -> N
     assert "`YYYY-MM-DD`" in prompt
     assert "Використовуй лише `case_id` з `linked_cases`" in prompt
     assert "справді є частиною event chain" in prompt
+
+
+def test_case_resolution_prompt_restricts_relation_existing_ids_to_candidates() -> None:
+    prompt = PromptRegistry().load_text("case_resolution")
+
+    assert "наявні `case_id` у зв'язках лише з `candidate_cases`" in prompt
