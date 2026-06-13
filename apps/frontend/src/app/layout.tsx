@@ -26,8 +26,9 @@ const display = Unbounded({
 });
 
 export const metadata: Metadata = {
-  title: { default: "Shkandal — досьє суспільно важливих справ", template: "%s | Shkandal" },
+  title: { default: "Шкандаль", template: "%s | Шкандаль" },
   description: "Українські суспільно важливі справи з хронологією та відкритими джерелами.",
+  icons: { icon: "/logo.ico" },
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
 };
 
