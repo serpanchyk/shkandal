@@ -18,6 +18,8 @@ The frontend source routes are:
 - `apps/frontend/src/app/page.tsx`: public Case feed.
 - `apps/frontend/src/app/cases/[slug]/page.tsx`: Case dossier.
 - `apps/frontend/src/app/entities/[slug]/page.tsx`: Entity page.
+- `apps/frontend/src/app/about/page.tsx`: static reader-facing project
+  explanation.
 - `apps/frontend/src/app/sitemap.ts` and `robots.ts`: crawler surfaces.
 - `apps/frontend/src/app/styles.css`: shared public visual system.
 
@@ -54,6 +56,13 @@ responsibility, or formal participation.
 Article previews show source, date, title, and remote image when available.
 They always link to the publisher's original article. Shkandal does not host
 copied full article pages or proxy remote article images.
+
+Every public route includes a global trust footer. It briefly explains that
+dossiers are assembled automatically, directs readers to verify claims against
+original publisher materials, links to the `Про Шкандаль` page and public
+repository, and credits the organizations that supported development. The
+`Про Шкандаль` page explains the product purpose, assembly process, reading
+limits, and development support without exposing implementation details.
 
 ## Publication Rules
 
@@ -112,8 +121,8 @@ origin.
 The implemented interface is a light-gray technical dossier design with
 restrained blue-purple grain gradients, dark outlined containers, monospace
 identity typography, and readable sans-serif body copy. The feed, Case pages,
-Entity pages, loading state, error state, and not-found state share this visual
-system.
+Entity pages, the `Про Шкандаль` page, loading state, error state, not-found
+state, and global footer share this visual system.
 
 ## Verification
 
@@ -124,7 +133,8 @@ undated articles cannot create a fictional latest date, older articles cannot
 lower the latest date, and copy regeneration cannot bump the Case update time.
 
 Playwright covers the seeded reader journey through the feed, Case timeline
-provenance, original-source links, Entity pages, and disclaimer. CI starts an
+provenance, original-source links, Entity pages, disclaimer, global footer, and
+`Про Шкандаль` page. CI starts an
 isolated PostgreSQL service, runs migrations, seeds a deterministic graph,
 starts the backend, and executes the browser tests.
 

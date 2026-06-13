@@ -1,0 +1,38 @@
+import Link from "next/link";
+
+const externalLinkProps = {
+  rel: "noopener noreferrer",
+  target: "_blank",
+} as const;
+
+export function Footer() {
+  return (
+    <footer className="siteFooter">
+      <div className="footerIntro">
+        <p className="sectionCode">про проєкт / transparency</p>
+        <p className="footerStatement">
+          Шкандаль збирає розрізнені матеріали у досьє суспільно важливих справ.
+          Сторінки формуються автоматично; перевіряйте твердження за оригінальними
+          матеріалами джерел.
+        </p>
+      </div>
+      <nav aria-label="Про проєкт" className="footerLinks">
+        <Link href="/about">Про Шкандаль</Link>
+        <a href="https://github.com/serpanchyk/shkandal" {...externalLinkProps}>
+          GitHub ↗
+        </a>
+      </nav>
+      <p className="footerSupport">
+        Шкандаль розроблено за підтримки{" "}
+        <a href="https://aidept.com.ua/" {...externalLinkProps}>
+          Катедри систем штучного інтелекту НУ «Львівська політехніка»
+        </a>{" "}
+        та{" "}
+        <a href="https://lapathoniia.top/" {...externalLinkProps}>
+          Lapatonia
+        </a>
+        .
+      </p>
+    </footer>
+  );
+}

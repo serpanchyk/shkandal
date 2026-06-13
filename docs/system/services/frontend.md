@@ -9,6 +9,8 @@ Implemented MVP surfaces:
 - sorting modes for latest, newest, popular, biggest, and trending cases;
 - case pages with stable title, neutral summary, entities, chronological events, article source popups, and linked-articles section;
 - entity pages with description, aliases, related cases, and mentioned articles;
+- a static `Про Шкандаль` page explaining the product purpose, automatic
+  assembly process, reading limits, and development support;
 - article preview cards with source name, date, title, remote image URL when available, and a direct link to the original source;
 - short visible disclaimer that pages are automatically assembled from open sources.
 
@@ -19,6 +21,10 @@ grid, and an animated rolling list of the newest known-date Events. Case pages s
 `Джерела справи` Source-logo strip, oldest-to-newest timeline with inline
 expandable provenance, source-backed mentioned Entities, related Cases, and
 newest-first linked articles.
+
+Every route ends with a global trust footer that briefly explains automatic
+dossier assembly, links to `Про Шкандаль` and the project repository, and
+credits the organizations that supported development.
 
 The visual system uses a light-gray technical dossier interface with restrained
 blue-purple grain gradients, a visible grain texture, dark outlined containers, monospace identity

@@ -9,6 +9,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const entries = (await getSitemapEntries()) ?? [];
   return [
     { url: origin, lastModified: new Date() },
+    { url: `${origin}/about`, lastModified: new Date() },
     ...entries.map((entry) => ({ url: `${origin}${entry.path}`, lastModified: new Date(entry.updated_at) })),
   ];
 }

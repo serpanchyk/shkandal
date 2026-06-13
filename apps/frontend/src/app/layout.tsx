@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { IBM_Plex_Mono, IBM_Plex_Sans, Unbounded } from "next/font/google";
 
 import { Header } from "@/components/header";
+import { Footer } from "@/components/footer";
 import "./styles.css";
 
 const sans = IBM_Plex_Sans({
@@ -39,7 +40,7 @@ export default function RootLayout({
 }>) {
   return (
     <html className={`${sans.variable} ${mono.variable} ${display.variable}`} lang="uk">
-      <body><div className="ambient" /><Header />{children}</body>
+      <body><div className="ambient" /><Header />{children}<Footer /></body>
     </html>
   );
 }

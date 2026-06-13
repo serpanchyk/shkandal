@@ -15,6 +15,29 @@ test("reader can sort and fuzzy-search the Case feed", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Корупційна справа для перевірки" })).toBeVisible();
 });
 
+test("reader can inspect the global project explanation", async ({ page }) => {
+  await page.goto("/");
+
+  const footer = page.getByRole("contentinfo");
+  await expect(footer.getByText(/Сторінки формуються автоматично/)).toBeVisible();
+  await expect(footer.getByRole("link", { name: "GitHub ↗" })).toHaveAttribute(
+    "href",
+    "https://github.com/serpanchyk/shkandal",
+  );
+  await expect(footer.getByRole("link", { name: /Катедри систем штучного інтелекту/ })).toHaveAttribute(
+    "href",
+    "https://aidept.com.ua/",
+  );
+  await expect(footer.getByRole("link", { name: "Lapatonia" })).toHaveAttribute(
+    "href",
+    "https://lapathoniia.top/",
+  );
+
+  await footer.getByRole("link", { name: "Про Шкандаль" }).click();
+  await expect(page).toHaveURL(/\/about$/);
+  await expect(page.getByRole("heading", { name: "Як читати досьє" })).toBeVisible();
+});
+
 test("reader can inspect Case provenance and navigate to an Entity", async ({ page }) => {
   await page.goto("/cases/e2e-public-case");
 
