@@ -14,6 +14,8 @@ function eventPosition(index: number, activeIndex: number, eventCount: number) {
   if (index === activeIndex) return "current";
   if (index === (activeIndex - 1 + eventCount) % eventCount) return "previous";
   if (index === (activeIndex + 1) % eventCount) return "next";
+  if (index === (activeIndex - 2 + eventCount) % eventCount) return "previousFar";
+  if (index === (activeIndex + 2) % eventCount) return "nextFar";
   return "hidden";
 }
 
