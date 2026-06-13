@@ -184,8 +184,14 @@ Irrelevant articles remain stored with `is_relevant=false` for debugging, evalua
 
 For classifier-positive articles, the LLM creates a compact Ukrainian article
 card with structured JSON validated by Pydantic. The LLM applies a stricter
-`is_case_candidate` gate so rankings, essays, generic news, and similar material
-remain available as summaries without producing case events or entities.
+`is_case_candidate` gate. It accepts concrete, trackable accountability,
+criminal, procurement, institutional, government, parliamentary, international
+Ukraine, and public-conflict processes. Rankings, explainers, statistics, PR,
+human-interest stories, routine legislation, routine war chronology, generic
+news, and similar material remain available as summaries without producing case
+events or entities. Assessments, interviews, columns, and expert discussions
+may remain case material when they add substantial context to a named trackable
+process or conflict.
 
 The card contains:
 

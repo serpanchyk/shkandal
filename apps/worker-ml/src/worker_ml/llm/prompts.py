@@ -23,7 +23,7 @@ class PromptDefinition:
 PROMPTS: dict[str, PromptDefinition] = {
     "article_card": PromptDefinition(
         name="article_card",
-        version="2026-06-08",
+        version="2026-06-13",
         filename="article_card.uk.md",
         input_variables=("article_json", "schema_json"),
     ),

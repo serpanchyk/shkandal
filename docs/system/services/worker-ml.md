@@ -63,10 +63,18 @@ embedding service and vector-index integration for future card resolution jobs.
 The article-card prompt considers only the main article and excludes related
 articles, recommendations, boilerplate, and unrelated background. Its contract
 separates classifier relevance from stricter case candidacy. Case candidates
-have a main event, one to three events, up to eight central entities, and up to
-eight case-signature terms. Non-case cards retain only the cleaned title,
-summary, and a fixed noise reason; their events, entities, and signature terms
-are empty.
+include not only criminal and accountability stories, but also concrete,
+trackable institutional reforms, government reshuffles, parliamentary
+oversight, international Ukraine processes, and public conflicts. Each requires
+named participants, a concrete or formal action, a clear subject, and potential
+future developments; importance alone is insufficient. Explainers, statistics,
+PR, human-interest stories, routine legislation, and routine war chronology
+remain non-cases. Assessments, interviews, columns, and expert discussions may
+be case material when they add substantial context to a named trackable process
+or conflict. Case candidates have a main event, one to three events, up to eight
+central entities, and up to eight case-signature terms. Non-case cards retain
+only the cleaned title, summary, and a fixed noise reason; their events,
+entities, and signature terms are empty.
 
 Case, Entity, and Event resolution handlers load cards through the
 case-candidate gate. A stored non-case card remains available for inspection but
