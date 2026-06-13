@@ -11,6 +11,16 @@ from shkandal_database.models import Article, Case, Entity, Event, Source
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
+class FakeImageUrlChecker:
+    def __init__(self, available_url: str | None = None) -> None:
+        self.available_url = available_url
+        self.calls: list[list[str]] = []
+
+    async def first_available(self, urls: list[str]) -> str | None:
+        self.calls.append(urls)
+        return self.available_url
+
+
 class FakeResult:
     def __init__(self, rows: list[Any]) -> None:
         self._rows = rows
@@ -51,8 +61,14 @@ class FakeSession:
         return FakeResult(self.execute_values.pop(0))
 
 
-def _repository(session: FakeSession) -> SqlAlchemyPublicRepository:
-    return SqlAlchemyPublicRepository(lambda: session)  # type: ignore[arg-type]
+def _repository(
+    session: FakeSession,
+    image_url_checker: FakeImageUrlChecker | None = None,
+) -> SqlAlchemyPublicRepository:
+    return SqlAlchemyPublicRepository(
+        lambda: session,  # type: ignore[arg-type]
+        image_url_checker or FakeImageUrlChecker(),
+    )
 
 
 def _case() -> Case:
@@ -98,9 +114,14 @@ def _article_preview() -> ArticlePreview:
 @pytest.mark.parametrize("sort", ["latest", "newest", "popular", "biggest", "trending"])
 async def test_case_feed_builds_each_ranking(sort) -> None:
     case_row = _case()
-    session = FakeSession(scalars=[1], executes=[[(case_row, 7, "https://example.com/image.jpg")]])
+    image_url = "https://example.com/image.jpg"
+    session = FakeSession(scalars=[1], executes=[[(case_row, 7, [image_url])]])
 
-    result = await _repository(session).case_feed(sort=sort, query=None, page=1)
+    result = await _repository(session, FakeImageUrlChecker(image_url)).case_feed(
+        sort=sort,
+        query=None,
+        page=1,
+    )
 
     assert result.sort == sort
     assert result.items[0].view_count == 7
@@ -129,7 +150,20 @@ async def test_case_feed_uses_first_linked_non_empty_article_image() -> None:
     )
     assert "articles.remote_image_url IS NOT NULL" in sql
     assert "articles.remote_image_url != ''" in sql
-    assert "ORDER BY case_articles.created_at ASC, case_articles.id ASC" in sql
+    assert "array_agg(articles.remote_image_url ORDER BY case_articles.created_at ASC" in sql
+
+
+async def test_case_feed_uses_first_available_article_image() -> None:
+    case_row = _case()
+    dead_url = "https://example.com/dead.jpg"
+    live_url = "https://example.com/live.jpg"
+    checker = FakeImageUrlChecker(live_url)
+    session = FakeSession(scalars=[1], executes=[[(case_row, 7, [dead_url, live_url])]])
+
+    result = await _repository(session, checker).case_feed(sort="trending", query=None, page=1)
+
+    assert checker.calls == [[dead_url, live_url]]
+    assert result.items[0].image_url == live_url
 
 
 async def test_case_feed_returns_no_image_when_linked_articles_have_none() -> None:

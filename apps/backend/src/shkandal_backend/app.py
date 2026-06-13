@@ -11,6 +11,7 @@ from shkandal_database.config import DatabaseConfig
 from shkandal_database.session import create_async_engine_from_config, create_async_sessionmaker
 
 from shkandal_backend.config import BackendConfig
+from shkandal_backend.image_urls import HttpxImageUrlChecker
 from shkandal_backend.observability import (
     BackendMetrics,
     EmptyPipelineMetricsRepository,
@@ -34,12 +35,21 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         engine = None
+        image_url_checker = None
         if repository is None:
             engine = create_async_engine_from_config(
                 DatabaseConfig(database_url=settings.postgres_database_url)
             )
             session_factory = create_async_sessionmaker(engine)
-            app.state.public_repository = SqlAlchemyPublicRepository(session_factory)
+            image_url_checker = HttpxImageUrlChecker(
+                timeout_seconds=settings.image_check_timeout_seconds,
+                max_candidates=settings.image_check_max_candidates,
+                cache_ttl_seconds=settings.image_check_cache_ttl_seconds,
+            )
+            app.state.public_repository = SqlAlchemyPublicRepository(
+                session_factory,
+                image_url_checker,
+            )
             if pipeline_metrics_repository is None:
                 app.state.pipeline_metrics_repository = SqlAlchemyPipelineMetricsRepository(
                     session_factory
@@ -50,6 +60,8 @@ def create_app(
         yield
         if engine is not None:
             await engine.dispose()
+        if image_url_checker is not None:
+            await image_url_checker.close()
 
     app = FastAPI(title="Shkandal API", version="0.1.0", lifespan=lifespan)
     metrics = BackendMetrics()

@@ -16,7 +16,14 @@ publication time; `trending` counts linked articles published in the previous
 seven days; `popular` uses all-time aggregate views; `biggest` uses linked
 article count; and `newest` uses Case creation time. Undated articles do not
 affect `latest` or `trending`. Each Case feed card uses the image from the first
-article linked to the Case that has a non-empty remote image URL.
+article linked to the Case that has a reachable, non-empty remote image URL.
+Before returning a feed page, the backend checks ordered image candidates with
+short streaming HTTP requests and skips 4xx/5xx responses and transport
+failures. Checks run concurrently across Cases and try at most
+`image_check_max_candidates` URLs per Case, each with
+`image_check_timeout_seconds`. Results are cached in backend memory for
+`image_check_cache_ttl_seconds` to avoid checking the same publisher URL on
+every feed request.
 
 Only active Cases with a non-empty Ukrainian summary and at least one linked
 article are public. Only described Entities linked to a public Case and a
@@ -26,6 +33,10 @@ similarity and relevance ordering.
 The API reads current PostgreSQL rows directly in the MVP. There are no
 published snapshots. Multi-row public-page updates should be transactional where
 possible so readers do not see event data without provenance.
+
+Case-feed requests therefore have a bounded runtime dependency on publisher
+image hosts. The backend does not proxy or cache image bytes; it only verifies
+that a candidate currently responds before returning its remote URL.
 
 Current endpoints:
 

@@ -3490,6 +3490,7 @@ version = "0.1.0"
 source = { editable = "apps/backend" }
 dependencies = [
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "prometheus-client" },
     { name = "pydantic" },
     { name = "shkandal-common" },
@@ -3500,6 +3501,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.124.0" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "prometheus-client", specifier = ">=0.23.1" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "shkandal-common", editable = "packages/common" },

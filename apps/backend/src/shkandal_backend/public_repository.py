@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, date, datetime, timedelta
 from math import ceil
 from typing import Protocol
@@ -24,11 +25,12 @@ from shkandal_database.models import (
     Source,
 )
 from sqlalchemy import and_, case, func, or_, select
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.dialects.postgresql import aggregate_order_by, insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import aliased
 from sqlalchemy.sql.elements import ColumnElement
 
+from shkandal_backend.image_urls import ImageUrlChecker
 from shkandal_backend.schemas import (
     ArticlePreview,
     CaseFeedItem,
@@ -68,8 +70,13 @@ class PublicRepository(Protocol):
 class SqlAlchemyPublicRepository:
     """Compose reader-facing views from current PostgreSQL rows."""
 
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        image_url_checker: ImageUrlChecker,
+    ) -> None:
         self._session_factory = session_factory
+        self._image_url_checker = image_url_checker
 
     async def case_feed(self, *, sort: CaseSort, query: str | None, page: int) -> CaseFeedPage:
         async with self._session_factory() as session:
@@ -91,22 +98,32 @@ class SqlAlchemyPublicRepository:
                 .group_by(CaseArticle.case_id)
                 .subquery()
             )
-            case_image = (
-                select(Article.remote_image_url)
+            case_image_candidates = (
+                select(
+                    func.array_agg(
+                        aggregate_order_by(
+                            Article.remote_image_url,
+                            CaseArticle.created_at.asc(),
+                            CaseArticle.id.asc(),
+                        )
+                    )
+                )
                 .join(CaseArticle, CaseArticle.article_id == Article.id)
                 .where(
                     CaseArticle.case_id == Case.id,
                     Article.remote_image_url.is_not(None),
                     Article.remote_image_url != "",
                 )
-                .order_by(CaseArticle.created_at.asc(), CaseArticle.id.asc())
-                .limit(1)
                 .scalar_subquery()
             )
             view_count = func.coalesce(views.c.view_count, 0)
             trending_count = func.coalesce(trending.c.trending_count, 0)
             statement = (
-                select(Case, view_count.label("view_count"), case_image.label("image_url"))
+                select(
+                    Case,
+                    view_count.label("view_count"),
+                    case_image_candidates.label("image_candidates"),
+                )
                 .outerjoin(views, views.c.case_id == Case.id)
                 .outerjoin(trending, trending.c.case_id == Case.id)
                 .where(_public_case_predicate())
@@ -141,6 +158,12 @@ class SqlAlchemyPublicRepository:
             rows = (
                 await session.execute(statement.offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE))
             ).all()
+            image_urls = await asyncio.gather(
+                *[
+                    self._image_url_checker.first_available(image_candidates or [])
+                    for _, _, image_candidates in rows
+                ]
+            )
             return CaseFeedPage(
                 items=[
                     CaseFeedItem(
@@ -152,7 +175,9 @@ class SqlAlchemyPublicRepository:
                         view_count=int(row_view_count),
                         image_url=image_url,
                     )
-                    for case_row, row_view_count, image_url in rows
+                    for (case_row, row_view_count, _), image_url in zip(
+                        rows, image_urls, strict=True
+                    )
                 ],
                 sort=sort,
                 query=query,
