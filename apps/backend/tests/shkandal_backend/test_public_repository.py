@@ -31,6 +31,7 @@ class FakeSession:
     ) -> None:
         self.scalar_values = list(scalars)
         self.execute_values = list(executes)
+        self.executed_statements: list[Any] = []
         self.commit = AsyncMock()
 
     async def __aenter__(self) -> "FakeSession":
@@ -43,6 +44,7 @@ class FakeSession:
         return self.scalar_values.pop(0)
 
     async def execute(self, statement: Any) -> FakeResult:
+        self.executed_statements.append(statement)
         return FakeResult(self.execute_values.pop(0))
 
     async def scalars(self, statement: Any) -> FakeResult:
@@ -113,6 +115,30 @@ async def test_case_feed_uses_similarity_order_for_search() -> None:
     assert result.query == "справа"
     assert result.page == 2
     assert result.items == []
+
+
+async def test_case_feed_uses_first_linked_non_empty_article_image() -> None:
+    session = FakeSession(scalars=[0], executes=[[]])
+
+    await _repository(session).case_feed(sort="trending", query=None, page=1)
+
+    sql = str(
+        session.executed_statements[0].compile(
+            compile_kwargs={"literal_binds": True},
+        )
+    )
+    assert "articles.remote_image_url IS NOT NULL" in sql
+    assert "articles.remote_image_url != ''" in sql
+    assert "ORDER BY case_articles.created_at ASC, case_articles.id ASC" in sql
+
+
+async def test_case_feed_returns_no_image_when_linked_articles_have_none() -> None:
+    case_row = _case()
+    session = FakeSession(scalars=[1], executes=[[(case_row, 7, None)]])
+
+    result = await _repository(session).case_feed(sort="trending", query=None, page=1)
+
+    assert result.items[0].image_url is None
 
 
 async def test_latest_events_returns_known_dated_rows() -> None:

@@ -91,21 +91,22 @@ class SqlAlchemyPublicRepository:
                 .group_by(CaseArticle.case_id)
                 .subquery()
             )
-            latest_image = (
+            case_image = (
                 select(Article.remote_image_url)
                 .join(CaseArticle, CaseArticle.article_id == Article.id)
                 .where(
                     CaseArticle.case_id == Case.id,
                     Article.remote_image_url.is_not(None),
+                    Article.remote_image_url != "",
                 )
-                .order_by(Article.published_at.desc().nulls_last(), Article.created_at.desc())
+                .order_by(CaseArticle.created_at.asc(), CaseArticle.id.asc())
                 .limit(1)
                 .scalar_subquery()
             )
             view_count = func.coalesce(views.c.view_count, 0)
             trending_count = func.coalesce(trending.c.trending_count, 0)
             statement = (
-                select(Case, view_count.label("view_count"), latest_image.label("image_url"))
+                select(Case, view_count.label("view_count"), case_image.label("image_url"))
                 .outerjoin(views, views.c.case_id == Case.id)
                 .outerjoin(trending, trending.c.case_id == Case.id)
                 .where(_public_case_predicate())

@@ -15,7 +15,8 @@ The feed defaults to `trending`. `latest` uses the newest linked article
 publication time; `trending` counts linked articles published in the previous
 seven days; `popular` uses all-time aggregate views; `biggest` uses linked
 article count; and `newest` uses Case creation time. Undated articles do not
-affect `latest` or `trending`.
+affect `latest` or `trending`. Each Case feed card uses the image from the first
+article linked to the Case that has a non-empty remote image URL.
 
 Only active Cases with a non-empty Ukrainian summary and at least one linked
 article are public. Only described Entities linked to a public Case and a
