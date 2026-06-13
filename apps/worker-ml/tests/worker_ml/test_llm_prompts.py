@@ -18,17 +18,18 @@ def test_prompt_registry_loads_all_registered_prompts() -> None:
 def test_article_card_prompt_has_strict_case_candidate_rules() -> None:
     prompt = PromptRegistry().load_text("article_card")
 
-    assert "дипломатії, міжнародної підтримки" in prompt
+    assert "дипломатію, переговори, міжнародну підтримку" in prompt
     assert "рутинних регуляторних штрафів" in prompt
     assert "рутинної кримінальної хроніки" in prompt
     assert "Mercedes-Benz" in prompt
-    assert "Країни не є `organization`" in prompt
-    assert "Не вигадуй типи `country`, `city`, `region`" in prompt
-    assert "Міста, регіони, речовини" in prompt
-    assert "Це не дубль списку `entities`" in prompt
+    assert "Не додавай країни як `organization`" in prompt
+    assert "Не використовуй інші типи, зокрема `country`, `city`, `region`" in prompt
+    assert "Країни, міста, регіони, речовини" in prompt
+    assert "Це не дубль `entities`" in prompt
     assert "`1 млн доларів`" in prompt
-    assert "`Національний банк України` зазвичай" in prompt
-    assert '`noise_reason = "diplomacy"`' in prompt
+    assert "НБУ → `Національний банк України`" in prompt
+    assert "шляху України до вступу в Європейський Союз" in prompt
+    assert "відстежуваної зовнішньої політики України" in prompt
     assert '`noise_reason = "policy_law"`' in prompt
     assert '`noise_reason = "routine_regulatory"`' in prompt
     assert "`Полтавапаливо`" in prompt
