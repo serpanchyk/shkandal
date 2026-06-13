@@ -30,7 +30,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     <main className="pageShell">
       <section className="feedIntro">
         <div>
-          <p className="kicker">живий контекст замість одноразових новин</p>
+          <p className="kicker">від окремих новин — до живої хронології справи</p>
           <h1 className="feedTitle">Справи, за якими варто стежити</h1>
         </div>
         <EventTicker events={events} />
