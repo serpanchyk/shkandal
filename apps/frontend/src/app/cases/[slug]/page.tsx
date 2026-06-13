@@ -42,7 +42,7 @@ export default async function CasePage({ params }: { params: Params }) {
       <Link className="backLink" href="/">← усі справи</Link>
       <header className="dossierHero">
         <p className="kicker">досьє суспільно важливої справи</p>
-        <h1>{dossier.title_uk}</h1>
+        <h1 className="caseTitle">{dossier.title_uk}</h1>
         <p className="dossierSummary">{dossier.summary_uk}</p>
         <div className="metrics">
           <span>{formatCount(dossier.article_count, ["матеріал", "матеріали", "матеріалів"])}</span>
@@ -116,7 +116,7 @@ export default async function CasePage({ params }: { params: Params }) {
           <div className="relatedGrid">
             {dossier.related_cases.map((related) => (
               <Link href={`/cases/${related.slug}`} key={related.slug}>
-                <h3>{related.title_uk}</h3>
+                <h3 className="caseTitle">{related.title_uk}</h3>
                 <p>{related.summary_uk}</p>
               </Link>
             ))}

@@ -19,7 +19,7 @@ export function CaseCard({ item }: { item: CaseFeedItem }) {
         </div>
       ) : null}
       <div className="caseCardBody">
-        <h2>
+        <h2 className="caseTitle">
           <Link href={`/cases/${item.slug}`}>{item.title_uk}</Link>
         </h2>
         <p className="caseSummary">{item.summary_uk}</p>

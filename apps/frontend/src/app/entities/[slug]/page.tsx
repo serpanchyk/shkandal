@@ -35,7 +35,7 @@ export default async function EntityPage({ params }: { params: Params }) {
       <section className="dossierSection">
         <div className="sectionHeading"><p className="sectionCode">01 / cases</p><h2>Пов’язані справи</h2></div>
         <div className="relatedGrid">
-          {entity.cases.map((item) => <Link href={`/cases/${item.slug}`} key={item.slug}><h3>{item.title_uk}</h3><p>{item.summary_uk}</p></Link>)}
+          {entity.cases.map((item) => <Link href={`/cases/${item.slug}`} key={item.slug}><h3 className="caseTitle">{item.title_uk}</h3><p>{item.summary_uk}</p></Link>)}
         </div>
       </section>
       <section className="dossierSection">

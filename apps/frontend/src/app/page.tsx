@@ -31,7 +31,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
       <section className="feedIntro">
         <div>
           <p className="kicker">живий контекст замість одноразових новин</p>
-          <h1>Справи, за якими варто стежити</h1>
+          <h1 className="feedTitle">Справи, за якими варто стежити</h1>
         </div>
         <EventTicker events={events} />
       </section>
