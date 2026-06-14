@@ -26,8 +26,10 @@ from worker_ml.llm.contracts import (
     EventResolutionOutput,
     LlmRunType,
 )
+from worker_ml.llm.normalization import NormalizationResult, normalize_llm_output
 from worker_ml.llm.prompts import PromptRegistry
 from worker_ml.llm.runs import LlmRunStore
+from worker_ml.llm.schema import prompt_schema_json
 
 OutputT = TypeVar("OutputT", bound=BaseModel)
 
@@ -182,6 +184,7 @@ class LlmTaskRunner:
 
         raw_text = ""
         raw_json: dict[str, Any] | None = None
+        normalized: NormalizationResult | None = None
         request_duration_seconds: float | None = None
         repair_duration_seconds: float | None = None
         try:
@@ -190,14 +193,21 @@ class LlmTaskRunner:
             request_duration_seconds = time.monotonic() - request_started_at
             await self._record_successful_request()
             raw_json = parse_json_object(raw_text)
-            parsed = output_model.model_validate(raw_json)
+            normalized = normalize_llm_output(
+                run_type=run_type,
+                output=raw_json,
+                variables=variables,
+            )
+            parsed = output_model.model_validate(normalized.output)
         except (ValueError, ValidationError) as exc:
             try:
                 repair_started_at = time.monotonic()
                 repaired_json, repair_error = await self._repair(
+                    run_type=run_type,
                     output_model=output_model,
                     validation_error=str(exc),
                     invalid_output=raw_text,
+                    variables=variables,
                 )
                 repair_duration_seconds = time.monotonic() - repair_started_at
             except LlmRateLimitError as rate_limit_exc:
@@ -228,15 +238,20 @@ class LlmTaskRunner:
                     )
                 raise ValueError(repair_error or str(exc)) from exc
 
-            parsed = output_model.model_validate(repaired_json)
+            normalized = normalize_llm_output(
+                run_type=run_type,
+                output=repaired_json,
+                variables=variables,
+            )
+            parsed = output_model.model_validate(normalized.output)
             if self._run_store is not None and run_id is not None:
                 await self._run_store.finish_run(
                     run_id=run_id,
                     status="repaired",
                     raw_output=raw_json or {"text": raw_text},
-                    repaired_output=repaired_json,
+                    repaired_output=normalized.output,
                     metadata=_timing_metadata(
-                        metadata,
+                        _normalization_metadata(metadata, normalized.actions),
                         request_duration_seconds=request_duration_seconds,
                         repair_duration_seconds=repair_duration_seconds,
                     ),
@@ -267,12 +282,14 @@ class LlmTaskRunner:
             raise
 
         if self._run_store is not None and run_id is not None:
+            was_normalized = normalized is not None and bool(normalized.actions)
             await self._run_store.finish_run(
                 run_id=run_id,
-                status="succeeded",
+                status="repaired" if was_normalized else "succeeded",
                 raw_output=raw_json,
+                repaired_output=normalized.output if was_normalized else None,
                 metadata=_timing_metadata(
-                    metadata,
+                    _normalization_metadata(metadata, normalized.actions if normalized else []),
                     request_duration_seconds=request_duration_seconds,
                     repair_duration_seconds=repair_duration_seconds,
                 ),
@@ -288,9 +305,11 @@ class LlmTaskRunner:
     async def _repair(
         self,
         *,
+        run_type: LlmRunType,
         output_model: type[BaseModel],
         validation_error: str,
         invalid_output: str,
+        variables: Mapping[str, Any],
     ) -> tuple[dict[str, Any] | None, str | None]:
         if self._repair_chain is None:
             return None, validation_error
@@ -300,10 +319,7 @@ class LlmTaskRunner:
                 await invoke_chain(
                     self._repair_chain,
                     {
-                        "schema_json": json.dumps(
-                            output_model.model_json_schema(),
-                            ensure_ascii=False,
-                        ),
+                        "schema_json": prompt_schema_json(output_model),
                         "validation_error": validation_error,
                         "invalid_output": invalid_output,
                     },
@@ -311,7 +327,12 @@ class LlmTaskRunner:
             )
             await self._record_successful_request()
             repaired_json = parse_json_object(repaired_text)
-            output_model.model_validate(repaired_json)
+            normalized = normalize_llm_output(
+                run_type=run_type,
+                output=repaired_json,
+                variables=variables,
+            )
+            output_model.model_validate(normalized.output)
             return repaired_json, None
         except (ValueError, ValidationError) as exc:
             return None, str(exc)
@@ -382,6 +403,16 @@ def _timing_metadata(
         values["request_duration_seconds"] = round(request_duration_seconds, 6)
     if repair_duration_seconds is not None:
         values["repair_duration_seconds"] = round(repair_duration_seconds, 6)
+    return values
+
+
+def _normalization_metadata(
+    metadata: dict[str, Any] | None,
+    actions: list[str],
+) -> dict[str, Any]:
+    values = dict(metadata or {})
+    if actions:
+        values["normalization_actions"] = actions
     return values
 
 

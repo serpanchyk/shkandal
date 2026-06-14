@@ -64,7 +64,10 @@ review and correction tooling are later quality layers, not blocking MVP stages.
   relevant articles through `create_article_card` into `article_cards` with
   `llm_runs` provenance. Article cards apply a stricter LLM case-candidate gate;
   non-case cards retain a summary but do not expose events, entities, or case
-  signature terms.
+  signature terms. Prompt-facing schemas omit enum constraints and request a
+  concise decision basis before categorical choices; runtime contracts remain
+  strict. Conservative deterministic normalization is recorded as repaired LLM
+  provenance without changing raw provider output.
 - Article jobs are gated by durable outputs. Each successful step enqueues the next step only after its output row/link exists; downstream jobs are not pre-enqueued.
 - Workers claim jobs with PostgreSQL `FOR UPDATE SKIP LOCKED` row locking so multiple workers do not process the same job.
 - `running` jobs are reclaimable leases. If `locked_at` becomes older than the configured stale-job timeout, defaulting to 30 minutes, another worker may retry the job.
@@ -72,6 +75,10 @@ review and correction tooling are later quality layers, not blocking MVP stages.
   by default. Case, Entity, and Event mutation namespaces remain independently
   serialized, and stale pending LLM runs are failed during worker startup.
 - Claiming a job increments `attempt_count`; crashes count as attempts. Failed jobs with attempts remaining return to `queued` with `run_after`, and exhausted jobs become `failed`.
+- Qdrant failures remain retryable job failures and include operation,
+  collection, and point context where available. Persisted job errors are never
+  empty. An explicit dry-run-first worker-ML recovery command can requeue
+  selected exhausted failures without changing successful domain output.
 - LLM calls go through a pinned LiteLLM proxy service. `worker-ml` uses logical per-stage aliases, while provider credentials, throttling, and routing belong to proxy configuration. The tracked proxy configuration maps every alias to one shared Lapatonia deployment with a combined 60 RPM limit and retries transient timeout/internal-server failures once. The Amazon Bedrock Gemma 3 27B model entry is retained but is not configured as a fallback. Four Lapatonia failures within one hour start a shared one-hour in-memory cooldown; restarting `llm-proxy` clears it. No secrets are committed.
 - Provider HTTP `429` responses that remain after LiteLLM routing
   create a shared durable LLM cooldown. The current LLM job is deferred without

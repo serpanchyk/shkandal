@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from worker_ml.jobs import RESOLVE_ARTICLE_CASES_JOB
 from worker_ml.llm.contracts import ArticleCardOutput
 from worker_ml.llm.runner import LlmTaskRunner
+from worker_ml.llm.schema import prompt_schema_json
 
 MAX_ARTICLE_TEXT_CHARACTERS = 20_000
 
@@ -84,10 +85,7 @@ class ArticleCardJobHandler:
             model_name=self._model_name,
             variables={
                 "article_json": build_article_json(article=article, source=source),
-                "schema_json": json.dumps(
-                    ArticleCardOutput.model_json_schema(),
-                    ensure_ascii=False,
-                ),
+                "schema_json": prompt_schema_json(ArticleCardOutput),
             },
             metadata={
                 "article_id": str(job.article_id),

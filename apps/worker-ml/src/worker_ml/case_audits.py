@@ -40,6 +40,7 @@ from worker_ml.identity_resolution import (
 )
 from worker_ml.llm.contracts import CaseCoherenceAuditOutput
 from worker_ml.llm.runner import LlmTaskRunner
+from worker_ml.llm.schema import prompt_schema_json
 from worker_ml.vector_index import VectorIndexService
 
 
@@ -173,10 +174,7 @@ class CaseCoherenceAuditJobHandler:
             model_name=self._model_name,
             variables={
                 "case_json": json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
-                "schema_json": json.dumps(
-                    CaseCoherenceAuditOutput.model_json_schema(),
-                    ensure_ascii=False,
-                ),
+                "schema_json": prompt_schema_json(CaseCoherenceAuditOutput),
             },
             metadata={"case_id": str(job.case_id), "job_id": str(job.id), "phase": phase},
         )

@@ -31,8 +31,13 @@ Planned responsibilities:
 LLM prompts live as Ukrainian plain-text files in this service. LangChain loads
 those files inside each LLM task for prompt handling and simple chains, but it
 does not own worker orchestration, retries, persistence, or database mutation.
-Invalid JSON output is repaired once with a schema-only repair prompt, then
-marked failed if still invalid.
+Prompt-facing schemas omit enum constraints and place a concise evidence-based
+reason before categorical decisions. Runtime Pydantic contracts remain strict.
+Before initial validation and after the one-shot repair prompt, the runner
+applies conservative deterministic normalization that does not invent facts.
+Normalized runs are stored as `repaired`, with normalized JSON and applied
+actions in `llm_runs`; raw provider output remains unchanged. Ambiguous output
+that requires inventing Case links, identities, titles, or facts still fails.
 
 All runtime LLM traffic goes through the LiteLLM proxy. `worker-ml` requests
 logical model aliases (`shkandal-article-card`, `shkandal-case-resolution`,
@@ -137,6 +142,18 @@ Backfill mode waits through deferred retries and shared provider cooldowns. It
 does not reset exhausted failures; after all processable work is complete,
 remaining failed or stale blocked jobs produce a nonzero exit code.
 
+Inspect and explicitly recover selected exhausted failures after fixing their
+cause:
+
+```bash
+uv run python -m worker_ml.recover_failed_jobs --job-type update_case_copy
+uv run python -m worker_ml.recover_failed_jobs --job-type update_case_copy --error-contains Qdrant --limit 12 --apply
+```
+
+The command is dry-run by default and requeues only exhausted failed jobs. It
+resets attempts, scheduling, locks, and the old error without changing
+successful domain output.
+
 On servers, `shkandal-ml-worker.timer` starts a one-shot pass five minutes after
 the previous pass becomes inactive. `worker-ml` continues to depend on the
 Compose `llm-proxy` because article-card and resolution stages use its logical
@@ -221,6 +238,9 @@ last audit is older than the configured 30-day fallback.
 Structured worker logs include job and cycle durations. LLM run metadata records
 request and repair durations. At startup, pending LLM runs older than the stale
 job timeout are marked failed as abandoned after worker interruption.
+Qdrant search and upsert errors include operation, collection, and point context
+where available. Persisted job failures always contain a non-empty error while
+traceback logging and retry behavior remain unchanged.
 
 The relevance classifier loads `manifest.json` and the sibling joblib pipeline
 from the configured `relevance_model_dir`. The current artifact was produced

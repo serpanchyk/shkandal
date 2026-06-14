@@ -14,6 +14,7 @@ from worker_ml.article_cards import (
 )
 from worker_ml.llm.contracts import ArticleCardOutput, ProvisionalEvent
 from worker_ml.llm.runner import LlmTaskResult, LlmTaskRunner
+from worker_ml.llm.schema import prompt_schema
 
 
 def _session_context(session: MagicMock) -> MagicMock:
@@ -102,7 +103,7 @@ async def test_handler_creates_article_card_from_valid_llm_output() -> None:
     call = runner.run_with_provenance.await_args.kwargs
     assert call["run_type"] == "article_card"
     assert call["model_name"] == "shkandal-article-card"
-    assert json.loads(call["variables"]["schema_json"]) == ArticleCardOutput.model_json_schema()
+    assert json.loads(call["variables"]["schema_json"]) == prompt_schema(ArticleCardOutput)
     insert_statement = write_session.execute.await_args.args[0]
     params = insert_statement.compile().params
     assert params["article_id"] == article.id

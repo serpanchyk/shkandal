@@ -507,6 +507,7 @@ class ArticleJobStore:
     ) -> None:
         """Record job failure and either retry or exhaust the job."""
 
+        error_message = error_message.strip() or "UnknownError"
         failed_at = now or datetime.now(UTC)
         exhausted = attempt_count >= max_attempts
         status: Any = JOB_STATUS_FAILED if exhausted else JOB_STATUS_QUEUED

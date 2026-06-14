@@ -81,6 +81,37 @@ async def test_runner_returns_persisted_run_provenance() -> None:
 
 
 @pytest.mark.asyncio
+async def test_runner_persists_deterministically_normalized_output_as_repaired() -> None:
+    run_id = uuid4()
+    run_store = Mock(spec=LlmRunStore)
+    run_store.create_run = AsyncMock(return_value=run_id)
+    run_store.finish_run = AsyncMock()
+    raw_output = (
+        '{"title_uk":"Новини","summary_uk":"Опис","is_case_candidate":false,'
+        '"noise_reason":null,"main_event_title_uk":"Подія","entities":[],'
+        '"events":[],"case_signature_terms":["подія"]}'
+    )
+    runner = LlmTaskRunner(
+        prompt_registry=PromptRegistry(),
+        run_store=run_store,
+        task_chains={"article_card": FakeChain(raw_output)},
+    )
+
+    result = await runner.run_with_provenance(
+        run_type="article_card",
+        model_name="shkandal-article-card",
+        variables={"article_json": "{}", "schema_json": "{}"},
+    )
+
+    assert isinstance(result.output, ArticleCardOutput)
+    call = run_store.finish_run.await_args.kwargs
+    assert call["status"] == "repaired"
+    assert call["raw_output"]["main_event_title_uk"] == "Подія"
+    assert call["repaired_output"]["main_event_title_uk"] is None
+    assert call["metadata"]["normalization_actions"]
+
+
+@pytest.mark.asyncio
 async def test_runner_repairs_invalid_output_once() -> None:
     repair_chain = FakeChain(
         '{"title_uk":"Виправлено","summary_uk":"Опис","is_case_candidate":false,'

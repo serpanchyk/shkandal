@@ -24,6 +24,7 @@ from worker_ml.jobs import (
 )
 from worker_ml.llm.contracts import CaseCopyUpdateOutput, CaseResolutionOutput
 from worker_ml.llm.runner import LlmTaskRunner
+from worker_ml.llm.schema import prompt_schema_json
 from worker_ml.vector_index import VectorIndexService
 
 CASE_MUTATION_ADVISORY_LOCK = 7_214_801_901
@@ -94,9 +95,7 @@ class ArticleCaseResolutionJobHandler:
                 model_name=self._model_name,
                 variables={
                     "resolution_json": _resolution_json(article, source, card, candidates),
-                    "schema_json": json.dumps(
-                        CaseResolutionOutput.model_json_schema(), ensure_ascii=False
-                    ),
+                    "schema_json": prompt_schema_json(CaseResolutionOutput),
                 },
                 metadata={
                     "article_id": str(job.article_id),
@@ -316,9 +315,7 @@ class CaseCopyUpdateJobHandler:
                         ensure_ascii=False,
                         separators=(",", ":"),
                     ),
-                    "schema_json": json.dumps(
-                        CaseCopyUpdateOutput.model_json_schema(), ensure_ascii=False
-                    ),
+                    "schema_json": prompt_schema_json(CaseCopyUpdateOutput),
                 },
                 metadata={
                     "case_id": str(case.id),

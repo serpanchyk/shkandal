@@ -245,6 +245,22 @@ async def test_fail_superseded_revision_requeues_with_fresh_attempts() -> None:
     assert "attempt_count" in str(statement)
 
 
+@pytest.mark.asyncio
+async def test_fail_job_never_persists_an_empty_error() -> None:
+    session_factory, session = _mock_session_factory()
+    session.execute = AsyncMock()
+
+    await ArticleJobStore(session_factory).fail_job(
+        job_id=uuid4(),
+        error_message="",
+        attempt_count=3,
+        max_attempts=3,
+    )
+
+    statement = session.execute.await_args.args[0]
+    assert statement.compile().params["last_error"] == "UnknownError"
+
+
 def test_retry_delay_uses_configured_backoff_without_jitter() -> None:
     session_factory = cast(async_sessionmaker[AsyncSession], object())
     store = ArticleJobStore(

@@ -38,6 +38,7 @@ from worker_ml.llm.contracts import (
     EventResolutionOutput,
 )
 from worker_ml.llm.runner import LlmTaskRunner
+from worker_ml.llm.schema import prompt_schema_json
 from worker_ml.vector_index import VectorIndexService
 
 ENTITY_MUTATION_ADVISORY_LOCK = 7_214_801_902
@@ -86,9 +87,7 @@ class ArticleEntityResolutionJobHandler:
                 model_name=self._model_name,
                 variables={
                     "resolution_json": _resolution_json(provisional, candidates, cases),
-                    "schema_json": json.dumps(
-                        EntityResolutionOutput.model_json_schema(), ensure_ascii=False
-                    ),
+                    "schema_json": prompt_schema_json(EntityResolutionOutput),
                 },
                 metadata={
                     "article_id": str(job.article_id),
@@ -182,9 +181,7 @@ class ArticleEventResolutionJobHandler:
                 model_name=self._model_name,
                 variables={
                     "resolution_json": _resolution_json(provisional, candidates, cases),
-                    "schema_json": json.dumps(
-                        EventResolutionOutput.model_json_schema(), ensure_ascii=False
-                    ),
+                    "schema_json": prompt_schema_json(EventResolutionOutput),
                 },
                 metadata={
                     "article_id": str(job.article_id),

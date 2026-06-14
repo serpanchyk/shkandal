@@ -377,6 +377,15 @@ left in PostgreSQL for inspection and produce a nonzero exit code. A stale
 running job that exhausted its final attempt is also reported as blocked and
 produces a nonzero exit code instead of making backfill wait forever.
 
+After fixing the cause, inspect exhausted jobs before explicitly requeueing
+them. The recovery command is dry-run by default and does not modify successful
+domain output:
+
+```bash
+docker compose --profile jobs run --rm worker-ml python -m worker_ml.recover_failed_jobs --job-type update_case_copy
+docker compose --profile jobs run --rm worker-ml python -m worker_ml.recover_failed_jobs --job-type update_case_copy --error-contains Qdrant --limit 12 --apply
+```
+
 ### Smoke-test 10 article cards
 
 Put real Lapatonia credentials in the ignored LiteLLM env file. AWS credentials

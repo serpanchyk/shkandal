@@ -230,7 +230,7 @@ async def process_next_job(
         except Exception as exc:
             await job_store.fail_job(
                 job_id=claimed_job.id,
-                error_message=str(exc),
+                error_message=_exception_message(exc),
                 attempt_count=claimed_job.attempt_count,
                 max_attempts=claimed_job.max_attempts,
                 processed_revision=_processed_revision(claimed_job),
@@ -585,7 +585,7 @@ class _CycleExecutor:
         except Exception as exc:
             await self._job_store.fail_job(
                 job_id=job.id,
-                error_message=str(exc),
+                error_message=_exception_message(exc),
                 attempt_count=job.attempt_count,
                 max_attempts=job.max_attempts,
                 processed_revision=_processed_revision(job),
@@ -798,6 +798,12 @@ def main() -> None:
             raise SystemExit(1)
         return
     asyncio.run(run_once())
+
+
+def _exception_message(error: Exception) -> str:
+    """Return a durable non-empty job error message."""
+
+    return str(error).strip() or error.__class__.__name__
 
 
 if __name__ == "__main__":

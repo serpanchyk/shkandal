@@ -1,0 +1,218 @@
+"""Tests for conservative deterministic LLM output normalization."""
+
+import json
+
+from worker_ml.llm.contracts import ArticleCardOutput, EntityResolutionOutput, EventResolutionOutput
+from worker_ml.llm.normalization import normalize_llm_output
+
+
+def test_normalizes_observed_article_card_contract_failures() -> None:
+    result = normalize_llm_output(
+        run_type="article_card",
+        variables={},
+        output={
+            "title_uk": "Справа",
+            "summary_uk": "Опис.",
+            "is_case_candidate": True,
+            "noise_reason": "generic_news",
+            "main_event_title_uk": "Суд ухвалив рішення",
+            "entities": [
+                {
+                    "provisional_ref": "invalid ref",
+                    "name_uk": "Орган",
+                    "entity_type": "government_agency",
+                    "aliases": None,
+                    "description_uk": "Учасник справи.",
+                }
+            ],
+            "events": [
+                {
+                    "provisional_ref": None,
+                    "title_uk": "Суд ухвалив рішення",
+                    "description_uk": "Суд розглянув справу.",
+                    "event_date": "2026-06",
+                    "event_date_precision": "day",
+                }
+            ],
+            "case_signature_terms": ["суд"],
+        },
+    )
+
+    output = ArticleCardOutput.model_validate(result.output)
+    assert output.entities[0].provisional_ref == "entity_1"
+    assert output.entities[0].entity_type == "institution"
+    assert output.entities[0].aliases == []
+    assert output.events[0].provisional_ref == "event_1"
+    assert output.events[0].event_date_precision == "month"
+    assert output.noise_reason is None
+    assert result.actions
+
+
+def test_normalizes_non_case_signals_and_invalid_noise_reason() -> None:
+    result = normalize_llm_output(
+        run_type="article_card",
+        variables={},
+        output={
+            "title_uk": "Новини",
+            "summary_uk": "Огляд новин.",
+            "is_case_candidate": False,
+            "noise_reason": "other",
+            "main_event_title_uk": "Подія",
+            "entities": [{"name_uk": "Орган"}],
+            "events": [{"title_uk": "Подія"}],
+            "case_signature_terms": ["подія"],
+        },
+    )
+
+    output = ArticleCardOutput.model_validate(result.output)
+    assert output.noise_reason == "generic_news"
+    assert output.entities == []
+    assert output.events == []
+    assert output.case_signature_terms == []
+
+
+def test_resolution_refs_follow_supplied_provisional_inputs_one_to_one() -> None:
+    variables = {
+        "resolution_json": json.dumps(
+            {
+                "items": [
+                    {"provisional": {"provisional_ref": "entity_first"}},
+                    {"provisional": {"provisional_ref": "entity_second"}},
+                ]
+            }
+        )
+    }
+    result = normalize_llm_output(
+        run_type="entity_resolution",
+        variables=variables,
+        output={
+            "entities": [
+                {
+                    "provisional_ref": "entity_bad",
+                    "action": "reject",
+                    "confidence": 0.5,
+                    "case_assignments": [],
+                    "reason_uk": "",
+                    "rejection_reason": None,
+                },
+                {
+                    "provisional_ref": "also_bad",
+                    "action": "reject",
+                    "confidence": 0.4,
+                    "case_assignments": [],
+                    "reason_uk": "Не сутність.",
+                    "rejection_reason": "not_an_entity",
+                },
+            ]
+        },
+    )
+
+    output = EntityResolutionOutput.model_validate(result.output)
+    assert [item.provisional_ref for item in output.entities] == [
+        "entity_first",
+        "entity_second",
+    ]
+    assert output.entities[0].rejection_reason == "not_case_relevant"
+    assert output.entities[0].reason_uk
+
+
+def test_resolution_refs_preserve_valid_reordered_decisions() -> None:
+    variables = {
+        "resolution_json": json.dumps(
+            {
+                "items": [
+                    {"provisional": {"provisional_ref": "entity_first"}},
+                    {"provisional": {"provisional_ref": "entity_second"}},
+                ]
+            }
+        )
+    }
+    result = normalize_llm_output(
+        run_type="entity_resolution",
+        variables=variables,
+        output={
+            "entities": [
+                {
+                    "provisional_ref": "entity_second",
+                    "action": "reject",
+                    "confidence": 0.5,
+                    "case_assignments": [],
+                    "reason_uk": "Не сутність.",
+                    "rejection_reason": "not_an_entity",
+                },
+                {
+                    "provisional_ref": "entity_first",
+                    "action": "reject",
+                    "confidence": 0.4,
+                    "case_assignments": [],
+                    "reason_uk": "Не сутність.",
+                    "rejection_reason": "not_an_entity",
+                },
+            ]
+        },
+    )
+
+    assert [item["provisional_ref"] for item in result.output["entities"]] == [
+        "entity_second",
+        "entity_first",
+    ]
+
+
+def test_accepted_resolution_without_case_assignment_becomes_reject() -> None:
+    result = normalize_llm_output(
+        run_type="event_resolution",
+        variables={
+            "resolution_json": json.dumps(
+                {"items": [{"provisional": {"provisional_ref": "event_one"}}]}
+            )
+        },
+        output={
+            "events": [
+                {
+                    "provisional_ref": "event_one",
+                    "action": "create_new",
+                    "existing_event_id": None,
+                    "new_title_uk": "Подія",
+                    "description_uk": "Опис.",
+                    "event_date": "not-a-date",
+                    "event_date_precision": "day",
+                    "confidence": 0.8,
+                    "case_assignments": [],
+                    "reason_uk": "",
+                    "rejection_reason": None,
+                }
+            ]
+        },
+    )
+
+    output = EventResolutionOutput.model_validate(result.output)
+    decision = output.events[0]
+    assert decision.action == "reject"
+    assert decision.new_title_uk is None
+    assert decision.event_date is None
+    assert decision.event_date_precision == "unknown"
+    assert decision.rejection_reason == "not_case_relevant"
+
+
+def test_does_not_invent_missing_case_candidate_facts() -> None:
+    result = normalize_llm_output(
+        run_type="article_card",
+        variables={},
+        output={
+            "title_uk": "Справа",
+            "summary_uk": "Опис.",
+            "is_case_candidate": True,
+            "noise_reason": None,
+            "main_event_title_uk": None,
+            "entities": [],
+            "events": [],
+            "case_signature_terms": [],
+        },
+    )
+
+    try:
+        ArticleCardOutput.model_validate(result.output)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("normalization must not invent missing case facts")

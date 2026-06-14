@@ -129,6 +129,10 @@ class ArticleCardOutput(StrictOutput):
         min_length=1,
         description="Нейтральний фактичний підсумок основного матеріалу у 1-2 реченнях.",
     )
+    case_decision_reason_uk: str | None = Field(
+        default=None,
+        description="Коротка фактична підстава для рішення, чи є матеріал справою.",
+    )
     is_case_candidate: bool = Field(
         description="Чи описує стаття конкретну суспільно важливу справу або дію.",
     )
@@ -272,9 +276,9 @@ class CaseResolutionOutput(StrictOutput):
 class CaseCopyUpdateOutput(StrictOutput):
     """Updated reader-facing copy for one existing case."""
 
+    title_reason_uk: str = Field(min_length=1)
     title_action: Literal["keep", "replace"]
     replacement_title_uk: str | None = None
-    title_reason_uk: str = Field(min_length=1)
     summary_uk: str = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -301,8 +305,8 @@ class CaseAuditStory(StrictOutput):
 class CaseCoherenceAuditOutput(StrictOutput):
     """Decision from a recurring Case coherence audit."""
 
-    outcome: Literal["coherent", "split", "inconclusive"]
     reason_uk: str = Field(min_length=1)
+    outcome: Literal["coherent", "split", "inconclusive"]
     stories: list[CaseAuditStory] = Field(default_factory=list)
 
     @model_validator(mode="after")
@@ -339,6 +343,7 @@ class EntityResolutionDecision(StrictOutput):
     """Decision for one provisional entity."""
 
     provisional_ref: str = Field(pattern=r"^entity_[a-z0-9_]+$")
+    reason_uk: str = Field(min_length=1)
     action: Literal[
         "link_existing",
         "create_new",
@@ -353,7 +358,6 @@ class EntityResolutionDecision(StrictOutput):
     description_uk: str | None = None
     confidence: float = Field(ge=0, le=1)
     case_assignments: list[EntityCaseAssignment] = Field(default_factory=list)
-    reason_uk: str = Field(min_length=1)
     rejection_reason: (
         Literal[
             "not_an_entity",
@@ -426,6 +430,7 @@ class EventResolutionDecision(StrictOutput):
     """Decision for one provisional event."""
 
     provisional_ref: str = Field(pattern=r"^event_[a-z0-9_]+$")
+    reason_uk: str = Field(min_length=1)
     action: Literal["link_existing", "create_new", "reject"]
     existing_event_id: str | None = None
     new_title_uk: str | None = None
@@ -435,7 +440,6 @@ class EventResolutionDecision(StrictOutput):
     location_uk: str | None = None
     confidence: float = Field(ge=0, le=1)
     case_assignments: list[EventCaseAssignment] = Field(default_factory=list)
-    reason_uk: str = Field(min_length=1)
     rejection_reason: (
         Literal[
             "not_an_event",
