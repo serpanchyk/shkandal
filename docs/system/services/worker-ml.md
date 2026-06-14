@@ -216,6 +216,11 @@ configured card batch are audited in deterministic batches and reconciled in a
 final coverage-checked pass. Every input article must retain at least one Case
 assignment, and overlapping assignments remain valid. The dominant story keeps
 the original Case identity; other coherent stories become new Cases.
+Every batch and reconciliation response is coverage-checked immediately.
+Missing or unknown Article IDs trigger one correction request with all relevant
+Article Cards, the invalid audit, and the exact coverage error. If that response
+also has invalid coverage, the audit is recorded as inconclusive without Case
+mutation or job failure and remains eligible for the periodic re-audit interval.
 
 Decisive audits prepare their LLM result before acquiring the Case, Entity, and
 Event mutation locks. They then rebuild Article, Entity, and Event Case links,

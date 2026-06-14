@@ -145,23 +145,59 @@ class CaseCoherenceAuditJobHandler:
             for index in range(0, len(cards), self._card_batch_size)
         ]
         if len(batches) == 1:
-            return await self._invoke(job, {**case_context, "article_cards": cards}, "final")
+            return await self._invoke_with_coverage_retry(
+                job=job,
+                payload={**case_context, "article_cards": cards},
+                relevant_cards=cards,
+                phase="final",
+            )
 
         batch_results: list[dict[str, Any]] = []
         for index, batch in enumerate(batches):
-            output, _ = await self._invoke(
-                job,
-                {**case_context, "article_cards": batch},
-                f"batch_{index + 1}",
+            output, _ = await self._invoke_with_coverage_retry(
+                job=job,
+                payload={**case_context, "article_cards": batch},
+                relevant_cards=batch,
+                phase=f"batch_{index + 1}",
             )
             if output.outcome == "inconclusive":
                 return output, None
             batch_results.append(output.model_dump(mode="json"))
-        return await self._invoke(
-            job,
-            {**case_context, "batch_audits": batch_results},
-            "reconciliation",
+        return await self._invoke_with_coverage_retry(
+            job=job,
+            payload={**case_context, "batch_audits": batch_results},
+            relevant_cards=cards,
+            phase="reconciliation",
         )
+
+    async def _invoke_with_coverage_retry(
+        self,
+        *,
+        job: ClaimedJob,
+        payload: dict[str, Any],
+        relevant_cards: list[dict[str, Any]],
+        phase: str,
+    ) -> tuple[CaseCoherenceAuditOutput, UUID | None]:
+        output, run_id = await self._invoke(job, payload, phase)
+        article_ids = {card["article_id"] for card in relevant_cards}
+        try:
+            _validate_article_coverage(output, article_ids)
+        except ValueError as exc:
+            output, run_id = await self._invoke(
+                job,
+                {
+                    **payload,
+                    "article_cards": relevant_cards,
+                    "previous_invalid_audit": output.model_dump(mode="json"),
+                    "coverage_validation_error": str(exc),
+                },
+                f"{phase}_coverage_retry",
+            )
+            try:
+                _validate_article_coverage(output, article_ids)
+            except ValueError:
+                return _inconclusive_coverage_fallback(), run_id
+        return output, run_id
 
     async def _invoke(
         self,
@@ -213,6 +249,16 @@ def _validate_article_coverage(output: CaseCoherenceAuditOutput, article_ids: se
         raise ValueError(f"audit references unknown article ids: {sorted(unknown)}")
     if missing:
         raise ValueError(f"audit omits article ids: {sorted(missing)}")
+
+
+def _inconclusive_coverage_fallback() -> CaseCoherenceAuditOutput:
+    return CaseCoherenceAuditOutput(
+        outcome="inconclusive",
+        reason_uk=(
+            "Неможливо безпечно підтвердити повне покриття статей після повторної перевірки."
+        ),
+        stories=[],
+    )
 
 
 async def _apply_decisive_audit(
