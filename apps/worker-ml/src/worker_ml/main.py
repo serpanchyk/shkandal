@@ -17,6 +17,7 @@ from shkandal_vector_store import VectorStoreConfig, create_qdrant_client
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from worker_ml.article_cards import ArticleCardJobHandler
+from worker_ml.case_audits import CaseAuditSupersededError, CaseCoherenceAuditJobHandler
 from worker_ml.case_resolution import (
     ArticleCaseResolutionJobHandler,
     CaseCopyUpdateJobHandler,
@@ -31,12 +32,14 @@ from worker_ml.identity_resolution import (
     IdentityMutationBusyError,
 )
 from worker_ml.jobs import (
+    AUDIT_CASE_COHERENCE_JOB,
     CLASSIFY_ARTICLE_JOB,
     CREATE_ARTICLE_CARD_JOB,
     RESOLVE_ARTICLE_CASES_JOB,
     RESOLVE_ARTICLE_ENTITIES_JOB,
     RESOLVE_ARTICLE_EVENTS_JOB,
     UPDATE_CASE_COPY_JOB,
+    EnqueueStats,
     MlJobPlanner,
 )
 from worker_ml.llm.runner import LlmRateLimitError, LlmTaskRunner
@@ -50,10 +53,12 @@ SUPPORTED_JOB_TYPES = (
     RESOLVE_ARTICLE_ENTITIES_JOB,
     RESOLVE_ARTICLE_EVENTS_JOB,
     UPDATE_CASE_COPY_JOB,
+    AUDIT_CASE_COHERENCE_JOB,
 )
 JOB_TYPE_SCHEDULE = (
     CREATE_ARTICLE_CARD_JOB,
     UPDATE_CASE_COPY_JOB,
+    AUDIT_CASE_COHERENCE_JOB,
     RESOLVE_ARTICLE_CASES_JOB,
     RESOLVE_ARTICLE_ENTITIES_JOB,
     RESOLVE_ARTICLE_EVENTS_JOB,
@@ -215,7 +220,7 @@ async def process_next_job(
                 },
             )
             return {"status": "deferred", "job_type": claimed_job.job_type}
-        except (CaseMutationBusyError, IdentityMutationBusyError) as exc:
+        except (CaseAuditSupersededError, CaseMutationBusyError, IdentityMutationBusyError) as exc:
             await job_store.defer_job(
                 job_id=claimed_job.id,
                 run_after=datetime.now(UTC) + timedelta(seconds=10),
@@ -439,6 +444,15 @@ async def _run_cycle(
         max_attempts=settings.job_max_attempts,
         requeue_failed=requeue_failed,
     )
+    audit_stats = (
+        await planner.enqueue_due_case_audit_jobs(
+            limit=settings.case_audit_enqueue_batch_size,
+            max_attempts=settings.job_max_attempts,
+            interval_days=settings.case_audit_interval_days,
+        )
+        if settings.case_audit_automatic_enabled
+        else EnqueueStats(0, 0, 0, 0, 0)
+    )
     if enqueue_stats.ensured_jobs:
         logger.info(
             "worker_ml_jobs_enqueued",
@@ -463,7 +477,7 @@ async def _run_cycle(
 
     stats = {
         "scanned_articles": enqueue_stats.scanned_articles,
-        "ensured_jobs": enqueue_stats.ensured_jobs,
+        "ensured_jobs": enqueue_stats.ensured_jobs + audit_stats.ensured_jobs,
         "processed_jobs": processed_jobs,
         "failed_jobs": failed_jobs,
         "duration_seconds": round(time.monotonic() - cycle_started_at, 6),
@@ -500,6 +514,7 @@ class _CycleExecutor:
         self._namespace_limits = {
             RESOLVE_ARTICLE_CASES_JOB: case_limit,
             UPDATE_CASE_COPY_JOB: case_limit,
+            AUDIT_CASE_COHERENCE_JOB: case_limit,
             RESOLVE_ARTICLE_ENTITIES_JOB: asyncio.Semaphore(1),
             RESOLVE_ARTICLE_EVENTS_JOB: asyncio.Semaphore(1),
         }
@@ -561,7 +576,7 @@ class _CycleExecutor:
                     "duration_seconds": round(time.monotonic() - started_at, 6),
                 },
             )
-        except (CaseMutationBusyError, IdentityMutationBusyError) as exc:
+        except (CaseAuditSupersededError, CaseMutationBusyError, IdentityMutationBusyError) as exc:
             await self._job_store.defer_job(
                 job_id=job.id,
                 run_after=datetime.now(UTC) + timedelta(seconds=10),
@@ -744,6 +759,13 @@ def _create_handlers(
             runner,
             vector_index,
             model_name=settings.llm_case_copy_update_model,
+        ),
+        AUDIT_CASE_COHERENCE_JOB: CaseCoherenceAuditJobHandler(
+            session_factory,
+            runner,
+            vector_index,
+            model_name=settings.llm_case_coherence_audit_model,
+            card_batch_size=settings.case_audit_card_batch_size,
         ),
     }
 

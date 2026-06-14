@@ -45,6 +45,12 @@ Cases can overlap. One article can belong to multiple cases. One event can be re
 
 One relevant article is enough to create a public case. The system optimizes for coverage and speed, with source provenance visible to readers.
 
+Recurring Case Coherence Audits inspect all linked Article Cards after evidence
+changes and on a 30-day fallback. A mixed Case is split atomically: the
+dominant story keeps the original Case identity, other coherent stories become
+new Cases, and overlapping Article assignments remain valid. Inconclusive
+audits leave public data unchanged.
+
 Case relationships are explicit:
 
 - `related` for shared central actors or specific accountability themes;
@@ -327,7 +333,8 @@ The project is split into these services:
 - `backend`: FastAPI public API and application business boundary;
 - `worker-ingestion`: curated source discovery, fetching, extraction, URL identity normalization, image URL extraction;
 - `worker-ml`: relevance classifier, article cards, E5-small embeddings, Qdrant
-  vector integration, and LLM Case/Entity/Event resolution;
+  vector integration, LLM Case/Entity/Event resolution, and recurring Case
+  Coherence Audits;
 - `postgres`: source-of-truth relational database and MVP job store;
 - `qdrant`: rebuildable 384-dimensional vector index for cases, entities, and events.
 - `llm-proxy`: LiteLLM proxy for provider routing, throttling, and fallback policy.

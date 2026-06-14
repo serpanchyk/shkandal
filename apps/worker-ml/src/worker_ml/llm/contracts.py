@@ -13,6 +13,7 @@ LlmRunType = Literal[
     "entity_resolution",
     "event_resolution",
     "case_copy_update",
+    "case_coherence_audit",
 ]
 EntityType = Literal[
     "person",
@@ -284,6 +285,46 @@ class CaseCopyUpdateOutput(StrictOutput):
             raise ValueError("replacement title is required when title_action is replace")
         if self.title_action == "keep" and self.replacement_title_uk is not None:
             raise ValueError("replacement title must be null when title_action is keep")
+        return self
+
+
+class CaseAuditStory(StrictOutput):
+    """One coherent durable story produced by a Case audit."""
+
+    story_ref: str = Field(pattern=r"^(original|story_[a-z0-9_]+)$")
+    title_uk: str = Field(min_length=1)
+    summary_uk: str = Field(min_length=1)
+    article_ids: list[str] = Field(min_length=1)
+    reason_uk: str = Field(min_length=1)
+
+
+class CaseCoherenceAuditOutput(StrictOutput):
+    """Decision from a recurring Case coherence audit."""
+
+    outcome: Literal["coherent", "split", "inconclusive"]
+    reason_uk: str = Field(min_length=1)
+    stories: list[CaseAuditStory] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_outcome(self) -> CaseCoherenceAuditOutput:
+        """Require one original story for decisive outcomes."""
+
+        if self.outcome == "inconclusive":
+            if self.stories:
+                raise ValueError("inconclusive audit cannot contain stories")
+            return self
+        refs = [story.story_ref for story in self.stories]
+        if refs.count("original") != 1:
+            raise ValueError("decisive audit requires exactly one original story")
+        if len(refs) != len(set(refs)):
+            raise ValueError("audit story refs must be unique")
+        if self.outcome == "coherent" and len(self.stories) != 1:
+            raise ValueError("coherent audit requires only the original story")
+        if self.outcome == "split" and len(self.stories) < 2:
+            raise ValueError("split audit requires at least two stories")
+        for story in self.stories:
+            if len(story.article_ids) != len(set(story.article_ids)):
+                raise ValueError("story article ids must be unique")
         return self
 
 

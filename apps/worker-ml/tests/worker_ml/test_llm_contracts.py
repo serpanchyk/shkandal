@@ -4,10 +4,64 @@ import pytest
 from pydantic import ValidationError
 from worker_ml.llm.contracts import (
     ArticleCardOutput,
+    CaseCoherenceAuditOutput,
     CaseResolutionOutput,
     EntityResolutionOutput,
     EventResolutionOutput,
 )
+
+
+def test_case_coherence_audit_accepts_overlapping_article_assignments() -> None:
+    output = CaseCoherenceAuditOutput.model_validate(
+        {
+            "outcome": "split",
+            "reason_uk": "Змішані дві справи.",
+            "stories": [
+                {
+                    "story_ref": "original",
+                    "title_uk": "Перша справа",
+                    "summary_uk": "Опис першої справи.",
+                    "article_ids": ["article-a", "article-bridge"],
+                    "reason_uk": "Домінантна історія.",
+                },
+                {
+                    "story_ref": "story_second",
+                    "title_uk": "Друга справа",
+                    "summary_uk": "Опис другої справи.",
+                    "article_ids": ["article-b", "article-bridge"],
+                    "reason_uk": "Окрема історія.",
+                },
+            ],
+        }
+    )
+
+    assert output.outcome == "split"
+
+
+def test_case_coherence_audit_rejects_split_without_original_story() -> None:
+    with pytest.raises(ValueError, match="exactly one original"):
+        CaseCoherenceAuditOutput.model_validate(
+            {
+                "outcome": "split",
+                "reason_uk": "Змішані справи.",
+                "stories": [
+                    {
+                        "story_ref": "story_a",
+                        "title_uk": "Перша",
+                        "summary_uk": "Опис.",
+                        "article_ids": ["article-a"],
+                        "reason_uk": "Причина.",
+                    },
+                    {
+                        "story_ref": "story_b",
+                        "title_uk": "Друга",
+                        "summary_uk": "Опис.",
+                        "article_ids": ["article-b"],
+                        "reason_uk": "Причина.",
+                    },
+                ],
+            }
+        )
 
 
 def test_article_card_contract_accepts_representative_json() -> None:

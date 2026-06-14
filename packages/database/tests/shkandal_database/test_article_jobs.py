@@ -192,6 +192,27 @@ async def test_enqueue_case_job_gives_non_running_revision_fresh_attempts(status
 
 
 @pytest.mark.asyncio
+async def test_ensure_case_job_requeues_completed_recurring_job_without_revision() -> None:
+    job_id = uuid4()
+    session_factory, session = _mock_session_factory()
+    session.scalar = AsyncMock(side_effect=[None, job_id])
+    existing_result = MagicMock()
+    existing_result.one_or_none.return_value = SimpleNamespace(id=job_id, status="succeeded")
+    session.execute = AsyncMock(return_value=existing_result)
+
+    result = await ArticleJobStore(session_factory).ensure_case_job(
+        job_type="audit_case_coherence",
+        case_id=uuid4(),
+    )
+
+    assert result.state == "requeued"
+    statement = session.scalar.await_args_list[1].args[0]
+    params = statement.compile().params
+    assert params["status"] == "queued"
+    assert "requested_revision" not in params
+
+
+@pytest.mark.asyncio
 async def test_complete_superseded_revision_requeues_with_fresh_attempts() -> None:
     session_factory, session = _mock_session_factory()
     session.execute = AsyncMock()

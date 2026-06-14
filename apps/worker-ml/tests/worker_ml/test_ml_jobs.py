@@ -6,9 +6,10 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 from uuid import uuid4
 
 import pytest
-from shkandal_database.jobs import BulkEnqueueJobResult
+from shkandal_database.jobs import ArticleJobStore, BulkEnqueueJobResult
 from worker_ml.classifier import RelevanceModel, build_classifier_text
 from worker_ml.jobs import (
+    AUDIT_CASE_COHERENCE_JOB,
     CLASSIFY_ARTICLE_JOB,
     CREATE_ARTICLE_CARD_JOB,
     EnqueueStats,
@@ -97,6 +98,37 @@ def test_job_planner_only_selects_successfully_fetched_articles() -> None:
     query = MlJobPlanner._articles_missing_relevance_query(limit=10)
 
     assert "articles.fetch_status" in str(query)
+
+
+@pytest.mark.asyncio
+async def test_job_planner_enqueues_due_case_audits_without_revision_bumps() -> None:
+    case_ids = [uuid4(), uuid4()]
+    session = AsyncMock()
+    session.scalars = AsyncMock(return_value=SimpleNamespace(all=lambda: case_ids))
+    session_context = AsyncMock()
+    session_context.__aenter__.return_value = session
+    session_factory = Mock(return_value=session_context)
+    job_store = Mock(spec=ArticleJobStore)
+    job_store.ensure_case_job = AsyncMock(
+        side_effect=[
+            SimpleNamespace(state="inserted"),
+            SimpleNamespace(state="existing"),
+        ]
+    )
+
+    stats = await MlJobPlanner(session_factory, job_store).enqueue_due_case_audit_jobs(
+        limit=2,
+        max_attempts=3,
+        interval_days=30,
+    )
+
+    assert stats.scanned_articles == 2
+    assert stats.inserted_jobs == 1
+    assert stats.existing_jobs == 1
+    assert all(
+        call.kwargs["job_type"] == AUDIT_CASE_COHERENCE_JOB
+        for call in job_store.ensure_case_job.await_args_list
+    )
 
 
 def test_classifier_text_matches_training_format() -> None:

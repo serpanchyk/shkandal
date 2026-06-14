@@ -179,7 +179,7 @@ class LlmRun(Base):
     __table_args__ = (
         CheckConstraint(
             "run_type in ('article_card', 'case_resolution', 'entity_resolution', "
-            "'event_resolution', 'case_copy_update')",
+            "'event_resolution', 'case_copy_update', 'case_coherence_audit')",
             name="ck_llm_runs_run_type",
         ),
         CheckConstraint(
@@ -277,6 +277,17 @@ class Case(Base):
     last_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     article_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     event_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    evidence_revision: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default=text("1"),
+    )
+    last_audited_revision: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default=text("0"),
+    )
+    last_audited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     metadata_: Mapped[dict[str, Any]] = mapped_column(
         "metadata",
         JSONB,
@@ -285,6 +296,33 @@ class Case(Base):
     )
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()
+
+
+class CaseCoherenceAudit(Base):
+    """Immutable result of one Case coherence audit."""
+
+    __tablename__ = "case_coherence_audits"
+    __table_args__ = (
+        CheckConstraint(
+            "outcome in ('coherent', 'split', 'inconclusive', 'superseded')",
+            name="ck_case_coherence_audits_outcome",
+        ),
+        Index("ix_case_coherence_audits_case_id_created_at", "case_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = uuid_pk_column()
+    case_id: Mapped[UUID] = mapped_column(
+        ForeignKey("cases.id", ondelete="CASCADE"), nullable=False
+    )
+    evidence_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    outcome: Mapped[str] = mapped_column(Text, nullable=False)
+    llm_run_id: Mapped[UUID | None] = mapped_column(ForeignKey("llm_runs.id"))
+    result_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=json_object_default,
+    )
+    created_at: Mapped[datetime] = created_at_column()
 
 
 class CaseArticle(Base):

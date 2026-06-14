@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from shkandal_database.jobs import ArticleJobStore
-from shkandal_database.models import Article, ArticleRelevance
-from sqlalchemy import Select, select
+from shkandal_database.models import Article, ArticleRelevance, Case
+from sqlalchemy import Select, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 CLASSIFY_ARTICLE_JOB = "classify_article"
@@ -16,6 +16,7 @@ RESOLVE_ARTICLE_CASES_JOB = "resolve_article_cases"
 RESOLVE_ARTICLE_ENTITIES_JOB = "resolve_article_entities"
 RESOLVE_ARTICLE_EVENTS_JOB = "resolve_article_events"
 UPDATE_CASE_COPY_JOB = "update_case_copy"
+AUDIT_CASE_COHERENCE_JOB = "audit_case_coherence"
 
 
 @dataclass(frozen=True)
@@ -71,6 +72,55 @@ class MlJobPlanner:
             inserted_jobs=result.inserted_jobs,
             requeued_jobs=result.requeued_jobs,
             existing_jobs=result.existing_jobs,
+        )
+
+    async def enqueue_due_case_audit_jobs(
+        self,
+        *,
+        limit: int,
+        max_attempts: int,
+        interval_days: int,
+    ) -> EnqueueStats:
+        """Enqueue active Cases with changed or stale audited evidence."""
+
+        from datetime import UTC, datetime, timedelta
+
+        cutoff = datetime.now(UTC) - timedelta(days=interval_days)
+        async with self._session_factory() as session:
+            case_ids = list(
+                (
+                    await session.scalars(
+                        select(Case.id)
+                        .where(
+                            Case.status == "active",
+                            or_(
+                                Case.last_audited_revision < Case.evidence_revision,
+                                Case.last_audited_at.is_(None),
+                                Case.last_audited_at <= cutoff,
+                            ),
+                        )
+                        .order_by(Case.last_audited_at.asc().nulls_first(), Case.created_at.asc())
+                        .limit(limit)
+                    )
+                ).all()
+            )
+        states = [
+            await self._job_store.ensure_case_job(
+                job_type=AUDIT_CASE_COHERENCE_JOB,
+                case_id=case_id,
+                payload={"case_id": str(case_id)},
+                max_attempts=max_attempts,
+            )
+            for case_id in case_ids
+        ]
+        inserted = sum(result.state == "inserted" for result in states)
+        requeued = sum(result.state == "requeued" for result in states)
+        return EnqueueStats(
+            scanned_articles=len(case_ids),
+            ensured_jobs=inserted + requeued,
+            inserted_jobs=inserted,
+            requeued_jobs=requeued,
+            existing_jobs=len(states) - inserted - requeued,
         )
 
     @staticmethod

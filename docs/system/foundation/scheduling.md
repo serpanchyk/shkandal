@@ -21,6 +21,10 @@ Scheduled one-shot jobs are:
 - `worker-ingestion`, every even-numbered hour;
 - `worker-ml`, five minutes after the previous pass becomes inactive.
 
+The ML pass can also enqueue recurring Case Coherence Audits. This is disabled
+by default until the initial canary is verified, then uses evidence revisions
+plus a configurable 30-day fallback rather than a separate scheduler.
+
 One-shot batch processes release all process memory after each run, avoid hidden
 failures inside an in-process scheduler, and expose scheduling, exit status,
 timeouts, logs, and manual restarts through systemd and journald.

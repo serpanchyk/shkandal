@@ -198,6 +198,7 @@ class ArticleCaseResolutionJobHandler:
                     .where(Case.id == case_id)
                     .values(
                         article_count=Case.article_count + 1,
+                        evidence_revision=Case.evidence_revision + 1,
                         last_updated_at=(
                             func.greatest(Case.last_updated_at, published_at)
                             if published_at is not None

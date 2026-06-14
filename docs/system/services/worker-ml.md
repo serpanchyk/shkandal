@@ -25,6 +25,8 @@ Planned responsibilities:
 - assign resolved entities/events only to relevant linked cases;
 - materialize direct `case_entities` and `case_events` links;
 - record LLM run metadata, prompt name/version, model, status, raw output, and repair attempts.
+- audit accumulated Case evidence for mixed durable stories and publish safe
+  Case splits atomically.
 
 LLM prompts live as Ukrainian plain-text files in this service. LangChain loads
 those files inside each LLM task for prompt handling and simple chains, but it
@@ -191,6 +193,30 @@ attempt budget once the previous revision is no longer running. If a newer
 revision arrives during a running attempt, completion or failure requeues that
 newer revision with a fresh attempt budget. Exhausted queued jobs are not
 claimed and are reported as blocked work.
+
+Case Coherence Audits use every linked Article Card. Cases larger than one
+configured card batch are audited in deterministic batches and reconciled in a
+final coverage-checked pass. Every input article must retain at least one Case
+assignment, and overlapping assignments remain valid. The dominant story keeps
+the original Case identity; other coherent stories become new Cases.
+
+Decisive audits prepare their LLM result before acquiring the Case, Entity, and
+Event mutation locks. They then rebuild Article, Entity, and Event Case links,
+public copy, counts, related-Case links, and vectors before committing. Readers
+therefore see either the old complete dossier or the new complete split.
+Inconclusive and superseded audits are recorded without public mutation.
+
+Recurring audit enqueueing defaults off for the initial rollout. Inspect and
+enqueue a five-Case canary first:
+
+```bash
+docker compose --profile jobs run --rm worker-ml python -m worker_ml.enqueue_case_audits
+docker compose --profile jobs run --rm worker-ml python -m worker_ml.enqueue_case_audits --apply --limit 5
+```
+
+After verifying the canary, set `CASE_AUDIT_AUTOMATIC_ENABLED=true`. Each worker
+pass then enqueues a bounded set of active Cases whose evidence changed or whose
+last audit is older than the configured 30-day fallback.
 
 Structured worker logs include job and cycle durations. LLM run metadata records
 request and repair durations. At startup, pending LLM runs older than the stale

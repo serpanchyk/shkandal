@@ -29,7 +29,12 @@ class MlConfig(BaseServiceConfig):
     llm_entity_resolution_model: str = "shkandal-entity-resolution"
     llm_event_resolution_model: str = "shkandal-event-resolution"
     llm_case_copy_update_model: str = "shkandal-case-copy-update"
+    llm_case_coherence_audit_model: str = "shkandal-case-coherence-audit"
     llm_repair_model: str = "shkandal-repair"
+    case_audit_interval_days: int = 30
+    case_audit_enqueue_batch_size: int = 20
+    case_audit_card_batch_size: int = 40
+    case_audit_automatic_enabled: bool = False
 
     @property
     def stale_job_timeout(self) -> timedelta:

@@ -880,7 +880,9 @@ def test_llm_config_defaults_to_litellm_proxy_aliases() -> None:
     assert fields["llm_entity_resolution_model"].default == "shkandal-entity-resolution"
     assert fields["llm_event_resolution_model"].default == "shkandal-event-resolution"
     assert fields["llm_case_copy_update_model"].default == "shkandal-case-copy-update"
+    assert fields["llm_case_coherence_audit_model"].default == "shkandal-case-coherence-audit"
     assert fields["llm_repair_model"].default == "shkandal-repair"
+    assert fields["case_audit_automatic_enabled"].default is False
 
 
 def test_worker_concurrency_defaults_to_four() -> None:

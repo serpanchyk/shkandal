@@ -54,6 +54,10 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - Jobs have exactly one typed article or Case subject. Article jobs are unique by
   `(job_type, article_id)`; revision-aware Case jobs are unique by
   `(job_type, case_id)`.
+- Active Cases receive Case Coherence Audits after evidence changes and after a
+  configurable 30-day fallback interval. Audits use all linked Article Cards
+  and atomically split mixed durable stories while preserving the dominant
+  story's Case ID.
 - Ingestion is not queued as a job in the MVP. After historical backfill, systemd starts a one-shot full-source pass every two hours that persists new articles to PostgreSQL and retries failed fetches up to five attempts.
 - `worker-ml` owns ML job creation. It polls PostgreSQL for articles missing
   `article_relevance`, enqueues idempotent `classify_article` jobs, and processes
@@ -88,6 +92,9 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - Case relations are symmetric `related` or `possible_duplicate` links.
 - One relevant article is enough to create a public case.
 - Articles, entities, and events can connect to multiple cases.
+- A Case Split preserves the dominant story on the original Case and creates
+  new Cases for other coherent stories; it does not merge duplicate Cases or
+  globally reject Article candidacy.
 - Articles can link to cases even when they do not create extracted events.
 - `case_entities` and `case_events` are direct materialized links for public pages, created from article-level resolution plus article-case context.
 - `Entity` is one global typed table for people, organizations, institutions, companies, political parties, informal groups, and unknown actors.

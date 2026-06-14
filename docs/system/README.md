@@ -13,6 +13,7 @@ automatic dossier-building pipeline:
 8. retrieve and resolve global events from Qdrant;
 9. materialize direct case-entity and case-event links;
 10. update public case and entity pages immediately from PostgreSQL.
+11. periodically audit Case coherence and atomically split mixed durable stories.
 
 One relevant article is enough to create a case, and one supporting article is
 enough to create an event. Source provenance must remain visible. Articles can

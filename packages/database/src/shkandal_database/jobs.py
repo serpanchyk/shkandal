@@ -212,6 +212,33 @@ class ArticleJobStore:
             requeue_failed=True,
         )
 
+    async def ensure_case_job(
+        self,
+        *,
+        job_type: str,
+        case_id: UUID,
+        payload: dict[str, Any] | None = None,
+        priority: int = 0,
+        run_after: datetime | None = None,
+        max_attempts: int = 3,
+        requeue_failed: bool = True,
+    ) -> EnqueueJobResult:
+        """Ensure a recurring Case job exists without requesting a new revision."""
+
+        return await self._enqueue_job(
+            job_type=job_type,
+            subject_column=Job.case_id,
+            subject_id=case_id,
+            values={"case_id": case_id},
+            payload=payload,
+            priority=priority,
+            run_after=run_after,
+            max_attempts=max_attempts,
+            increment_revision=False,
+            requeue_failed=requeue_failed,
+            requeue_succeeded=True,
+        )
+
     async def _enqueue_job(
         self,
         *,
@@ -225,6 +252,7 @@ class ArticleJobStore:
         max_attempts: int,
         increment_revision: bool,
         requeue_failed: bool,
+        requeue_succeeded: bool = False,
     ) -> EnqueueJobResult:
         async with async_session_scope(self._session_factory) as session:
             statement = (
@@ -281,6 +309,26 @@ class ArticleJobStore:
                     update(Job).where(Job.id == existing_job.id).values(**update_values)
                 )
                 return EnqueueJobResult(job_id=existing_job.id, state="requeued")
+            if existing_job.status == JOB_STATUS_SUCCEEDED and requeue_succeeded:
+                requeued_id = await session.scalar(
+                    update(Job)
+                    .where(Job.id == existing_job.id, Job.status == JOB_STATUS_SUCCEEDED)
+                    .values(
+                        status=JOB_STATUS_QUEUED,
+                        attempt_count=0,
+                        run_after=run_after,
+                        locked_at=None,
+                        locked_by=None,
+                        last_error=None,
+                        max_attempts=max_attempts,
+                        updated_at=datetime.now(UTC),
+                    )
+                    .returning(Job.id)
+                )
+                return EnqueueJobResult(
+                    job_id=requeued_id or existing_job.id,
+                    state="requeued" if requeued_id is not None else "existing",
+                )
             if existing_job.status != JOB_STATUS_FAILED:
                 return EnqueueJobResult(job_id=existing_job.id, state="existing")
             if not requeue_failed:

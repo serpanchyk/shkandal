@@ -37,4 +37,5 @@ router_settings:
     shkandal-entity-resolution: shkandal-lapatonia-primary
     shkandal-event-resolution: shkandal-lapatonia-primary
     shkandal-case-copy-update: shkandal-lapatonia-primary
+    shkandal-case-coherence-audit: shkandal-lapatonia-primary
     shkandal-repair: shkandal-lapatonia-primary

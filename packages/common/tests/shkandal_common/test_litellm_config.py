@@ -10,6 +10,7 @@ PUBLIC_ALIASES = {
     "shkandal-entity-resolution",
     "shkandal-event-resolution",
     "shkandal-case-copy-update",
+    "shkandal-case-coherence-audit",
     "shkandal-repair",
 }
 PRIMARY_MODEL = "shkandal-lapatonia-primary"

@@ -51,6 +51,17 @@ Cases likely describing the same durable accountability story and therefore
 candidates for eventual merge.
 _Avoid_: related cases, uncertain relationship
 
+**Case Coherence Audit**:
+A recurring evaluation of whether every linked Article materially contributes
+to a Case's one durable accountability story.
+_Avoid_: cluster validation, relevance review
+
+**Case Split**:
+An automatic correction that preserves the dominant durable story on the
+original Case and creates new Cases for other coherent stories. Articles may
+materially contribute to multiple resulting Cases.
+_Avoid_: exclusive partition, duplicate merge
+
 **Entity**:
 A global durable real-world actor directly mentioned in supporting articles.
 Aliases and true renames may identify the same Entity, while successor bodies
