@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from typing import Any
 from unittest.mock import AsyncMock, Mock
@@ -11,7 +12,12 @@ import httpx
 import openai
 import pytest
 from worker_ml.config import MlConfig
-from worker_ml.llm.contracts import ArticleCardOutput
+from worker_ml.llm.contracts import (
+    ArticleCardOutput,
+    CaseCoherenceAuditOutput,
+    EntityResolutionOutput,
+    EventResolutionOutput,
+)
 from worker_ml.llm.prompts import PromptRegistry
 from worker_ml.llm.runner import (
     LlmRateLimitError,
@@ -112,6 +118,147 @@ async def test_runner_persists_deterministically_normalized_output_as_repaired()
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("run_type", "raw_output", "expected_model", "expected_key", "expected_ref"),
+    [
+        (
+            "entity_resolution",
+            json.dumps(
+                [
+                    {
+                        "provisional_ref": "entity_a",
+                        "action": "create_new",
+                        "existing_entity_id": None,
+                        "new_canonical_name_uk": "Орган",
+                        "entity_type": "organization",
+                        "aliases": [],
+                        "description_uk": "Орган.",
+                        "confidence": 0.9,
+                        "case_assignments": [
+                            {"case_id": str(uuid4()), "relevance_reason_uk": "Причина"}
+                        ],
+                        "reason_uk": "Потрібно створити нову сутність.",
+                        "rejection_reason": None,
+                    }
+                ]
+            ),
+            EntityResolutionOutput,
+            "entities",
+            "entity_a",
+        ),
+        (
+            "event_resolution",
+            json.dumps(
+                [
+                    {
+                        "provisional_ref": "event_a",
+                        "action": "create_new",
+                        "existing_event_id": None,
+                        "new_title_uk": "Подія",
+                        "description_uk": "Опис.",
+                        "event_date": None,
+                        "event_date_precision": "unknown",
+                        "location_uk": None,
+                        "confidence": 0.9,
+                        "case_assignments": [
+                            {"case_id": str(uuid4()), "relevance_reason_uk": "Причина"}
+                        ],
+                        "reason_uk": "Потрібно створити нову подію.",
+                        "rejection_reason": None,
+                    }
+                ]
+            ),
+            EventResolutionOutput,
+            "events",
+            "event_a",
+        ),
+    ],
+)
+async def test_runner_wraps_top_level_resolution_arrays_before_validation(
+    run_type: str,
+    raw_output: str,
+    expected_model: type[Any],
+    expected_key: str,
+    expected_ref: str,
+) -> None:
+    run_id = uuid4()
+    run_store = Mock(spec=LlmRunStore)
+    run_store.create_run = AsyncMock(return_value=run_id)
+    run_store.finish_run = AsyncMock()
+    runner = LlmTaskRunner(
+        prompt_registry=PromptRegistry(),
+        run_store=run_store,
+        task_chains={run_type: FakeChain(raw_output)},
+    )
+
+    result = await runner.run_with_provenance(
+        run_type=run_type,
+        model_name=f"shkandal-{run_type.replace('_', '-')}",
+        variables={
+            "resolution_json": json.dumps(
+                {"items": [{"provisional": {"provisional_ref": expected_ref}}]}
+            ),
+            "schema_json": "{}",
+        },
+    )
+
+    assert isinstance(result.output, expected_model)
+    call = run_store.finish_run.await_args.kwargs
+    assert call["status"] == "repaired"
+    assert call["repaired_output"][expected_key][0]["provisional_ref"] == expected_ref
+    assert call["metadata"]["normalization_actions"] == [f"wrap {expected_key} array"]
+
+
+@pytest.mark.asyncio
+async def test_runner_fails_when_repaired_resolution_output_drops_decisions() -> None:
+    run_id = uuid4()
+    run_store = Mock(spec=LlmRunStore)
+    run_store.create_run = AsyncMock(return_value=run_id)
+    run_store.finish_run = AsyncMock()
+    repair_output = json.dumps(
+        {
+            "entities": [
+                {
+                    "provisional_ref": "entity_a",
+                    "action": "reject",
+                    "confidence": 0.4,
+                    "case_assignments": [],
+                    "reason_uk": "Не сутність.",
+                    "rejection_reason": "not_an_entity",
+                }
+            ]
+        }
+    )
+    runner = LlmTaskRunner(
+        prompt_registry=PromptRegistry(),
+        run_store=run_store,
+        task_chains={"entity_resolution": FakeChain("not json")},
+        repair_chain=FakeChain(repair_output),
+    )
+
+    with pytest.raises(ValueError, match="exactly cover provisional refs"):
+        await runner.run(
+            run_type="entity_resolution",
+            model_name="shkandal-entity-resolution",
+            variables={
+                "resolution_json": json.dumps(
+                    {
+                        "items": [
+                            {"provisional": {"provisional_ref": "entity_a"}},
+                            {"provisional": {"provisional_ref": "entity_b"}},
+                        ]
+                    }
+                ),
+                "schema_json": "{}",
+            },
+        )
+
+    call = run_store.finish_run.await_args.kwargs
+    assert call["status"] == "failed"
+    assert "exactly cover provisional refs" in call["error_message"]
+
+
+@pytest.mark.asyncio
 async def test_runner_repairs_invalid_output_once() -> None:
     repair_chain = FakeChain(
         '{"title_uk":"Виправлено","summary_uk":"Опис","is_case_candidate":false,'
@@ -150,6 +297,56 @@ async def test_runner_fails_after_invalid_repair() -> None:
             model_name="shkandal-article-card",
             variables={"article_json": "{}", "schema_json": "{}"},
         )
+
+
+@pytest.mark.asyncio
+async def test_runner_normalizes_case_audit_story_reasons_and_duplicate_article_ids() -> None:
+    run_id = uuid4()
+    run_store = Mock(spec=LlmRunStore)
+    run_store.create_run = AsyncMock(return_value=run_id)
+    run_store.finish_run = AsyncMock()
+    runner = LlmTaskRunner(
+        prompt_registry=PromptRegistry(),
+        run_store=run_store,
+        task_chains={
+            "case_coherence_audit": FakeChain(
+                json.dumps(
+                    {
+                        "reason_uk": "Статті описують одну історію.",
+                        "outcome": "split",
+                        "stories": [
+                            {
+                                "story_ref": "original",
+                                "title_uk": "Перша справа",
+                                "summary_uk": "Опис першої справи.",
+                                "article_ids": ["article-a", "article-a", "article-b"],
+                            },
+                            {
+                                "story_ref": "story_1",
+                                "title_uk": "Друга справа",
+                                "summary_uk": "Опис другої справи.",
+                                "article_ids": ["article-c"],
+                            },
+                        ],
+                    }
+                )
+            )
+        },
+    )
+
+    result = await runner.run_with_provenance(
+        run_type="case_coherence_audit",
+        model_name="shkandal-case-coherence-audit",
+        variables={"case_json": "{}", "schema_json": "{}"},
+    )
+
+    assert isinstance(result.output, CaseCoherenceAuditOutput)
+    assert result.output.stories[0].reason_uk == "Статті описують одну історію."
+    assert result.output.stories[0].article_ids == ["article-a", "article-b"]
+    call = run_store.finish_run.await_args.kwargs
+    assert call["status"] == "repaired"
+    assert call["repaired_output"]["stories"][0]["article_ids"] == ["article-a", "article-b"]
+    assert call["repaired_output"]["stories"][0]["reason_uk"] == "Статті описують одну історію."
 
 
 @pytest.mark.asyncio

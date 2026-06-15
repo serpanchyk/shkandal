@@ -129,9 +129,18 @@ export default async function CasePage({ params }: { params: Params }) {
           <p className="sectionCode">05 / evidence</p>
           <h2 id="articles-title">Усі матеріали справи</h2>
         </div>
-        <div className="articleList">
-          {dossier.articles.map((article) => <ArticleCard article={article} key={article.url} />)}
-        </div>
+        <details className="articleArchive">
+          <summary>
+            {formatCount(dossier.articles.length, [
+              "матеріал справи",
+              "матеріали справи",
+              "матеріалів справи",
+            ])}
+          </summary>
+          <div className="articleList">
+            {dossier.articles.map((article) => <ArticleCard article={article} key={article.url} />)}
+          </div>
+        </details>
       </section>
 
       <p className="disclaimer">{dossier.disclaimer_uk}</p>

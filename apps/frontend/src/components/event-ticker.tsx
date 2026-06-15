@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { type CSSProperties, useEffect, useState } from "react";
 
 import type { LatestEvent } from "@/lib/api";
 
@@ -22,6 +22,12 @@ function eventPosition(index: number, activeIndex: number, eventCount: number) {
 export function EventTicker({ events }: { events: LatestEvent[] }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [paused, setPaused] = useState(false);
+  const averageTitleLength = events.length
+    ? events.reduce((total, event) => total + event.title_uk.length, 0) / events.length
+    : 0;
+  const tickerStyle = {
+    "--event-title-average-length": `${averageTitleLength}ch`,
+  } as CSSProperties;
 
   useEffect(() => {
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -46,6 +52,7 @@ export function EventTicker({ events }: { events: LatestEvent[] }) {
       onFocus={() => setPaused(true)}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
+      style={tickerStyle}
     >
       <ul>
         {events.map((event, index) => {

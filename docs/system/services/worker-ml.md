@@ -35,6 +35,9 @@ Prompt-facing schemas omit enum constraints and place a concise evidence-based
 reason before categorical decisions. Runtime Pydantic contracts remain strict.
 Before initial validation and after the one-shot repair prompt, the runner
 applies conservative deterministic normalization that does not invent facts.
+Entity and event resolution also accept a top-level decision array, wrap it
+into the expected object shape, and still reject any output that does not
+cover every provisional ref exactly once.
 Normalized runs are stored as `repaired`, with normalized JSON and applied
 actions in `llm_runs`; raw provider output remains unchanged. Ambiguous output
 that requires inventing Case links, identities, titles, or facts still fails.

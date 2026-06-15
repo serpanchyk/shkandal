@@ -72,6 +72,10 @@ test("reader can inspect Case provenance and navigate to an Entity", async ({ pa
 
   await expect(page.getByRole("heading", { name: "Джерела справи" })).toBeVisible();
   await expect(page.getByTitle(/Українська правда/)).toBeVisible();
+  const articleArchive = page.locator(".articleArchive");
+  await expect(articleArchive.locator(".articleCard")).toBeHidden();
+  await articleArchive.getByText("1 матеріал справи").click();
+  await expect(articleArchive.locator(".articleCard")).toBeVisible();
   await page.getByText("1 джерело події").click();
   await expect(page.getByRole("heading", { name: "Джерельний матеріал для перевірки" })).toBeVisible();
 

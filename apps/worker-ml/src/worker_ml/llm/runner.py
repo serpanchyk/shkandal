@@ -183,7 +183,7 @@ class LlmTaskRunner:
             )
 
         raw_text = ""
-        raw_json: dict[str, Any] | None = None
+        raw_json: Any = None
         normalized: NormalizationResult | None = None
         request_duration_seconds: float | None = None
         repair_duration_seconds: float | None = None
@@ -192,13 +192,16 @@ class LlmTaskRunner:
             raw_text = str(await invoke_chain(self._chain_for(run_type), dict(variables)))
             request_duration_seconds = time.monotonic() - request_started_at
             await self._record_successful_request()
-            raw_json = parse_json_object(raw_text)
+            raw_json = parse_json_response(raw_text, allow_array=_allows_resolution_array(run_type))
             normalized = normalize_llm_output(
                 run_type=run_type,
                 output=raw_json,
                 variables=variables,
             )
             parsed = output_model.model_validate(normalized.output)
+            _validate_resolution_coverage(
+                run_type=run_type, output=normalized.output, variables=variables
+            )
         except (ValueError, ValidationError) as exc:
             try:
                 repair_started_at = time.monotonic()
@@ -310,7 +313,7 @@ class LlmTaskRunner:
         validation_error: str,
         invalid_output: str,
         variables: Mapping[str, Any],
-    ) -> tuple[dict[str, Any] | None, str | None]:
+    ) -> tuple[Any | None, str | None]:
         if self._repair_chain is None:
             return None, validation_error
 
@@ -326,13 +329,18 @@ class LlmTaskRunner:
                 )
             )
             await self._record_successful_request()
-            repaired_json = parse_json_object(repaired_text)
+            repaired_json = parse_json_response(
+                repaired_text, allow_array=_allows_resolution_array(run_type)
+            )
             normalized = normalize_llm_output(
                 run_type=run_type,
                 output=repaired_json,
                 variables=variables,
             )
             output_model.model_validate(normalized.output)
+            _validate_resolution_coverage(
+                run_type=run_type, output=normalized.output, variables=variables
+            )
             return repaired_json, None
         except (ValueError, ValidationError) as exc:
             return None, str(exc)
@@ -382,14 +390,90 @@ def model_aliases(settings: MlConfig) -> dict[str, str]:
 def parse_json_object(text: str) -> dict[str, Any]:
     """Parse an LLM response that must contain one JSON object."""
 
+    value = parse_json_response(text, allow_array=False)
+    if not isinstance(value, dict):
+        raise ValueError("LLM output must be a JSON object")
+    return value
+
+
+def parse_json_response(text: str, *, allow_array: bool) -> Any:
+    """Parse an LLM response as JSON, optionally allowing a top-level array."""
+
     stripped = text.strip()
     if stripped.startswith("```"):
         stripped = stripped.removeprefix("```json").removeprefix("```").strip()
         stripped = stripped.removesuffix("```").strip()
     value = json.loads(stripped)
-    if not isinstance(value, dict):
+    if not allow_array and not isinstance(value, dict):
         raise ValueError("LLM output must be a JSON object")
+    if allow_array and not isinstance(value, (dict, list)):
+        raise ValueError("LLM output must be a JSON object or array")
     return value
+
+
+def _allows_resolution_array(run_type: LlmRunType) -> bool:
+    return run_type in {"entity_resolution", "event_resolution"}
+
+
+def _validate_resolution_coverage(
+    *,
+    run_type: LlmRunType,
+    output: Mapping[str, Any],
+    variables: Mapping[str, Any],
+) -> None:
+    if run_type not in {"entity_resolution", "event_resolution"}:
+        return
+
+    decisions_key = "entities" if run_type == "entity_resolution" else "events"
+    expected_refs = _expected_resolution_refs(variables)
+    decisions = output.get(decisions_key)
+    actual_refs: list[str] = []
+    if isinstance(decisions, list):
+        for decision in decisions:
+            if isinstance(decision, dict):
+                ref = decision.get("provisional_ref")
+                if isinstance(ref, str):
+                    actual_refs.append(ref)
+
+    expected_set = set(expected_refs)
+    actual_set = set(actual_refs)
+    if actual_set == expected_set and len(actual_refs) == len(expected_refs):
+        return
+
+    missing = [ref for ref in expected_refs if ref not in actual_set]
+    unexpected = [ref for ref in actual_refs if ref not in expected_set]
+    details = []
+    if missing:
+        details.append(f"missing={missing}")
+    if unexpected:
+        details.append(f"unexpected={unexpected}")
+    if len(actual_refs) != len(expected_refs) and not details:
+        details.append(f"expected={len(expected_refs)} actual={len(actual_refs)}")
+    raise ValueError(
+        "resolution decisions must exactly cover provisional refs"
+        + (f" ({'; '.join(details)})" if details else "")
+    )
+
+
+def _expected_resolution_refs(variables: Mapping[str, Any]) -> list[str]:
+    value = variables.get("resolution_json")
+    if not isinstance(value, str):
+        return []
+    try:
+        payload = json.loads(value)
+    except json.JSONDecodeError:
+        return []
+    items = payload.get("items") if isinstance(payload, dict) else None
+    if not isinstance(items, list):
+        return []
+    refs: list[str] = []
+    for item in items:
+        provisional = item.get("provisional") if isinstance(item, dict) else None
+        ref = provisional.get("provisional_ref") if isinstance(provisional, dict) else None
+        if not isinstance(ref, str):
+            return []
+        refs.append(ref)
+    return refs
 
 
 def _timing_metadata(

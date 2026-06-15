@@ -62,7 +62,7 @@ class NormalizationResult:
 def normalize_llm_output(
     *,
     run_type: LlmRunType,
-    output: dict[str, Any],
+    output: dict[str, Any] | list[Any],
     variables: Mapping[str, Any],
 ) -> NormalizationResult:
     """Normalize only contract shape that does not require inventing facts."""
@@ -70,10 +70,21 @@ def normalize_llm_output(
     normalized = copy.deepcopy(output)
     actions: list[str] = []
     if run_type == "article_card":
+        if not isinstance(normalized, dict):
+            raise ValueError("article card output must be a JSON object")
         _normalize_article_card(normalized, actions)
+    elif run_type == "case_coherence_audit":
+        if not isinstance(normalized, dict):
+            raise ValueError("case coherence audit output must be a JSON object")
+        _normalize_case_coherence_audit(normalized, actions)
     elif run_type in {"entity_resolution", "event_resolution"}:
-        _normalize_resolution_refs(normalized, variables, run_type, actions)
         decisions_key = "entities" if run_type == "entity_resolution" else "events"
+        if isinstance(normalized, list):
+            normalized = {decisions_key: normalized}
+            actions.append(f"wrap {decisions_key} array")
+        if not isinstance(normalized, dict):
+            raise ValueError("resolution output must be a JSON object or array")
+        _normalize_resolution_refs(normalized, variables, run_type, actions)
         decisions = normalized.get(decisions_key)
         if isinstance(decisions, list):
             for index, decision in enumerate(decisions):
@@ -83,8 +94,13 @@ def normalize_llm_output(
                     _normalize_entity_decision(decision, actions, f"entities[{index}]")
                 else:
                     _normalize_event_decision(decision, actions, f"events[{index}]")
-    elif run_type == "case_copy_update" and normalized.get("title_action") == "keep":
-        _set(normalized, "replacement_title_uk", None, actions, "clear kept replacement title")
+    elif run_type == "case_copy_update":
+        if not isinstance(normalized, dict):
+            raise ValueError("case copy update output must be a JSON object")
+        if normalized.get("title_action") == "keep":
+            _set(normalized, "replacement_title_uk", None, actions, "clear kept replacement title")
+    elif not isinstance(normalized, dict):
+        raise ValueError("LLM output must be a JSON object")
     return NormalizationResult(output=normalized, actions=actions)
 
 
@@ -276,6 +292,41 @@ def _normalize_date(item: dict[str, Any], actions: list[str], path: str) -> None
         _set(item, "event_date", None, actions, f"{path}: clear invalid event date")
         precision = "unknown"
     _set(item, "event_date_precision", precision, actions, f"{path}: infer event date precision")
+
+
+def _normalize_case_coherence_audit(output: dict[str, Any], actions: list[str]) -> None:
+    reason_uk = output.get("reason_uk")
+    stories = output.get("stories")
+    if not isinstance(stories, list):
+        return
+    for index, story in enumerate(stories):
+        if not isinstance(story, dict):
+            continue
+        if not story.get("reason_uk") and isinstance(reason_uk, str) and reason_uk.strip():
+            _set(
+                story,
+                "reason_uk",
+                reason_uk,
+                actions,
+                f"stories[{index}]: inherit audit reason",
+            )
+        article_ids = story.get("article_ids")
+        if isinstance(article_ids, list):
+            deduped: list[Any] = []
+            seen: set[Any] = set()
+            for article_id in article_ids:
+                if article_id in seen:
+                    continue
+                seen.add(article_id)
+                deduped.append(article_id)
+            if deduped != article_ids:
+                _set(
+                    story,
+                    "article_ids",
+                    deduped,
+                    actions,
+                    f"stories[{index}]: dedupe article ids",
+                )
 
 
 def _convert_to_reject(
