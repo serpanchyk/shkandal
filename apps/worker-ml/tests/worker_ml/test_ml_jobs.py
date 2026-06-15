@@ -176,6 +176,37 @@ async def test_job_planner_enqueues_due_case_audits_without_revision_bumps() -> 
     )
 
 
+@pytest.mark.asyncio
+async def test_job_planner_requests_new_revisions_for_coherent_successful_audits() -> None:
+    case_ids = [uuid4(), uuid4()]
+    session = AsyncMock()
+    session.scalars = AsyncMock(return_value=SimpleNamespace(all=lambda: case_ids))
+    session_context = AsyncMock()
+    session_context.__aenter__.return_value = session
+    session_factory = Mock(return_value=session_context)
+    job_store = Mock(spec=ArticleJobStore)
+    job_store.enqueue_case_job = AsyncMock(
+        side_effect=[
+            SimpleNamespace(state="requeued"),
+            SimpleNamespace(state="requeued"),
+        ]
+    )
+
+    stats = await MlJobPlanner(
+        session_factory, job_store
+    ).enqueue_coherent_successful_case_audit_reruns(
+        limit=2,
+        max_attempts=3,
+    )
+
+    assert stats.scanned_articles == 2
+    assert stats.requeued_jobs == 2
+    assert all(
+        call.kwargs["job_type"] == AUDIT_CASE_COHERENCE_JOB
+        for call in job_store.enqueue_case_job.await_args_list
+    )
+
+
 def test_classifier_text_matches_training_format() -> None:
     result = build_classifier_text(
         title=" Заголовок ",

@@ -5,8 +5,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID
 
-from shkandal_database.jobs import ArticleJobStore
-from shkandal_database.models import Article, ArticleCard, ArticleRelevance, Case
+from shkandal_database.jobs import JOB_STATUS_SUCCEEDED, ArticleJobStore
+from shkandal_database.models import (
+    Article,
+    ArticleCard,
+    ArticleRelevance,
+    Case,
+    CaseCoherenceAudit,
+    Job,
+)
 from sqlalchemy import Select, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -180,6 +187,70 @@ class MlJobPlanner:
             requeued_jobs=requeued,
             existing_jobs=len(states) - inserted - requeued,
         )
+
+    async def enqueue_coherent_successful_case_audit_reruns(
+        self,
+        *,
+        limit: int | None,
+        max_attempts: int,
+    ) -> EnqueueStats:
+        """Request fresh audit revisions for latest coherent successful audits."""
+
+        async with self._session_factory() as session:
+            case_ids = list(
+                (
+                    await session.scalars(
+                        self._coherent_successful_case_audit_rerun_query(limit=limit)
+                    )
+                ).all()
+            )
+        states = [
+            await self._job_store.enqueue_case_job(
+                job_type=AUDIT_CASE_COHERENCE_JOB,
+                case_id=case_id,
+                payload={"case_id": str(case_id)},
+                max_attempts=max_attempts,
+            )
+            for case_id in case_ids
+        ]
+        inserted = sum(result.state == "inserted" for result in states)
+        requeued = sum(result.state == "requeued" for result in states)
+        return EnqueueStats(
+            scanned_articles=len(case_ids),
+            ensured_jobs=inserted + requeued,
+            inserted_jobs=inserted,
+            requeued_jobs=requeued,
+            existing_jobs=len(states) - inserted - requeued,
+        )
+
+    @staticmethod
+    def _coherent_successful_case_audit_rerun_query(
+        *,
+        limit: int | None,
+    ) -> Select[tuple[UUID]]:
+        latest_audit_id = (
+            select(CaseCoherenceAudit.id)
+            .where(CaseCoherenceAudit.case_id == Case.id)
+            .order_by(CaseCoherenceAudit.created_at.desc(), CaseCoherenceAudit.id.desc())
+            .limit(1)
+            .correlate(Case)
+            .scalar_subquery()
+        )
+        query = (
+            select(Case.id)
+            .join(
+                Job,
+                (Job.case_id == Case.id) & (Job.job_type == AUDIT_CASE_COHERENCE_JOB),
+            )
+            .join(CaseCoherenceAudit, CaseCoherenceAudit.id == latest_audit_id)
+            .where(
+                Case.status == "active",
+                Job.status == JOB_STATUS_SUCCEEDED,
+                CaseCoherenceAudit.outcome == "coherent",
+            )
+            .order_by(CaseCoherenceAudit.created_at.asc(), Case.created_at.asc())
+        )
+        return query.limit(limit) if limit is not None else query
 
     @staticmethod
     def _articles_missing_relevance_query(*, limit: int) -> Select[tuple[UUID]]:

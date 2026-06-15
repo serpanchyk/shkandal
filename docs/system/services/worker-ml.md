@@ -288,10 +288,17 @@ Coherence audits judge whether an Article belongs to the same durable story,
 not whether it adds novel or uniquely valuable information. They retain
 Articles whose main material or a substantive section directly covers the
 story, including its developments, participant reactions, and consequences.
+Shared courts, agencies, procedures, or broad topics do not define a story;
+every coherent Case must share one concrete factual nucleus. Institution-level
+umbrellas such as general VAKS activity must split into their distinct cases.
 They may detach links only with positive evidence that the Article belongs to
 no concrete durable story, such as an incidental mention, broad overview, or
 noise. An Article about another concrete durable story is assigned to a
 separate resulting Case instead of being detached.
+`worker_ml.enqueue_case_audits --rerun-coherent-successes` dry-runs a targeted
+selection of active Cases whose latest coherence audit is `coherent` and whose
+coherence job succeeded; `--apply` requests a fresh job revision for that
+selection.
 Public-interest audits permanently hide routine incidents, isolated headlines,
 and broad topic umbrellas while preserving their complete internal dossiers.
 Duplicate audits review explicit
