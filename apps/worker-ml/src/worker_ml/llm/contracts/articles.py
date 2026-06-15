@@ -17,7 +17,10 @@ from worker_ml.llm.contracts.types import (
 class ProvisionalEntity(StrictOutput):
     """Article-level entity candidate before global identity resolution."""
 
-    provisional_ref: str = Field(pattern=r"^entity_[a-z0-9_]+$")
+    provisional_ref: str = Field(
+        pattern=r"^entity_[a-z0-9_]+$",
+        description="Унікальне посилання на попередню сутність у межах картки статті.",
+    )
     name_uk: str = Field(
         min_length=1,
         description="Повна нормалізована українська назва сутності.",
@@ -37,7 +40,10 @@ class ProvisionalEntity(StrictOutput):
 class ProvisionalEvent(StrictOutput):
     """Article-level event candidate before global identity resolution."""
 
-    provisional_ref: str = Field(pattern=r"^event_[a-z0-9_]+$")
+    provisional_ref: str = Field(
+        pattern=r"^event_[a-z0-9_]+$",
+        description="Унікальне посилання на попередню подію у межах картки статті.",
+    )
     title_uk: str = Field(
         min_length=1,
         description="Конкретний заголовок події у формі учасник і дія.",

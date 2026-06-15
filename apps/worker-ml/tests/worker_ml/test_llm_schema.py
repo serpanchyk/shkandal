@@ -2,8 +2,24 @@
 
 from typing import Any
 
-from worker_ml.llm.contracts import ArticleCardOutput, CaseResolutionOutput, EntityResolutionOutput
+from worker_ml.llm.contracts import (
+    ArticleCardOutput,
+    CaseCoherenceAuditOutput,
+    CaseCopyUpdateOutput,
+    CaseResolutionOutput,
+    EntityResolutionOutput,
+    EventResolutionOutput,
+)
 from worker_ml.llm.schema import prompt_schema
+
+LLM_OUTPUT_MODELS = (
+    ArticleCardOutput,
+    CaseResolutionOutput,
+    EntityResolutionOutput,
+    EventResolutionOutput,
+    CaseCopyUpdateOutput,
+    CaseCoherenceAuditOutput,
+)
 
 
 def test_prompt_schema_contains_no_enum_or_const_constraints() -> None:
@@ -33,6 +49,33 @@ def test_case_resolution_schema_requires_outcome_and_reason_before_actions() -> 
     assert {"decision_reason_uk", "outcome"} <= set(schema["required"])
     assert properties.index("decision_reason_uk") < properties.index("outcome")
     assert properties.index("outcome") < properties.index("existing_case_links")
+
+
+def test_prompt_schemas_describe_every_property() -> None:
+    for model in LLM_OUTPUT_MODELS:
+        missing_descriptions = _properties_without_descriptions(prompt_schema(model))
+
+        assert not missing_descriptions, (
+            f"{model.__name__} has properties without descriptions: "
+            f"{', '.join(missing_descriptions)}"
+        )
+
+
+def _properties_without_descriptions(
+    value: Any,
+    path: str = "",
+) -> list[str]:
+    if not isinstance(value, dict):
+        return []
+
+    missing: list[str] = []
+    for name, property_schema in value.get("properties", {}).items():
+        property_path = f"{path}.{name}" if path else name
+        if not property_schema.get("description"):
+            missing.append(property_path)
+    for name, definition in value.get("$defs", {}).items():
+        missing.extend(_properties_without_descriptions(definition, name))
+    return missing
 
 
 def _contains_key(value: Any, key: str) -> bool:

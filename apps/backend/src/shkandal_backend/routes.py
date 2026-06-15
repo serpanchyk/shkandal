@@ -18,7 +18,7 @@ from shkandal_backend.schemas import (
 router = APIRouter(prefix="/api")
 
 
-def public_repository(request: Request) -> PublicRepository:
+async def public_repository(request: Request) -> PublicRepository:
     return cast(PublicRepository, request.app.state.public_repository)
 
 

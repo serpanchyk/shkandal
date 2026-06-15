@@ -5,6 +5,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, Mock
 
 import httpx
+from fastapi import HTTPException
 from shkandal_backend.app import create_app
 from shkandal_backend.config import BackendConfig
 from shkandal_backend.observability import SqlAlchemyPipelineMetricsRepository
@@ -50,7 +51,11 @@ async def test_metrics_exposes_runtime_http_and_pipeline_metrics() -> None:
 
 
 async def test_metrics_uses_route_templates_instead_of_raw_paths() -> None:
-    app = create_app(BackendConfig(service_name="backend-test"))
+    repository = MagicMock()
+    repository.case_page = AsyncMock(
+        side_effect=HTTPException(status_code=500, detail="repository failure")
+    )
+    app = create_app(BackendConfig(service_name="backend-test"), repository=repository)
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
         base_url="http://test",
