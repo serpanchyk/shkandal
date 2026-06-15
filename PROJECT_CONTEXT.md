@@ -56,9 +56,9 @@ review and correction tooling are later quality layers, not blocking MVP stages.
   `(job_type, case_id)`.
 - Active Cases enter an automatic ordered Case Audit Pipeline after evidence
   changes and after a configurable 30-day fallback interval. Coherence audits
-  split mixed stories or detach unsupported evidence, public-interest audits
-  permanently hide unsuitable dossiers, and duplicate audits resolve internal
-  candidate pairs.
+  preserve relevant repetition, split mixed stories, or detach evidence that
+  belongs to no concrete story. Public-interest audits permanently hide
+  unsuitable dossiers, and duplicate audits resolve internal candidate pairs.
 - Ingestion is not queued as a job in the MVP. After historical backfill, systemd starts a one-shot full-source pass every two hours that persists new articles to PostgreSQL and retries failed fetches up to five attempts.
 - `worker-ml` owns ML job creation. It polls PostgreSQL for articles missing
   `article_relevance`, enqueues idempotent `classify_article` jobs, and processes
@@ -109,8 +109,8 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - Case resolution can explicitly reject a case-candidate article without
   creating domain records; the decision remains auditable through its LLM run.
 - A Case Split preserves the dominant story on the original Case and creates
-  new Cases for other coherent stories. A coherence audit may detach unsupported
-  Article links.
+  new Cases for other coherent stories. A coherence audit preserves relevant
+  repetition and may detach Article links that belong to no concrete story.
 - Hidden Cases are terminal and retain their complete internal dossier.
 - Duplicate merges preserve the Case with the most evidence, redirect absorbed
   slugs, and resolve candidates from explicit relations or substantial shared

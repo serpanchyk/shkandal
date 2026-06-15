@@ -64,6 +64,60 @@ def test_case_coherence_audit_rejects_split_without_original_story() -> None:
         )
 
 
+def test_case_coherence_audit_rejects_assigned_detached_article() -> None:
+    with pytest.raises(ValueError, match="cannot both assign and detach"):
+        CaseCoherenceAuditOutput.model_validate(
+            {
+                "outcome": "coherent",
+                "reason_uk": "Одна справа.",
+                "stories": [
+                    {
+                        "story_ref": "original",
+                        "title_uk": "Справа",
+                        "summary_uk": "Опис.",
+                        "article_ids": ["article-a"],
+                        "reason_uk": "Стаття належить до історії.",
+                    }
+                ],
+                "detached_articles": [
+                    {
+                        "article_id": "article-a",
+                        "reason_uk": "Стаття не належить до жодної історії.",
+                    }
+                ],
+            }
+        )
+
+
+def test_case_coherence_audit_rejects_duplicate_detached_article() -> None:
+    with pytest.raises(ValueError, match="detached article ids must be unique"):
+        CaseCoherenceAuditOutput.model_validate(
+            {
+                "outcome": "coherent",
+                "reason_uk": "Одна справа.",
+                "stories": [
+                    {
+                        "story_ref": "original",
+                        "title_uk": "Справа",
+                        "summary_uk": "Опис.",
+                        "article_ids": ["article-a"],
+                        "reason_uk": "Стаття належить до історії.",
+                    }
+                ],
+                "detached_articles": [
+                    {
+                        "article_id": "article-b",
+                        "reason_uk": "Стаття описує іншу історію.",
+                    },
+                    {
+                        "article_id": "article-b",
+                        "reason_uk": "Стаття описує іншу історію.",
+                    },
+                ],
+            }
+        )
+
+
 def test_article_card_contract_accepts_representative_json() -> None:
     output = ArticleCardOutput.model_validate(
         {

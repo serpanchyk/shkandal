@@ -202,7 +202,7 @@ class CaseAuditStory(StrictOutput):
 
 
 class CaseAuditDetachedArticle(StrictOutput):
-    """An Article that materially supports none of the audited Case stories."""
+    """An Article that belongs to none of the audited Case stories."""
 
     article_id: str = Field(description="Ідентифікатор статті для від'єднання.")
     reason_uk: str = Field(min_length=1, description="Фактична підстава від'єднання.")
@@ -224,7 +224,7 @@ class CaseCoherenceAuditOutput(StrictOutput):
     )
     detached_articles: list[CaseAuditDetachedArticle] = Field(
         default_factory=list,
-        description="Статті, що матеріально не підтримують жодну визначену історію.",
+        description="Статті, що не належать до жодної визначеної історії.",
     )
 
     @model_validator(mode="after")
@@ -247,6 +247,12 @@ class CaseCoherenceAuditOutput(StrictOutput):
         for story in self.stories:
             if len(story.article_ids) != len(set(story.article_ids)):
                 raise ValueError("story article ids must be unique")
+        detached_ids = [article.article_id for article in self.detached_articles]
+        if len(detached_ids) != len(set(detached_ids)):
+            raise ValueError("detached article ids must be unique")
+        assigned_ids = {article_id for story in self.stories for article_id in story.article_ids}
+        if assigned_ids & set(detached_ids):
+            raise ValueError("audit cannot both assign and detach an article")
         return self
 
 

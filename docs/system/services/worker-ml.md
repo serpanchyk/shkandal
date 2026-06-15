@@ -284,10 +284,17 @@ Cases whose evidence changed or whose last coherence audit is older than the
 configured 30-day fallback. Existing Cases therefore drain through a bounded
 automatic backfill.
 
-Coherence audits may detach unsupported Article links rather than forcing every
-Article into a resulting Case. Public-interest audits permanently hide routine
-incidents, isolated headlines, and broad topic umbrellas while preserving their
-complete internal dossiers. Duplicate audits review explicit
+Coherence audits judge whether an Article belongs to the same durable story,
+not whether it adds novel or uniquely valuable information. They retain
+Articles whose main material or a substantive section directly covers the
+story, including its developments, participant reactions, and consequences.
+They may detach links only with positive evidence that the Article belongs to
+no concrete durable story, such as an incidental mention, broad overview, or
+noise. An Article about another concrete durable story is assigned to a
+separate resulting Case instead of being detached.
+Public-interest audits permanently hide routine incidents, isolated headlines,
+and broad topic umbrellas while preserving their complete internal dossiers.
+Duplicate audits review explicit
 `possible_duplicate` relations and pairs sharing at least two Articles that
 cover at least half of the smaller Case. A merge preserves the Case with the
 most Articles, redirects absorbed slugs, and regenerates the surviving dossier.

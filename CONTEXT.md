@@ -53,9 +53,9 @@ candidates for eventual merge.
 _Avoid_: related cases, uncertain relationship
 
 **Case Coherence Audit**:
-A recurring evaluation of whether every linked Article materially contributes
-to a Case's one durable public-interest story. It may split mixed stories or
-detach unsupported Article links.
+A recurring evaluation of whether every linked Article belongs to a Case's one
+durable public-interest story. It preserves relevant repetition and may split
+mixed stories or detach links that belong to no concrete durable story.
 _Avoid_: cluster validation, relevance review
 
 **Case Public-Interest Audit**:
