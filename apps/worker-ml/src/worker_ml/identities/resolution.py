@@ -58,8 +58,6 @@ from worker_ml.llm.runner import LlmTaskRunner
 from worker_ml.llm.schema import prompt_schema_json
 from worker_ml.retrieval.vector_index import VectorIndexService
 
-MAX_IDENTITY_CANDIDATES = 8
-
 
 class IdentityMutationBusyError(RuntimeError):
     """Another worker currently owns an identity namespace mutation."""
@@ -75,11 +73,13 @@ class ArticleEntityResolutionJobHandler:
         vector_index: VectorIndexService,
         *,
         model_name: str,
+        candidate_limit: int,
     ) -> None:
         self._session_factory = session_factory
         self._runner = runner
         self._vector_index = vector_index
         self._model_name = model_name
+        self._candidate_limit = candidate_limit
 
     async def handle(self, job: ClaimedJob) -> EntityResolutionOutput | None:
         if job.article_id is None:
@@ -108,6 +108,8 @@ class ArticleEntityResolutionJobHandler:
                     "article_id": str(job.article_id),
                     "job_id": str(job.id),
                     "retrieval_duration_seconds": round(retrieval_duration_seconds, 6),
+                    "retrieved_candidate_count": sum(map(len, candidates)),
+                    "retrieved_candidate_counts": list(map(len, candidates)),
                 },
             )
             output = cast(EntityResolutionOutput, result.output)
@@ -138,7 +140,7 @@ class ArticleEntityResolutionJobHandler:
     ) -> list[list[dict[str, Any]]]:
         result_groups = await self._vector_index.search_entities_batch(
             [entity_query(item) for item in provisional],
-            limit=MAX_IDENTITY_CANDIDATES,
+            limit=self._candidate_limit,
         )
         candidate_ids = {result.id for group in result_groups for result in group}
         rows = list(
@@ -169,11 +171,13 @@ class ArticleEventResolutionJobHandler:
         vector_index: VectorIndexService,
         *,
         model_name: str,
+        candidate_limit: int,
     ) -> None:
         self._session_factory = session_factory
         self._runner = runner
         self._vector_index = vector_index
         self._model_name = model_name
+        self._candidate_limit = candidate_limit
 
     async def handle(self, job: ClaimedJob) -> EventResolutionOutput | None:
         if job.article_id is None:
@@ -202,6 +206,8 @@ class ArticleEventResolutionJobHandler:
                     "article_id": str(job.article_id),
                     "job_id": str(job.id),
                     "retrieval_duration_seconds": round(retrieval_duration_seconds, 6),
+                    "retrieved_candidate_count": sum(map(len, candidates)),
+                    "retrieved_candidate_counts": list(map(len, candidates)),
                 },
             )
             output = cast(EventResolutionOutput, result.output)
@@ -237,7 +243,7 @@ class ArticleEventResolutionJobHandler:
     ) -> list[list[dict[str, Any]]]:
         result_groups = await self._vector_index.search_events_batch(
             [event_query(item) for item in provisional],
-            limit=MAX_IDENTITY_CANDIDATES,
+            limit=self._candidate_limit,
         )
         candidate_ids = {result.id for group in result_groups for result in group}
         rows = list((await session.scalars(select(Event).where(Event.id.in_(candidate_ids)))).all())

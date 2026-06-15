@@ -15,3 +15,6 @@ relevance_model_dir: artifacts/models/relevance/tfidf_logistic_noise_assigned
 relevance_threshold: 0.5
 embedding_model_dir: artifacts/models/embeddings/multilingual_e5_small/model
 embedding_vector_size: 384
+case_resolution_candidate_limit: 12
+entity_resolution_candidate_limit: 8
+event_resolution_candidate_limit: 8

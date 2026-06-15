@@ -141,6 +141,7 @@ async def test_handler_stops_after_explicit_case_rejection() -> None:
         runner,
         vector_index,
         model_name="shkandal-case-resolution",
+        candidate_limit=12,
     )
     handler._load_candidates = AsyncMock(return_value=[])  # type: ignore[method-assign]
     handler._persist_resolution = AsyncMock()  # type: ignore[method-assign]
@@ -162,6 +163,31 @@ async def test_handler_stops_after_explicit_case_rejection() -> None:
     session.commit.assert_not_awaited()
     job_store.enqueue_case_job.assert_not_awaited()
     job_store.enqueue_article_job.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_case_candidate_limit_is_forwarded_to_vector_search() -> None:
+    vector_index = Mock(spec=VectorIndexService)
+    vector_index.search_cases = AsyncMock(return_value=[])
+    handler = ArticleCaseResolutionJobHandler(
+        Mock(),
+        Mock(),
+        Mock(),
+        vector_index,
+        model_name="shkandal-case-resolution",
+        candidate_limit=5,
+    )
+    card = ArticleCard(
+        article_id=uuid4(),
+        title_uk="Заголовок",
+        summary_uk="Короткий опис.",
+        is_case_candidate=True,
+        card_json={},
+    )
+
+    assert await handler._load_candidates(Mock(), card) == []
+
+    vector_index.search_cases.assert_awaited_once_with("Заголовок\nКороткий опис.", limit=5)
 
 
 def test_case_payload_is_rebuildable_from_postgres_case() -> None:

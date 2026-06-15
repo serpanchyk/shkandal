@@ -30,8 +30,6 @@ from worker_ml.runtime.planning import (
     UPDATE_CASE_COPY_JOB,
 )
 
-MAX_CASE_CANDIDATES = 12
-
 
 class ArticleCaseResolutionJobHandler:
     """Resolve one case-candidate article into durable Cases."""
@@ -44,12 +42,14 @@ class ArticleCaseResolutionJobHandler:
         vector_index: VectorIndexService,
         *,
         model_name: str,
+        candidate_limit: int,
     ) -> None:
         self._session_factory = session_factory
         self._job_store = job_store
         self._runner = runner
         self._vector_index = vector_index
         self._model_name = model_name
+        self._candidate_limit = candidate_limit
 
     async def handle(self, job: ClaimedJob) -> CaseResolutionOutput | None:
         """Resolve and persist article-case identity under the global Case lock."""
@@ -98,6 +98,7 @@ class ArticleCaseResolutionJobHandler:
                     "article_id": str(job.article_id),
                     "job_id": str(job.id),
                     "retrieval_duration_seconds": round(retrieval_duration_seconds, 6),
+                    "retrieved_candidate_count": len(candidates),
                 },
             )
             output = cast(CaseResolutionOutput, result.output)
@@ -129,7 +130,7 @@ class ArticleCaseResolutionJobHandler:
         self, session: AsyncSession, card: ArticleCard
     ) -> list[dict[str, Any]]:
         results = await self._vector_index.search_cases(
-            _article_card_query(card), limit=MAX_CASE_CANDIDATES
+            _article_card_query(card), limit=self._candidate_limit
         )
         candidate_ids = [result.id for result in results]
         if not candidate_ids:

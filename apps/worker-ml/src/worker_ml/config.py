@@ -2,6 +2,7 @@
 
 from datetime import timedelta
 
+from pydantic import Field
 from shkandal_common.config import BaseServiceConfig
 
 
@@ -17,6 +18,9 @@ class MlConfig(BaseServiceConfig):
     relevance_threshold: float = 0.5
     embedding_model_dir: str = "artifacts/models/embeddings/multilingual_e5_small/model"
     embedding_vector_size: int = 384
+    case_resolution_candidate_limit: int = Field(default=12, gt=0)
+    entity_resolution_candidate_limit: int = Field(default=8, gt=0)
+    event_resolution_candidate_limit: int = Field(default=8, gt=0)
     postgres_database_url: str = (
         "postgresql://shkandal:shkandal_dev_password@postgres:5432/shkandal"
     )

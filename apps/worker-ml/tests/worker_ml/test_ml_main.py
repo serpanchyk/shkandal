@@ -994,6 +994,27 @@ def test_embedding_config_defaults_to_e5_small_artifact() -> None:
     assert config.embedding_vector_size == 384
 
 
+def test_resolution_candidate_limit_defaults() -> None:
+    config = MlConfig()
+
+    assert config.case_resolution_candidate_limit == 12
+    assert config.entity_resolution_candidate_limit == 8
+    assert config.event_resolution_candidate_limit == 8
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    [
+        "case_resolution_candidate_limit",
+        "entity_resolution_candidate_limit",
+        "event_resolution_candidate_limit",
+    ],
+)
+def test_resolution_candidate_limits_must_be_positive(field_name: str) -> None:
+    with pytest.raises(ValueError):
+        MlConfig.model_validate({field_name: 0})
+
+
 def test_llm_config_defaults_to_litellm_proxy_aliases() -> None:
     fields = MlConfig.model_fields
 

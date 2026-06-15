@@ -1,3 +1,4 @@
+from unittest.mock import AsyncMock, MagicMock, Mock
 from uuid import uuid4
 
 import pytest
@@ -13,6 +14,10 @@ from worker_ml.identities.decisions import (
     with_provisional_refs,
 )
 from worker_ml.identities.payloads import entity_vector_payload, event_vector_payload
+from worker_ml.identities.resolution import (
+    ArticleEntityResolutionJobHandler,
+    ArticleEventResolutionJobHandler,
+)
 from worker_ml.llm.contracts import (
     EntityCaseAssignment,
     EntityResolutionDecision,
@@ -21,6 +26,7 @@ from worker_ml.llm.contracts import (
     EventResolutionDecision,
     EventResolutionOutput,
 )
+from worker_ml.retrieval.vector_index import VectorIndexService
 
 
 def test_rollout_refs_are_deterministic_and_preserve_existing_refs() -> None:
@@ -30,6 +36,47 @@ def test_rollout_refs_are_deterministic_and_preserve_existing_refs() -> None:
         {"provisional_ref": "entity_1", "name_uk": "A"},
         {"provisional_ref": "entity_b", "name_uk": "B"},
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("handler_type", "search_method", "provisional"),
+    [
+        (
+            ArticleEntityResolutionJobHandler,
+            "search_entities_batch",
+            [{"provisional_ref": "entity_1", "canonical_name_uk": "Особа"}],
+        ),
+        (
+            ArticleEventResolutionJobHandler,
+            "search_events_batch",
+            [{"provisional_ref": "event_1", "title_uk": "Подія"}],
+        ),
+    ],
+)
+async def test_identity_candidate_limit_is_forwarded_to_vector_search(
+    handler_type: type[ArticleEntityResolutionJobHandler] | type[ArticleEventResolutionJobHandler],
+    search_method: str,
+    provisional: list[dict[str, str]],
+) -> None:
+    vector_index = Mock(spec=VectorIndexService)
+    search = AsyncMock(return_value=[[]])
+    setattr(vector_index, search_method, search)
+    session = Mock()
+    session.scalars = AsyncMock(return_value=MagicMock(all=lambda: []))
+    handler = handler_type(
+        Mock(),
+        Mock(),
+        vector_index,
+        model_name="resolution-model",
+        candidate_limit=6,
+    )
+
+    assert await handler._load_candidates(session, provisional) == [[]]
+
+    search.assert_awaited_once()
+    assert search.await_args is not None
+    assert search.await_args.kwargs["limit"] == 6
 
 
 def test_resolution_must_cover_every_provisional_ref() -> None:

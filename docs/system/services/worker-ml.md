@@ -124,6 +124,13 @@ Each stage retrieves candidates independently for every provisional item, then
 resolves the article batch in one LLM call with all linked Case context.
 Every provisional item receives an explicit link, create, or reject decision,
 and every accepted identity is assigned to at least one linked Case.
+Case resolution retrieves up to `case_resolution_candidate_limit` Case
+candidates per article. Entity and Event resolution retrieve up to
+`entity_resolution_candidate_limit` and `event_resolution_candidate_limit`
+candidates per provisional item. The tracked `config.yaml` defaults preserve
+the current limits of 12 Cases, 8 Entities, and 8 Events. LLM run metadata
+records the actual candidate counts returned after vector retrieval and
+PostgreSQL filtering.
 
 Entity and Event identity namespaces use separate PostgreSQL advisory locks.
 Existing identities are conservatively enriched, Event anchor conflicts reject

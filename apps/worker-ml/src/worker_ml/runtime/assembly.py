@@ -82,18 +82,21 @@ def create_handlers(
             runner,
             vector_index,
             model_name=settings.llm_case_resolution_model,
+            candidate_limit=settings.case_resolution_candidate_limit,
         ),
         RESOLVE_ARTICLE_ENTITIES_JOB: ArticleEntityResolutionJobHandler(
             session_factory,
             runner,
             vector_index,
             model_name=settings.llm_entity_resolution_model,
+            candidate_limit=settings.entity_resolution_candidate_limit,
         ),
         RESOLVE_ARTICLE_EVENTS_JOB: ArticleEventResolutionJobHandler(
             session_factory,
             runner,
             vector_index,
             model_name=settings.llm_event_resolution_model,
+            candidate_limit=settings.event_resolution_candidate_limit,
         ),
         UPDATE_CASE_COPY_JOB: CaseCopyUpdateJobHandler(
             session_factory,
