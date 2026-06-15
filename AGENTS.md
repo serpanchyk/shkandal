@@ -82,6 +82,7 @@ Never:
 * weaken typing, linting, tests, or validation to make checks pass
 * do things that could affect the data in the db, without questioning
 * silently change public content language rules
+* create tests on asserting whether prompt have specific words.
 
 Content/product rules:
 
