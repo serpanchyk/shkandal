@@ -14,6 +14,19 @@ def test_prompt_registry_loads_all_registered_prompts() -> None:
         assert set(definition.input_variables) == set(prompt.input_variables)
 
 
+def test_article_card_prompt_rejects_routine_crime_without_narrowing_public_tracks() -> None:
+    text = PromptRegistry().load_text("article_card")
+
+    assert "рутинна кримінальна та інцидентна хроніка не є справами Shkandal" in text
+    assert "Процесуальна дія на кшталт підозри" in text
+    assert "`main_event_title_uk = null`, `events = []`, `entities = []`" in text
+    assert "формальний етап вступу до ЄС" in text
+    assert "Ukraine Facility" in text
+    assert "Неназваних загальних учасників можна згадувати в описі події" in text
+    assert "Не використовуй самі по собі загальні процедурні" in text
+    assert "`У Києві водій вкусив поліцейського` — не справа" in text
+
+
 def test_case_coherence_audit_prompt_requires_story_reasons() -> None:
     text = PromptRegistry().load_text("case_coherence_audit")
 
