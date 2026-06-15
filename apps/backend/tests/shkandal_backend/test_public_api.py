@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from fastapi.testclient import TestClient
+import httpx
 from shkandal_backend.app import create_app
 from shkandal_backend.config import BackendConfig
 from shkandal_backend.schemas import (
@@ -119,43 +119,54 @@ class FakePublicRepository:
         ]
 
 
-def _client() -> tuple[TestClient, FakePublicRepository]:
+def _client() -> tuple[httpx.AsyncClient, FakePublicRepository]:
     repository = FakePublicRepository()
     app = create_app(BackendConfig(service_name="backend-test"), repository)
-    return TestClient(app), repository
+    return (
+        httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://test",
+        ),
+        repository,
+    )
 
 
-def test_feed_defaults_to_trending_and_accepts_search_paging() -> None:
+async def test_feed_defaults_to_trending_and_accepts_search_paging() -> None:
     client, repository = _client()
 
-    response = client.get("/api/cases?sort=popular&query=справа&page=2")
+    async with client:
+        response = await client.get("/api/cases?sort=popular&query=справа&page=2")
 
     assert response.status_code == 200
     assert repository.last_feed_call == ("popular", "справа", 2)
     assert response.json()["items"][0]["slug"] == "case-a"
 
 
-def test_public_pages_and_view_counter_return_contracts() -> None:
+async def test_public_pages_and_view_counter_return_contracts() -> None:
     client, _ = _client()
 
-    assert client.get("/api/events/latest").json()[0]["title_uk"] == "Нова подія"
-    assert client.get("/api/cases/case-a").json()["sources"][0]["logo_path"].endswith(".png")
-    assert client.get("/api/entities/person-a").json()["canonical_name_uk"] == "Особа"
-    assert client.post("/api/cases/case-a/views").json() == {"view_count": 6}
-    assert client.get("/api/sitemap").json()[0]["path"] == "/cases/case-a"
+    async with client:
+        assert (await client.get("/api/events/latest")).json()[0]["title_uk"] == "Нова подія"
+        case_page = (await client.get("/api/cases/case-a")).json()
+        assert case_page["sources"][0]["logo_path"].endswith(".png")
+        assert (await client.get("/api/entities/person-a")).json()["canonical_name_uk"] == "Особа"
+        assert (await client.post("/api/cases/case-a/views")).json() == {"view_count": 6}
+        assert (await client.get("/api/sitemap")).json()[0]["path"] == "/cases/case-a"
 
 
-def test_missing_public_pages_return_404() -> None:
+async def test_missing_public_pages_return_404() -> None:
     client, _ = _client()
 
-    assert client.get("/api/cases/missing").status_code == 404
-    assert client.get("/api/entities/missing").status_code == 404
-    assert client.post("/api/cases/missing/views").status_code == 404
+    async with client:
+        assert (await client.get("/api/cases/missing")).status_code == 404
+        assert (await client.get("/api/entities/missing")).status_code == 404
+        assert (await client.post("/api/cases/missing/views")).status_code == 404
 
 
-def test_feed_validates_query_page_and_sort() -> None:
+async def test_feed_validates_query_page_and_sort() -> None:
     client, _ = _client()
 
-    assert client.get("/api/cases?query=x").status_code == 422
-    assert client.get("/api/cases?page=0").status_code == 422
-    assert client.get("/api/cases?sort=unknown").status_code == 422
+    async with client:
+        assert (await client.get("/api/cases?query=x")).status_code == 422
+        assert (await client.get("/api/cases?page=0")).status_code == 422
+        assert (await client.get("/api/cases?sort=unknown")).status_code == 422

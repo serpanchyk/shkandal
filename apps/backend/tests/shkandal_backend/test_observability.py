@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, Mock
 
-from fastapi.testclient import TestClient
+import httpx
 from shkandal_backend.app import create_app
 from shkandal_backend.config import BackendConfig
 from shkandal_backend.observability import SqlAlchemyPipelineMetricsRepository
@@ -29,15 +29,17 @@ def _mock_session_factory(results: list[list[tuple[Any, ...]]]) -> Mock:
     return Mock(return_value=context)
 
 
-def test_metrics_exposes_runtime_http_and_pipeline_metrics() -> None:
+async def test_metrics_exposes_runtime_http_and_pipeline_metrics() -> None:
     app = create_app(
         BackendConfig(service_name="backend-test"),
         pipeline_metrics_repository=StubPipelineMetricsRepository(),
     )
-    client = TestClient(app)
-
-    assert client.get("/healthz").status_code == 200
-    metrics = client.get("/metrics").text
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        assert (await client.get("/healthz")).status_code == 200
+        metrics = (await client.get("/metrics")).text
 
     assert "process_cpu_seconds_total" in metrics
     assert (
@@ -47,14 +49,14 @@ def test_metrics_exposes_runtime_http_and_pipeline_metrics() -> None:
     assert 'shkandal_jobs{job_type="classify_article",status="queued"} 2' in metrics
 
 
-def test_metrics_uses_route_templates_instead_of_raw_paths() -> None:
-    client = TestClient(
-        create_app(BackendConfig(service_name="backend-test")),
-        raise_server_exceptions=False,
-    )
-
-    assert client.get("/api/cases/raw-case-id").status_code == 500
-    metrics = client.get("/metrics").text
+async def test_metrics_uses_route_templates_instead_of_raw_paths() -> None:
+    app = create_app(BackendConfig(service_name="backend-test"))
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://test",
+    ) as client:
+        assert (await client.get("/api/cases/raw-case-id")).status_code == 500
+        metrics = (await client.get("/metrics")).text
 
     assert 'route="/api/cases/{slug}"' in metrics
     assert "raw-case-id" not in metrics
