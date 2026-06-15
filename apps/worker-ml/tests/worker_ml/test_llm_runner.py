@@ -17,6 +17,7 @@ from worker_ml.llm.contracts import (
     CaseCoherenceAuditOutput,
     EntityResolutionOutput,
     EventResolutionOutput,
+    LlmRunType,
 )
 from worker_ml.llm.prompts import PromptRegistry
 from worker_ml.llm.runner import (
@@ -28,6 +29,7 @@ from worker_ml.llm.runner import (
     parse_json_object,
 )
 from worker_ml.llm.runs import LlmRunStore
+from worker_ml.llm.tasks import LLM_TASKS
 
 
 @pytest.mark.asyncio
@@ -175,7 +177,7 @@ async def test_runner_persists_deterministically_normalized_output_as_repaired()
     ],
 )
 async def test_runner_wraps_top_level_resolution_arrays_before_validation(
-    run_type: str,
+    run_type: LlmRunType,
     raw_output: str,
     expected_model: type[Any],
     expected_key: str,
@@ -501,3 +503,9 @@ class ApiErrorChain:
             request=httpx.Request("POST", "https://provider.example/v1/chat/completions"),
         )
         raise openai.APIStatusError("provider error", response=response, body=None)
+
+
+def test_task_registry_declares_contract_and_response_shape() -> None:
+    assert LLM_TASKS["article_card"].output_model is ArticleCardOutput
+    assert LLM_TASKS["entity_resolution"].allow_top_level_array is True
+    assert LLM_TASKS["case_resolution"].allow_top_level_array is False

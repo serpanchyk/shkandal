@@ -23,7 +23,7 @@ from shkandal_vector_store.schemas import (
     VectorSearchResult,
 )
 
-from worker_ml.embeddings import E5Embedder
+from worker_ml.retrieval.embeddings import E5Embedder
 
 
 def create_vector_index_service(

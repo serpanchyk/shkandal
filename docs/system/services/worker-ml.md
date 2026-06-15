@@ -2,6 +2,26 @@
 
 The ML worker owns the semantic processing pipeline after article extraction.
 
+## Module Map
+
+The worker package is organized by the processing concepts it owns:
+
+- `articles`: Article Relevance classification and Article Card creation;
+- `cases`: Case resolution, reader-facing copy, Case Coherence Audits, and
+  serialized Case Publication;
+- `identities`: Entity/Event resolution, source-grounded decision rules, and
+  rebuildable identity vector payloads;
+- `retrieval`: embedding and Qdrant index integration;
+- `runtime`: durable work planning, bounded/fair execution, application modes,
+  and production dependency assembly;
+- `llm`: prompt contracts, normalization, provenance, and the structured-task
+  registry.
+
+Case Publication is the single module responsible for mutation namespace locks,
+materialized `case_entities`/`case_events`, public counts, and rebuildable Case
+vector payloads. Resolution and audit modules do not import each other's private
+implementation details.
+
 Planned responsibilities:
 
 - poll PostgreSQL for articles missing ML-derived state and enqueue idempotent

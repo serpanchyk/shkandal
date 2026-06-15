@@ -6,19 +6,21 @@ from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import pytest
-import worker_ml.main as entrypoint
+import worker_ml.main as cli_entrypoint
+import worker_ml.runtime.application as entrypoint
+import worker_ml.runtime.execution as execution
 from shkandal_database.jobs import ArticleJobStore, JobQueueSummary
 from shkandal_database.llm_cooldowns import LlmCooldownDecision, LlmCooldownStore
-from worker_ml.article_cards import ArticleCardJobHandler
-from worker_ml.classifier import ClassificationJobHandler, RelevanceModel
+from worker_ml.articles.cards import ArticleCardJobHandler
+from worker_ml.articles.relevance import ClassificationJobHandler, RelevanceModel
 from worker_ml.config import MlConfig
-from worker_ml.jobs import EnqueueStats, MlJobPlanner
 from worker_ml.llm.runner import LlmRateLimitError
-from worker_ml.main import _drain_backfill, _run_cycle
+from worker_ml.runtime.execution import drain_backfill, run_cycle
+from worker_ml.runtime.planning import EnqueueStats, MlJobPlanner
 
 
 @pytest.mark.asyncio
-async def test_run_cycle_enqueues_and_processes_bounded_batch() -> None:
+async def testrun_cycle_enqueues_and_processes_bounded_batch() -> None:
     planner = Mock(spec=MlJobPlanner)
     planner.enqueue_missing_classification_jobs = AsyncMock(
         return_value=EnqueueStats(
@@ -51,7 +53,7 @@ async def test_run_cycle_enqueues_and_processes_bounded_batch() -> None:
     article_card_handler = Mock(spec=ArticleCardJobHandler)
     article_card_handler.handle = AsyncMock()
 
-    result = await _run_cycle(
+    result = await run_cycle(
         settings=MlConfig(
             service_name="ml-test",
             enqueue_batch_size=10,
@@ -82,7 +84,7 @@ async def test_run_cycle_enqueues_and_processes_bounded_batch() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_cycle_discovers_and_claims_only_selected_job_types() -> None:
+async def testrun_cycle_discovers_and_claims_only_selected_job_types() -> None:
     planner = Mock(spec=MlJobPlanner)
     planner.enqueue_missing_article_card_jobs = AsyncMock(
         return_value=EnqueueStats(
@@ -108,7 +110,7 @@ async def test_run_cycle_discovers_and_claims_only_selected_job_types() -> None:
     handler = Mock(spec=ArticleCardJobHandler)
     handler.handle = AsyncMock()
 
-    result = await _run_cycle(
+    result = await run_cycle(
         settings=MlConfig(claim_batch_size=2, worker_concurrency=1),
         logger=Mock(),
         planner=planner,
@@ -131,7 +133,7 @@ async def test_run_cycle_discovers_and_claims_only_selected_job_types() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_cycle_defers_rate_limited_job_and_ends_pass() -> None:
+async def testrun_cycle_defers_rate_limited_job_and_ends_pass() -> None:
     planner = Mock(spec=MlJobPlanner)
     planner.enqueue_missing_classification_jobs = AsyncMock(
         return_value=EnqueueStats(
@@ -178,7 +180,7 @@ async def test_run_cycle_defers_rate_limited_job_and_ends_pass() -> None:
         side_effect=LlmRateLimitError("quota exhausted", retry_after_seconds=3600)
     )
 
-    result = await _run_cycle(
+    result = await run_cycle(
         settings=MlConfig(claim_batch_size=2, worker_concurrency=1),
         logger=Mock(),
         planner=planner,
@@ -198,7 +200,7 @@ async def test_run_cycle_defers_rate_limited_job_and_ends_pass() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_cycle_executes_at_most_configured_concurrency() -> None:
+async def testrun_cycle_executes_at_most_configured_concurrency() -> None:
     planner = Mock(spec=MlJobPlanner)
     planner.enqueue_missing_classification_jobs = AsyncMock(
         return_value=EnqueueStats(0, 0, 0, 0, 0)
@@ -237,7 +239,7 @@ async def test_run_cycle_executes_at_most_configured_concurrency() -> None:
     handler = Mock()
     handler.handle = AsyncMock(side_effect=handle)
 
-    result = await _run_cycle(
+    result = await run_cycle(
         settings=MlConfig(claim_batch_size=8, worker_concurrency=4),
         logger=Mock(),
         planner=planner,
@@ -251,7 +253,7 @@ async def test_run_cycle_executes_at_most_configured_concurrency() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_cycle_claims_downstream_work_while_cards_remain() -> None:
+async def testrun_cycle_claims_downstream_work_while_cards_remain() -> None:
     planner = Mock(spec=MlJobPlanner)
     planner.enqueue_missing_classification_jobs = AsyncMock(
         return_value=EnqueueStats(0, 0, 0, 0, 0)
@@ -295,7 +297,7 @@ async def test_run_cycle_claims_downstream_work_while_cards_remain() -> None:
     case_handler = Mock()
     case_handler.handle = AsyncMock()
 
-    await _run_cycle(
+    await run_cycle(
         settings=MlConfig(claim_batch_size=3, worker_concurrency=1),
         logger=Mock(),
         planner=planner,
@@ -312,7 +314,7 @@ async def test_run_cycle_claims_downstream_work_while_cards_remain() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_cycle_claims_jobs_in_pipeline_priority_order() -> None:
+async def testrun_cycle_claims_jobs_in_pipeline_priority_order() -> None:
     planner = Mock(spec=MlJobPlanner)
     planner.enqueue_missing_classification_jobs = AsyncMock(
         return_value=EnqueueStats(0, 0, 0, 0, 0)
@@ -388,7 +390,7 @@ async def test_run_cycle_claims_jobs_in_pipeline_priority_order() -> None:
         handler.handle = AsyncMock(side_effect=handle)
         handlers[job_type] = handler
 
-    await _run_cycle(
+    await run_cycle(
         settings=MlConfig(claim_batch_size=5, worker_concurrency=1),
         logger=Mock(),
         planner=planner,
@@ -407,7 +409,7 @@ async def test_run_cycle_claims_jobs_in_pipeline_priority_order() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_cycle_serializes_case_namespace_jobs() -> None:
+async def testrun_cycle_serializes_case_namespace_jobs() -> None:
     planner = Mock(spec=MlJobPlanner)
     planner.enqueue_missing_classification_jobs = AsyncMock(
         return_value=EnqueueStats(0, 0, 0, 0, 0)
@@ -459,7 +461,7 @@ async def test_run_cycle_serializes_case_namespace_jobs() -> None:
     copy_handler = Mock()
     copy_handler.handle = AsyncMock(side_effect=handle)
 
-    await _run_cycle(
+    await run_cycle(
         settings=MlConfig(claim_batch_size=2, worker_concurrency=4),
         logger=Mock(),
         planner=planner,
@@ -475,7 +477,7 @@ async def test_run_cycle_serializes_case_namespace_jobs() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_cycle_exits_before_enqueue_or_claim_during_active_cooldown() -> None:
+async def testrun_cycle_exits_before_enqueue_or_claim_during_active_cooldown() -> None:
     planner = Mock(spec=MlJobPlanner)
     planner.enqueue_missing_classification_jobs = AsyncMock(
         return_value=EnqueueStats(
@@ -493,7 +495,7 @@ async def test_run_cycle_exits_before_enqueue_or_claim_during_active_cooldown() 
         return_value=datetime(2026, 6, 8, 16, 0, tzinfo=UTC)
     )
 
-    await _run_cycle(
+    await run_cycle(
         settings=MlConfig(claim_batch_size=1),
         logger=Mock(),
         planner=planner,
@@ -507,7 +509,7 @@ async def test_run_cycle_exits_before_enqueue_or_claim_during_active_cooldown() 
 
 
 @pytest.mark.asyncio
-async def test_run_cycle_continues_after_ordinary_api_failure() -> None:
+async def testrun_cycle_continues_after_ordinary_api_failure() -> None:
     planner = Mock(spec=MlJobPlanner)
     planner.enqueue_missing_classification_jobs = AsyncMock(
         return_value=EnqueueStats(0, 0, 0, 0, 0)
@@ -538,7 +540,7 @@ async def test_run_cycle_continues_after_ordinary_api_failure() -> None:
     classifier_handler = Mock(spec=ClassificationJobHandler)
     classifier_handler.handle = AsyncMock()
 
-    result = await _run_cycle(
+    result = await run_cycle(
         settings=MlConfig(claim_batch_size=2),
         logger=Mock(),
         planner=planner,
@@ -581,9 +583,9 @@ async def test_run_once_active_cooldown_exits_before_model_loading(
 def test_no_args_dispatches_one_cycle(monkeypatch: pytest.MonkeyPatch) -> None:
     run_once = AsyncMock()
     monkeypatch.setattr(sys, "argv", ["worker-ml"])
-    monkeypatch.setattr(entrypoint, "run_once", run_once)
+    monkeypatch.setattr(cli_entrypoint, "run_once", run_once)
 
-    entrypoint.main()
+    cli_entrypoint.main()
 
     run_once.assert_awaited_once_with()
 
@@ -591,9 +593,9 @@ def test_no_args_dispatches_one_cycle(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_loop_flag_dispatches_worker_loop(monkeypatch: pytest.MonkeyPatch) -> None:
     run_worker = AsyncMock()
     monkeypatch.setattr(sys, "argv", ["worker-ml", "--loop"])
-    monkeypatch.setattr(entrypoint, "run_worker", run_worker)
+    monkeypatch.setattr(cli_entrypoint, "run_worker", run_worker)
 
-    entrypoint.main()
+    cli_entrypoint.main()
 
     run_worker.assert_awaited_once_with()
 
@@ -613,9 +615,9 @@ def test_job_type_flags_filter_and_order_worker_jobs(monkeypatch: pytest.MonkeyP
             "create_article_card",
         ],
     )
-    monkeypatch.setattr(entrypoint, "run_once", run_once)
+    monkeypatch.setattr(cli_entrypoint, "run_once", run_once)
 
-    entrypoint.main()
+    cli_entrypoint.main()
 
     run_once.assert_awaited_once_with(
         job_types=("create_article_card", "classify_article"),
@@ -626,7 +628,7 @@ def test_job_type_flag_rejects_unsupported_type(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(sys, "argv", ["worker-ml", "--job-type", "unknown"])
 
     with pytest.raises(SystemExit, match="2"):
-        entrypoint.main()
+        cli_entrypoint.main()
 
 
 def test_backfill_flag_dispatches_successful_backfill(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -640,9 +642,9 @@ def test_backfill_flag_dispatches_successful_backfill(monkeypatch: pytest.Monkey
         )
     )
     monkeypatch.setattr(sys, "argv", ["worker-ml", "--backfill"])
-    monkeypatch.setattr(entrypoint, "run_backfill", run_backfill)
+    monkeypatch.setattr(cli_entrypoint, "run_backfill", run_backfill)
 
-    entrypoint.main()
+    cli_entrypoint.main()
 
     run_backfill.assert_awaited_once_with()
 
@@ -660,10 +662,10 @@ def test_backfill_flag_exits_nonzero_for_exhausted_jobs(
         )
     )
     monkeypatch.setattr(sys, "argv", ["worker-ml", "--backfill"])
-    monkeypatch.setattr(entrypoint, "run_backfill", run_backfill)
+    monkeypatch.setattr(cli_entrypoint, "run_backfill", run_backfill)
 
     with pytest.raises(SystemExit, match="1"):
-        entrypoint.main()
+        cli_entrypoint.main()
 
 
 def test_backfill_flag_exits_nonzero_for_blocked_jobs(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -678,17 +680,17 @@ def test_backfill_flag_exits_nonzero_for_blocked_jobs(monkeypatch: pytest.Monkey
         )
     )
     monkeypatch.setattr(sys, "argv", ["worker-ml", "--backfill"])
-    monkeypatch.setattr(entrypoint, "run_backfill", run_backfill)
+    monkeypatch.setattr(cli_entrypoint, "run_backfill", run_backfill)
 
     with pytest.raises(SystemExit, match="1"):
-        entrypoint.main()
+        cli_entrypoint.main()
 
 
 def test_worker_modes_are_mutually_exclusive(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sys, "argv", ["worker-ml", "--loop", "--backfill"])
 
     with pytest.raises(SystemExit, match="2"):
-        entrypoint.main()
+        cli_entrypoint.main()
 
 
 @pytest.mark.asyncio
@@ -717,9 +719,9 @@ async def test_run_backfill_builds_resources_once_and_disposes_engine(
     monkeypatch.setattr(RelevanceModel, "load", Mock(return_value=model))
     monkeypatch.setattr(entrypoint, "ArticleJobStore", Mock(return_value=job_store))
     monkeypatch.setattr(entrypoint, "MlJobPlanner", Mock(return_value=planner))
-    monkeypatch.setattr(entrypoint, "_create_handlers", Mock(return_value=handlers))
-    monkeypatch.setattr(entrypoint, "_drain_backfill", drain_backfill)
-    monkeypatch.setattr(entrypoint, "_cleanup_stale_llm_runs", AsyncMock())
+    monkeypatch.setattr(entrypoint, "create_handlers", Mock(return_value=handlers))
+    monkeypatch.setattr(entrypoint, "drain_backfill", drain_backfill)
+    monkeypatch.setattr(entrypoint, "cleanup_stale_llm_runs", AsyncMock())
 
     result = await entrypoint.run_backfill(MlConfig(service_name="backfill-test"))
 
@@ -737,7 +739,7 @@ async def test_backfill_drains_new_jobs_before_exiting(monkeypatch: pytest.Monke
             {"scanned_articles": 0, "ensured_jobs": 0, "processed_jobs": 1, "failed_jobs": 0},
         ]
     )
-    monkeypatch.setattr(entrypoint, "_run_cycle", run_cycle)
+    monkeypatch.setattr(execution, "run_cycle", run_cycle)
     job_store = Mock(spec=ArticleJobStore)
     job_store.summarize_jobs = AsyncMock(
         side_effect=[
@@ -760,7 +762,7 @@ async def test_backfill_drains_new_jobs_before_exiting(monkeypatch: pytest.Monke
     cooldown_store = Mock(spec=LlmCooldownStore)
     cooldown_store.active_resume_at = AsyncMock(return_value=None)
 
-    summary = await _drain_backfill(
+    summary = await drain_backfill(
         settings=MlConfig(),
         logger=Mock(),
         planner=Mock(spec=MlJobPlanner),
@@ -787,7 +789,7 @@ async def test_filtered_backfill_summarizes_only_selected_job_types(
             "failed_jobs": 0,
         }
     )
-    monkeypatch.setattr(entrypoint, "_run_cycle", run_cycle)
+    monkeypatch.setattr(execution, "run_cycle", run_cycle)
     job_store = Mock(spec=ArticleJobStore)
     job_store.summarize_jobs = AsyncMock(
         return_value=JobQueueSummary(
@@ -801,7 +803,7 @@ async def test_filtered_backfill_summarizes_only_selected_job_types(
     cooldown_store = Mock(spec=LlmCooldownStore)
     cooldown_store.active_resume_at = AsyncMock(return_value=None)
 
-    await _drain_backfill(
+    await drain_backfill(
         settings=MlConfig(),
         logger=Mock(),
         planner=Mock(spec=MlJobPlanner),
@@ -825,8 +827,7 @@ async def test_backfill_waits_for_deferred_jobs(monkeypatch: pytest.MonkeyPatch)
         ]
     )
     sleep = AsyncMock()
-    monkeypatch.setattr(entrypoint, "_run_cycle", run_cycle)
-    monkeypatch.setattr(entrypoint, "_cleanup_stale_llm_runs", AsyncMock())
+    monkeypatch.setattr(execution, "run_cycle", run_cycle)
     monkeypatch.setattr(asyncio, "sleep", sleep)
     job_store = Mock(spec=ArticleJobStore)
     job_store.summarize_jobs = AsyncMock(
@@ -850,7 +851,7 @@ async def test_backfill_waits_for_deferred_jobs(monkeypatch: pytest.MonkeyPatch)
     cooldown_store = Mock(spec=LlmCooldownStore)
     cooldown_store.active_resume_at = AsyncMock(return_value=None)
 
-    summary = await _drain_backfill(
+    summary = await drain_backfill(
         settings=MlConfig(poll_interval_seconds=17),
         logger=Mock(),
         planner=Mock(spec=MlJobPlanner),
@@ -874,7 +875,7 @@ async def test_backfill_waits_through_active_cooldown(monkeypatch: pytest.Monkey
         }
     )
     sleep = AsyncMock()
-    monkeypatch.setattr(entrypoint, "_run_cycle", run_cycle)
+    monkeypatch.setattr(execution, "run_cycle", run_cycle)
     monkeypatch.setattr(asyncio, "sleep", sleep)
     job_store = Mock(spec=ArticleJobStore)
     job_store.summarize_jobs = AsyncMock(
@@ -891,7 +892,7 @@ async def test_backfill_waits_through_active_cooldown(monkeypatch: pytest.Monkey
         side_effect=[datetime(2026, 6, 11, 18, 0, tzinfo=UTC), None, None]
     )
 
-    await _drain_backfill(
+    await drain_backfill(
         settings=MlConfig(poll_interval_seconds=17),
         logger=Mock(),
         planner=Mock(spec=MlJobPlanner),
@@ -910,7 +911,7 @@ async def test_backfill_returns_when_only_blocked_jobs_remain(
 ) -> None:
     monkeypatch.setattr(
         entrypoint,
-        "_run_cycle",
+        "run_cycle",
         AsyncMock(
             return_value={
                 "scanned_articles": 0,
@@ -934,7 +935,7 @@ async def test_backfill_returns_when_only_blocked_jobs_remain(
     cooldown_store = Mock(spec=LlmCooldownStore)
     cooldown_store.active_resume_at = AsyncMock(return_value=None)
 
-    summary = await _drain_backfill(
+    summary = await drain_backfill(
         settings=MlConfig(),
         logger=Mock(),
         planner=Mock(spec=MlJobPlanner),
@@ -963,8 +964,8 @@ async def test_worker_loop_sleeps_when_cycle_is_idle(monkeypatch: pytest.MonkeyP
     cooldown_store = Mock(spec=LlmCooldownStore)
     cooldown_store.active_resume_at = AsyncMock(return_value=None)
     monkeypatch.setattr(entrypoint, "LlmCooldownStore", Mock(return_value=cooldown_store))
-    monkeypatch.setattr(entrypoint, "_run_cycle", run_cycle)
-    monkeypatch.setattr(entrypoint, "_cleanup_stale_llm_runs", AsyncMock())
+    monkeypatch.setattr(entrypoint, "run_cycle", run_cycle)
+    monkeypatch.setattr(entrypoint, "cleanup_stale_llm_runs", AsyncMock())
     monkeypatch.setattr(asyncio, "sleep", sleep)
 
     with pytest.raises(asyncio.CancelledError):

@@ -6,8 +6,8 @@ from uuid import uuid4
 import pytest
 from shkandal_database.jobs import ClaimedJob
 from shkandal_database.models import Case
-from worker_ml import case_audits
-from worker_ml.case_audits import CaseCoherenceAuditJobHandler, _validate_article_coverage
+from worker_ml.cases import audits as case_audits
+from worker_ml.cases.audits import CaseCoherenceAuditJobHandler, _validate_article_coverage
 from worker_ml.llm.contracts import CaseCoherenceAuditOutput
 from worker_ml.llm.runner import LlmTaskResult, LlmTaskRunner
 
@@ -285,8 +285,8 @@ async def test_invalid_coverage_fallback_is_recorded_without_decisive_mutation(
     monkeypatch.setattr(
         case_audits, "_audit_cards", AsyncMock(return_value=_cards(article_a, article_b))
     )
-    monkeypatch.setattr(case_audits, "_try_case_lock", AsyncMock(return_value=True))
-    monkeypatch.setattr(case_audits, "_try_lock", AsyncMock(return_value=True))
+    monkeypatch.setattr(case_audits, "try_case_mutation_lock", AsyncMock(return_value=True))
+    monkeypatch.setattr(case_audits, "try_mutation_lock", AsyncMock(return_value=True))
     monkeypatch.setattr(case_audits, "_record_audit", record_audit)
     monkeypatch.setattr(case_audits, "_apply_decisive_audit", apply_decisive_audit)
     handler = CaseCoherenceAuditJobHandler(

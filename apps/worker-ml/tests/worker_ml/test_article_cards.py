@@ -6,7 +6,7 @@ from uuid import uuid4
 import pytest
 from shkandal_database.jobs import ClaimedJob
 from shkandal_database.models import Article, Source
-from worker_ml.article_cards import (
+from worker_ml.articles.cards import (
     MAX_ARTICLE_TEXT_CHARACTERS,
     ArticleCardJobHandler,
     build_article_json,

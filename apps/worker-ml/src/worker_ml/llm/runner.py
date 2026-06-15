@@ -17,30 +17,14 @@ from openai import RateLimitError
 from pydantic import BaseModel, SecretStr, ValidationError
 
 from worker_ml.config import MlConfig
-from worker_ml.llm.contracts import (
-    ArticleCardOutput,
-    CaseCoherenceAuditOutput,
-    CaseCopyUpdateOutput,
-    CaseResolutionOutput,
-    EntityResolutionOutput,
-    EventResolutionOutput,
-    LlmRunType,
-)
-from worker_ml.llm.normalization import NormalizationResult, normalize_llm_output
+from worker_ml.llm.contracts import LlmRunType
+from worker_ml.llm.normalization import NormalizationResult
 from worker_ml.llm.prompts import PromptRegistry
 from worker_ml.llm.runs import LlmRunStore
 from worker_ml.llm.schema import prompt_schema_json
+from worker_ml.llm.tasks import LLM_TASKS
 
 OutputT = TypeVar("OutputT", bound=BaseModel)
-
-RUN_TYPE_MODELS: dict[LlmRunType, type[BaseModel]] = {
-    "article_card": ArticleCardOutput,
-    "case_resolution": CaseResolutionOutput,
-    "entity_resolution": EntityResolutionOutput,
-    "event_resolution": EventResolutionOutput,
-    "case_copy_update": CaseCopyUpdateOutput,
-    "case_coherence_audit": CaseCoherenceAuditOutput,
-}
 
 
 class LlmRateLimitError(RuntimeError):
@@ -170,7 +154,8 @@ class LlmTaskRunner:
     ) -> LlmTaskResult:
         """Run an LLM task and return validated output with run provenance."""
 
-        output_model = RUN_TYPE_MODELS[run_type]
+        task = LLM_TASKS[run_type]
+        output_model = task.output_model
         prompt = self._prompt_registry.get(run_type)
         run_id = None
         if self._run_store is not None:
@@ -192,8 +177,8 @@ class LlmTaskRunner:
             raw_text = str(await invoke_chain(self._chain_for(run_type), dict(variables)))
             request_duration_seconds = time.monotonic() - request_started_at
             await self._record_successful_request()
-            raw_json = parse_json_response(raw_text, allow_array=_allows_resolution_array(run_type))
-            normalized = normalize_llm_output(
+            raw_json = parse_json_response(raw_text, allow_array=task.allow_top_level_array)
+            normalized = task.normalize(
                 run_type=run_type,
                 output=raw_json,
                 variables=variables,
@@ -241,7 +226,7 @@ class LlmTaskRunner:
                     )
                 raise ValueError(repair_error or str(exc)) from exc
 
-            normalized = normalize_llm_output(
+            normalized = task.normalize(
                 run_type=run_type,
                 output=repaired_json,
                 variables=variables,
@@ -329,10 +314,11 @@ class LlmTaskRunner:
                 )
             )
             await self._record_successful_request()
+            task = LLM_TASKS[run_type]
             repaired_json = parse_json_response(
-                repaired_text, allow_array=_allows_resolution_array(run_type)
+                repaired_text, allow_array=task.allow_top_level_array
             )
-            normalized = normalize_llm_output(
+            normalized = task.normalize(
                 run_type=run_type,
                 output=repaired_json,
                 variables=variables,
@@ -409,10 +395,6 @@ def parse_json_response(text: str, *, allow_array: bool) -> Any:
     if allow_array and not isinstance(value, (dict, list)):
         raise ValueError("LLM output must be a JSON object or array")
     return value
-
-
-def _allows_resolution_array(run_type: LlmRunType) -> bool:
-    return run_type in {"entity_resolution", "event_resolution"}
 
 
 def _validate_resolution_coverage(

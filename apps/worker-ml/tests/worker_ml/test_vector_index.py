@@ -8,7 +8,7 @@ from shkandal_vector_store.schemas import (
     EntityVectorPayload,
     EventVectorPayload,
 )
-from worker_ml.vector_index import VectorIndexService
+from worker_ml.retrieval.vector_index import VectorIndexService
 
 
 class FakeEmbedder:

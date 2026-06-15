@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from worker_ml.jobs import CREATE_ARTICLE_CARD_JOB
+from worker_ml.runtime.planning import CREATE_ARTICLE_CARD_JOB
 
 POSITIVE_ARTIFACT_LABEL = "assigned"
 NEGATIVE_ARTIFACT_LABEL = "noise"

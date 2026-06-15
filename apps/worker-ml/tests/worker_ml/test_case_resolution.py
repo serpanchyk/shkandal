@@ -4,10 +4,10 @@ from uuid import UUID, uuid4
 import pytest
 from shkandal_database.jobs import ArticleJobStore, ClaimedJob
 from shkandal_database.models import Case
-from worker_ml.case_resolution import (
-    _case_payload,
+from worker_ml.cases.copy import lifecycle_sample
+from worker_ml.cases.publication import case_vector_payload
+from worker_ml.cases.resolution import (
     _enqueue_resolution_followups,
-    _lifecycle_sample,
     _normalize_invalid_case_relations,
     _relation_endpoint,
 )
@@ -17,7 +17,7 @@ from worker_ml.llm.contracts import CaseResolutionOutput
 def test_lifecycle_sample_preserves_first_last_and_full_span() -> None:
     cards = [{"position": index} for index in range(100)]
 
-    sample = _lifecycle_sample(cards, 6)
+    sample = lifecycle_sample(cards, 6)
 
     assert len(sample) == 6
     assert sample[0] == {"position": 0}
@@ -89,7 +89,7 @@ def test_case_payload_is_rebuildable_from_postgres_case() -> None:
         metadata_={"source": "test"},
     )
 
-    payload = _case_payload(case)
+    payload = case_vector_payload(case)
 
     assert payload.title_uk == "Назва"
     assert payload.article_count == 3

@@ -15,7 +15,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from worker_ml.jobs import CREATE_ARTICLE_CARD_JOB
+from worker_ml.runtime.planning import CREATE_ARTICLE_CARD_JOB
 
 JOB_UPSERT_BATCH_SIZE = 1_000
 

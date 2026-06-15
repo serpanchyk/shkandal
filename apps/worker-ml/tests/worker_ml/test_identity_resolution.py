@@ -2,18 +2,17 @@ from uuid import uuid4
 
 import pytest
 from shkandal_database.models import Entity, Event
-from worker_ml.identity_resolution import (
-    _date_parts,
-    _enrich_event_date,
-    _entity_payload,
-    _event_payload,
-    _merged_assignments,
-    _normalize_event_link_anchors,
-    _normalize_invalid_entity_links,
-    _normalize_invalid_event_links,
-    _validate_coverage,
-    _with_provisional_refs,
+from worker_ml.identities.decisions import (
+    date_parts,
+    enrich_event_date,
+    merged_assignments,
+    normalize_event_link_anchors,
+    normalize_invalid_entity_links,
+    normalize_invalid_event_links,
+    validate_coverage,
+    with_provisional_refs,
 )
+from worker_ml.identities.payloads import entity_vector_payload, event_vector_payload
 from worker_ml.llm.contracts import (
     EntityCaseAssignment,
     EntityResolutionDecision,
@@ -27,7 +26,7 @@ from worker_ml.llm.contracts import (
 def test_rollout_refs_are_deterministic_and_preserve_existing_refs() -> None:
     items = [{"name_uk": "A"}, {"provisional_ref": "entity_b", "name_uk": "B"}]
 
-    assert _with_provisional_refs(items, "entity") == [
+    assert with_provisional_refs(items, "entity") == [
         {"provisional_ref": "entity_1", "name_uk": "A"},
         {"provisional_ref": "entity_b", "name_uk": "B"},
     ]
@@ -44,7 +43,7 @@ def test_resolution_must_cover_every_provisional_ref() -> None:
     )
 
     with pytest.raises(ValueError, match="exactly cover"):
-        _validate_coverage(
+        validate_coverage(
             [{"provisional_ref": "entity_a"}, {"provisional_ref": "entity_b"}],
             [decision],
             {case_id},
@@ -62,7 +61,7 @@ def test_resolution_rejects_assignment_to_unlinked_case() -> None:
     )
 
     with pytest.raises(ValueError, match="unlinked Case"):
-        _validate_coverage([{"provisional_ref": "event_a"}], [decision], {uuid4()})
+        validate_coverage([{"provisional_ref": "event_a"}], [decision], {uuid4()})
 
 
 def test_invalid_entity_link_becomes_source_grounded_create() -> None:
@@ -82,7 +81,7 @@ def test_invalid_entity_link_becomes_source_grounded_create() -> None:
         ]
     )
 
-    normalized = _normalize_invalid_entity_links(
+    normalized = normalize_invalid_entity_links(
         [
             {
                 "provisional_ref": "entity_a",
@@ -120,7 +119,7 @@ def test_invalid_event_link_becomes_source_grounded_create() -> None:
         ]
     )
 
-    normalized = _normalize_invalid_event_links(
+    normalized = normalize_invalid_event_links(
         [
             {
                 "provisional_ref": "event_a",
@@ -162,7 +161,7 @@ def test_conflicting_event_date_link_becomes_source_grounded_create() -> None:
         ]
     )
 
-    normalized = _normalize_event_link_anchors(
+    normalized = normalize_event_link_anchors(
         [
             {
                 "provisional_ref": "event_a",
@@ -213,7 +212,7 @@ def test_event_link_anchors_are_source_grounded_before_persistence() -> None:
         ]
     )
 
-    normalized = _normalize_event_link_anchors(
+    normalized = normalize_event_link_anchors(
         [
             {
                 "provisional_ref": "event_a",
@@ -283,7 +282,7 @@ def test_conflicting_links_to_same_event_become_separate_source_grounded_events(
         "event_day": None,
     }
 
-    normalized = _normalize_event_link_anchors(
+    normalized = normalize_event_link_anchors(
         provisional,
         output,
         [[candidate], [candidate]],
@@ -313,7 +312,7 @@ def test_duplicate_provisionals_merge_case_assignments() -> None:
         )
     ]
 
-    assert _merged_assignments(decisions) == {
+    assert merged_assignments(decisions) == {
         str(case_a): "Перша причина",
         str(case_b): "Друга причина",
     }
@@ -331,7 +330,7 @@ def test_duplicate_provisionals_merge_case_assignments() -> None:
 def test_event_date_parts_preserve_real_precision(
     value: str | None, precision: str, expected: tuple[int | None, int | None, int | None]
 ) -> None:
-    assert _date_parts(value, precision) == expected
+    assert date_parts(value, precision) == expected
 
 
 def test_identity_payloads_are_rebuildable_from_postgres() -> None:
@@ -353,8 +352,8 @@ def test_identity_payloads_are_rebuildable_from_postgres() -> None:
         metadata_={"source": "test"},
     )
 
-    assert _entity_payload(entity).canonical_name_uk == "Особа"
-    assert _event_payload(event).event_month == 6
+    assert entity_vector_payload(entity).canonical_name_uk == "Особа"
+    assert event_vector_payload(event).event_month == 6
 
 
 def test_event_date_enrichment_refines_compatible_precision() -> None:
@@ -365,7 +364,7 @@ def test_event_date_enrichment_refines_compatible_precision() -> None:
         event_date_precision="year",
     )
 
-    _enrich_event_date(event, 2026, 6, 10, "day")
+    enrich_event_date(event, 2026, 6, 10, "day")
 
     assert (event.event_year, event.event_month, event.event_day) == (2026, 6, 10)
     assert event.event_date_precision == "day"
@@ -381,4 +380,4 @@ def test_event_date_enrichment_rejects_conflicting_anchor() -> None:
     )
 
     with pytest.raises(ValueError, match="conflicts"):
-        _enrich_event_date(event, 2026, 7, None, "month")
+        enrich_event_date(event, 2026, 7, None, "month")

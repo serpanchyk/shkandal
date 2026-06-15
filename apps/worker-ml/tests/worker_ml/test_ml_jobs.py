@@ -7,8 +7,8 @@ from uuid import uuid4
 
 import pytest
 from shkandal_database.jobs import ArticleJobStore, BulkEnqueueJobResult
-from worker_ml.classifier import RelevanceModel, build_classifier_text
-from worker_ml.jobs import (
+from worker_ml.articles.relevance import RelevanceModel, build_classifier_text
+from worker_ml.runtime.planning import (
     AUDIT_CASE_COHERENCE_JOB,
     CLASSIFY_ARTICLE_JOB,
     CREATE_ARTICLE_CARD_JOB,

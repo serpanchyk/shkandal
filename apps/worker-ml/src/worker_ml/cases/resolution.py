@@ -4,36 +4,33 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Sequence
 from decimal import Decimal
 from typing import Any, cast
 from uuid import UUID, uuid4
 
 from shkandal_database.jobs import ArticleJobStore, ClaimedJob
 from shkandal_database.models import Article, ArticleCard, Case, CaseArticle, CaseRelation, Source
-from shkandal_vector_store.schemas import CaseVectorPayload
 from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from worker_ml.article_cards import get_case_candidate_card
-from worker_ml.jobs import (
+from worker_ml.articles.cards import get_case_candidate_card
+from worker_ml.cases.publication import (
+    CaseMutationBusyError,
+    case_vector_payload,
+    try_case_mutation_lock,
+)
+from worker_ml.llm.contracts import CaseResolutionOutput
+from worker_ml.llm.runner import LlmTaskRunner
+from worker_ml.llm.schema import prompt_schema_json
+from worker_ml.retrieval.vector_index import VectorIndexService
+from worker_ml.runtime.planning import (
     RESOLVE_ARTICLE_ENTITIES_JOB,
     RESOLVE_ARTICLE_EVENTS_JOB,
     UPDATE_CASE_COPY_JOB,
 )
-from worker_ml.llm.contracts import CaseCopyUpdateOutput, CaseResolutionOutput
-from worker_ml.llm.runner import LlmTaskRunner
-from worker_ml.llm.schema import prompt_schema_json
-from worker_ml.vector_index import VectorIndexService
 
-CASE_MUTATION_ADVISORY_LOCK = 7_214_801_901
 MAX_CASE_CANDIDATES = 12
-MAX_CASE_EVIDENCE_CARDS = 40
-
-
-class CaseMutationBusyError(RuntimeError):
-    """Another worker currently owns serialized Case mutation."""
 
 
 class ArticleCaseResolutionJobHandler:
@@ -60,7 +57,7 @@ class ArticleCaseResolutionJobHandler:
         if job.article_id is None:
             raise ValueError("article-case resolution job requires article_id")
         async with self._session_factory() as session:
-            if not await _try_case_lock(session):
+            if not await try_case_mutation_lock(session):
                 raise CaseMutationBusyError("case mutation lock is busy")
             card = await get_case_candidate_card(session, article_id=job.article_id)
             if card is None:
@@ -116,7 +113,7 @@ class ArticleCaseResolutionJobHandler:
             for case_id in affected_case_ids:
                 case = await session.get(Case, case_id)
                 if case is not None:
-                    await self._vector_index.upsert_case(case.id, _case_payload(case))
+                    await self._vector_index.upsert_case(case.id, case_vector_payload(case))
             await session.commit()
 
         await _enqueue_resolution_followups(
@@ -272,71 +269,6 @@ def _normalize_invalid_case_relations(
     return output.model_copy(update={"case_relations": relations})
 
 
-class CaseCopyUpdateJobHandler:
-    """Regenerate stable reader-facing Case copy from accumulated evidence."""
-
-    def __init__(
-        self,
-        session_factory: async_sessionmaker[AsyncSession],
-        runner: LlmTaskRunner,
-        vector_index: VectorIndexService,
-        *,
-        model_name: str,
-    ) -> None:
-        self._session_factory = session_factory
-        self._runner = runner
-        self._vector_index = vector_index
-        self._model_name = model_name
-
-    async def handle(self, job: ClaimedJob) -> CaseCopyUpdateOutput | None:
-        """Update one Case and its vector under the global Case lock."""
-
-        if job.case_id is None:
-            raise ValueError("case-copy update job requires case_id")
-        async with self._session_factory() as session:
-            if not await _try_case_lock(session):
-                raise CaseMutationBusyError("case mutation lock is busy")
-            case = await session.get(Case, job.case_id)
-            if case is None:
-                return None
-            retrieval_started_at = time.monotonic()
-            cards = await _case_article_cards(session, case.id)
-            retrieval_duration_seconds = time.monotonic() - retrieval_started_at
-            result = await self._runner.run_with_provenance(
-                run_type="case_copy_update",
-                model_name=self._model_name,
-                variables={
-                    "case_json": json.dumps(
-                        {
-                            "current_title_uk": case.title_uk,
-                            "current_summary_uk": case.summary_uk,
-                            "article_cards": _lifecycle_sample(cards, MAX_CASE_EVIDENCE_CARDS),
-                        },
-                        ensure_ascii=False,
-                        separators=(",", ":"),
-                    ),
-                    "schema_json": prompt_schema_json(CaseCopyUpdateOutput),
-                },
-                metadata={
-                    "case_id": str(case.id),
-                    "job_id": str(job.id),
-                    "retrieval_duration_seconds": round(retrieval_duration_seconds, 6),
-                },
-            )
-            output = cast(CaseCopyUpdateOutput, result.output)
-            if output.title_action == "replace":
-                case.title_uk = cast(str, output.replacement_title_uk)
-            case.summary_uk = output.summary_uk
-            await self._vector_index.upsert_case(case.id, _case_payload(case))
-            await session.commit()
-            return output
-
-
-async def _try_case_lock(session: AsyncSession) -> bool:
-    statement = select(func.pg_try_advisory_xact_lock(CASE_MUTATION_ADVISORY_LOCK))
-    return bool(await session.scalar(statement))
-
-
 async def _enqueue_resolution_followups(
     *,
     job_store: ArticleJobStore,
@@ -359,18 +291,6 @@ async def _enqueue_resolution_followups(
             payload={"article_id": str(job.article_id)},
             max_attempts=job.max_attempts,
         )
-
-
-def _case_payload(case: Case) -> CaseVectorPayload:
-    return CaseVectorPayload(
-        slug=case.slug,
-        title_uk=case.title_uk,
-        summary_uk=case.summary_uk,
-        status=case.status,
-        article_count=case.article_count,
-        event_count=case.event_count,
-        metadata=case.metadata_,
-    )
 
 
 def _article_card_query(card: ArticleCard) -> str:
@@ -444,32 +364,3 @@ async def _representative_article_titles_by_case(
     for case_id, title in rows:
         grouped[case_id].append(title)
     return grouped
-
-
-async def _case_article_cards(session: AsyncSession, case_id: UUID) -> list[dict[str, Any]]:
-    rows = (
-        await session.execute(
-            select(ArticleCard, Article.published_at)
-            .join(Article, Article.id == ArticleCard.article_id)
-            .join(CaseArticle, CaseArticle.article_id == Article.id)
-            .where(CaseArticle.case_id == case_id)
-            .order_by(Article.published_at.asc().nulls_last(), Article.created_at.asc())
-        )
-    ).all()
-    return [
-        {
-            "title_uk": card.title_uk,
-            "summary_uk": card.summary_uk,
-            "published_at": published_at.isoformat() if published_at else None,
-        }
-        for card, published_at in rows
-    ]
-
-
-def _lifecycle_sample(cards: Sequence[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
-    if len(cards) <= limit:
-        return list(cards)
-    selected = {0, len(cards) - 1}
-    for index in range(1, limit - 1):
-        selected.add(round(index * (len(cards) - 1) / (limit - 1)))
-    return [cards[index] for index in sorted(selected)]

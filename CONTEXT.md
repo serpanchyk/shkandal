@@ -62,6 +62,12 @@ original Case and creates new Cases for other coherent stories. Articles may
 materially contribute to multiple resulting Cases.
 _Avoid_: exclusive partition, duplicate merge
 
+**Case Publication**:
+The serialized operation that makes complete reader-facing Case state visible
+by updating Case copy, article assignments, materialized Entity/Event links,
+counts, and rebuildable vectors before PostgreSQL commits.
+_Avoid_: case save, partial update
+
 **Entity**:
 A global durable real-world actor directly mentioned in supporting articles.
 Aliases and true renames may identify the same Entity, while successor bodies

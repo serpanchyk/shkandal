@@ -1,7 +1,7 @@
 from typing import Any
 
 import pytest
-from worker_ml.embeddings import DOCUMENT_PREFIX, QUERY_PREFIX, E5Embedder
+from worker_ml.retrieval.embeddings import DOCUMENT_PREFIX, QUERY_PREFIX, E5Embedder
 
 
 class FakeSentenceEmbeddingModel:

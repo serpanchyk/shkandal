@@ -13,10 +13,10 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from worker_ml.jobs import RESOLVE_ARTICLE_CASES_JOB
 from worker_ml.llm.contracts import ArticleCardOutput
 from worker_ml.llm.runner import LlmTaskRunner
 from worker_ml.llm.schema import prompt_schema_json
+from worker_ml.runtime.planning import RESOLVE_ARTICLE_CASES_JOB
 
 MAX_ARTICLE_TEXT_CHARACTERS = 20_000
 

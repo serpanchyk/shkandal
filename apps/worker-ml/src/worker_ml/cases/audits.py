@@ -23,25 +23,24 @@ from shkandal_database.models import (
     CaseEvent,
     CaseRelation,
 )
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from worker_ml.case_resolution import (
-    _case_payload,
-    _try_case_lock,
-)
-from worker_ml.identity_resolution import (
+from worker_ml.cases.publication import (
     ENTITY_MUTATION_ADVISORY_LOCK,
     EVENT_MUTATION_ADVISORY_LOCK,
-    _rebuild_case_entities,
-    _rebuild_case_events,
-    _try_lock,
+    case_vector_payload,
+    rebuild_case_entities,
+    rebuild_case_events,
+    refresh_case_counts,
+    try_case_mutation_lock,
+    try_mutation_lock,
 )
 from worker_ml.llm.contracts import CaseCoherenceAuditOutput
 from worker_ml.llm.runner import LlmTaskRunner
 from worker_ml.llm.schema import prompt_schema_json
-from worker_ml.vector_index import VectorIndexService
+from worker_ml.retrieval.vector_index import VectorIndexService
 
 
 class CaseAuditSupersededError(RuntimeError):
@@ -93,11 +92,11 @@ class CaseCoherenceAuditJobHandler:
         _validate_article_coverage(output, {card["article_id"] for card in cards})
 
         async with self._session_factory() as session:
-            if not await _try_case_lock(session):
+            if not await try_case_mutation_lock(session):
                 raise CaseAuditSupersededError("case mutation lock is busy")
-            if not await _try_lock(session, ENTITY_MUTATION_ADVISORY_LOCK):
+            if not await try_mutation_lock(session, ENTITY_MUTATION_ADVISORY_LOCK):
                 raise CaseAuditSupersededError("Entity mutation lock is busy")
-            if not await _try_lock(session, EVENT_MUTATION_ADVISORY_LOCK):
+            if not await try_mutation_lock(session, EVENT_MUTATION_ADVISORY_LOCK):
                 raise CaseAuditSupersededError("Event mutation lock is busy")
             case = await session.get(Case, job.case_id)
             if case is None or case.status != "active":
@@ -128,7 +127,7 @@ class CaseCoherenceAuditJobHandler:
             for affected_case in affected:
                 await self._vector_index.upsert_case(
                     affected_case.id,
-                    _case_payload(affected_case),
+                    case_vector_payload(affected_case),
                 )
             await session.commit()
         return output
@@ -332,10 +331,10 @@ async def _apply_decisive_audit(
             affected_event_pairs |= await _assign_article_events(
                 session, article_id, target.id, run_id, story.reason_uk
             )
-    await _rebuild_case_entities(session, affected_entity_pairs)
-    await _rebuild_case_events(session, affected_event_pairs)
+    await rebuild_case_entities(session, affected_entity_pairs)
+    await rebuild_case_events(session, affected_event_pairs)
     for target in story_cases.values():
-        await _refresh_case_counts(session, target)
+        await refresh_case_counts(session, target)
     for target in story_cases.values():
         if target.id == case.id:
             continue
@@ -425,29 +424,6 @@ async def _assign_article_events(
             )
         )
     return {(case_id, event_id) for _, event_id in rows}
-
-
-async def _refresh_case_counts(session: AsyncSession, case: Case) -> None:
-    row = (
-        await session.execute(
-            select(
-                func.count(CaseArticle.id),
-                func.min(Article.published_at),
-                func.max(Article.published_at),
-            )
-            .join(Article, Article.id == CaseArticle.article_id)
-            .where(CaseArticle.case_id == case.id)
-        )
-    ).one()
-    case.article_count = row[0]
-    case.first_seen_at = row[1]
-    case.last_updated_at = row[2]
-    case.event_count = int(
-        await session.scalar(
-            select(func.count()).select_from(CaseEvent).where(CaseEvent.case_id == case.id)
-        )
-        or 0
-    )
 
 
 async def _record_audit(

@@ -12,7 +12,7 @@ from shkandal_database.session import create_async_engine_from_config, create_as
 from sqlalchemy import func, or_, select
 
 from worker_ml.config import MlConfig
-from worker_ml.jobs import MlJobPlanner
+from worker_ml.runtime.planning import MlJobPlanner
 
 
 async def run(*, apply: bool, limit: int) -> None:
