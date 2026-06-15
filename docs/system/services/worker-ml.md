@@ -131,6 +131,17 @@ docker compose --profile jobs run --rm worker-ml
 python -m worker_ml.main --loop
 ```
 
+Use repeatable `--job-type` flags to run only selected stages. Enabled
+classification and article-card stages discover their own missing work before
+claiming jobs. Downstream jobs created by a selected stage remain queued when
+their job type is not selected:
+
+```bash
+python -m worker_ml.main --job-type create_article_card
+python -m worker_ml.main --loop --job-type create_article_card
+python -m worker_ml.main --backfill --job-type create_article_card
+```
+
 Run an explicit finite backfill to drain all queued, deferred, and downstream
 ML work:
 
@@ -138,9 +149,10 @@ ML work:
 docker compose --profile jobs run --rm worker-ml python -m worker_ml.main --backfill
 ```
 
-Backfill mode waits through deferred retries and shared provider cooldowns. It
-does not reset exhausted failures; after all processable work is complete,
-remaining failed or stale blocked jobs produce a nonzero exit code.
+Backfill mode waits through deferred retries and shared provider cooldowns. A
+filtered backfill drains and reports only its selected job types. It does not
+reset exhausted failures; after all processable selected work is complete,
+remaining selected failed or stale blocked jobs produce a nonzero exit code.
 
 Inspect and explicitly recover selected exhausted failures after fixing their
 cause:

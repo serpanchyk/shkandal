@@ -73,7 +73,11 @@ class JobHandler(Protocol):
         """Process one claimed job."""
 
 
-async def run_once(config: MlConfig | None = None) -> dict[str, int | float]:
+async def run_once(
+    config: MlConfig | None = None,
+    *,
+    job_types: tuple[str, ...] = SUPPORTED_JOB_TYPES,
+) -> dict[str, int | float]:
     """Enqueue and process one bounded batch of ML jobs."""
 
     settings = config or MlConfig()
@@ -113,6 +117,7 @@ async def run_once(config: MlConfig | None = None) -> dict[str, int | float]:
             job_store=job_store,
             cooldown_store=cooldown_store,
             handlers=handlers,
+            job_types=job_types,
         )
     finally:
         await engine.dispose()
@@ -262,7 +267,11 @@ async def process_next_job(
         await engine.dispose()
 
 
-async def run_worker(config: MlConfig | None = None) -> None:
+async def run_worker(
+    config: MlConfig | None = None,
+    *,
+    job_types: tuple[str, ...] = SUPPORTED_JOB_TYPES,
+) -> None:
     """Poll for article classification work until the process is stopped."""
 
     settings = config or MlConfig()
@@ -304,6 +313,7 @@ async def run_worker(config: MlConfig | None = None) -> None:
                 "claim_batch_size": settings.claim_batch_size,
                 "worker_concurrency": settings.worker_concurrency,
                 "relevance_model_dir": settings.relevance_model_dir,
+                "job_types": job_types,
             },
         )
 
@@ -315,6 +325,7 @@ async def run_worker(config: MlConfig | None = None) -> None:
                 job_store=job_store,
                 cooldown_store=cooldown_store,
                 handlers=handlers,
+                job_types=job_types,
             )
             if stats["processed_jobs"] == 0 and stats["ensured_jobs"] == 0:
                 await asyncio.sleep(settings.poll_interval_seconds)
@@ -322,7 +333,11 @@ async def run_worker(config: MlConfig | None = None) -> None:
         await engine.dispose()
 
 
-async def run_backfill(config: MlConfig | None = None) -> JobQueueSummary:
+async def run_backfill(
+    config: MlConfig | None = None,
+    *,
+    job_types: tuple[str, ...] = SUPPORTED_JOB_TYPES,
+) -> JobQueueSummary:
     """Drain all current and newly-created ML jobs, then exit."""
 
     settings = config or MlConfig()
@@ -361,6 +376,7 @@ async def run_backfill(config: MlConfig | None = None) -> JobQueueSummary:
                 "enqueue_batch_size": settings.enqueue_batch_size,
                 "claim_batch_size": settings.claim_batch_size,
                 "worker_concurrency": settings.worker_concurrency,
+                "job_types": job_types,
             },
         )
         return await _drain_backfill(
@@ -370,6 +386,7 @@ async def run_backfill(config: MlConfig | None = None) -> JobQueueSummary:
             job_store=job_store,
             cooldown_store=cooldown_store,
             handlers=handlers,
+            job_types=job_types,
         )
     finally:
         await engine.dispose()
@@ -383,6 +400,7 @@ async def _drain_backfill(
     job_store: ArticleJobStore,
     cooldown_store: LlmCooldownStore,
     handlers: Mapping[str, JobHandler],
+    job_types: tuple[str, ...] = SUPPORTED_JOB_TYPES,
 ) -> JobQueueSummary:
     while True:
         if await _log_active_cooldown(cooldown_store=cooldown_store, logger=logger):
@@ -396,8 +414,9 @@ async def _drain_backfill(
             cooldown_store=cooldown_store,
             handlers=handlers,
             requeue_failed=False,
+            job_types=job_types,
         )
-        summary = await job_store.summarize_jobs(job_types=SUPPORTED_JOB_TYPES)
+        summary = await job_store.summarize_jobs(job_types=job_types)
         active_running_jobs = summary.running_jobs - summary.blocked_running_jobs
         if summary.queued_jobs == 0 and active_running_jobs == 0:
             logger.info(
@@ -434,15 +453,29 @@ async def _run_cycle(
     cooldown_store: LlmCooldownStore,
     handlers: Mapping[str, JobHandler],
     requeue_failed: bool = True,
+    job_types: tuple[str, ...] = SUPPORTED_JOB_TYPES,
 ) -> dict[str, int | float]:
     cycle_started_at = time.monotonic()
     if await _log_active_cooldown(cooldown_store=cooldown_store, logger=logger):
         return _empty_cycle_stats()
 
-    enqueue_stats = await planner.enqueue_missing_classification_jobs(
-        limit=settings.enqueue_batch_size,
-        max_attempts=settings.job_max_attempts,
-        requeue_failed=requeue_failed,
+    classification_stats = (
+        await planner.enqueue_missing_classification_jobs(
+            limit=settings.enqueue_batch_size,
+            max_attempts=settings.job_max_attempts,
+            requeue_failed=requeue_failed,
+        )
+        if CLASSIFY_ARTICLE_JOB in job_types
+        else EnqueueStats(0, 0, 0, 0, 0)
+    )
+    article_card_stats = (
+        await planner.enqueue_missing_article_card_jobs(
+            limit=settings.enqueue_batch_size,
+            max_attempts=settings.job_max_attempts,
+            requeue_failed=requeue_failed,
+        )
+        if CREATE_ARTICLE_CARD_JOB in job_types
+        else EnqueueStats(0, 0, 0, 0, 0)
     )
     audit_stats = (
         await planner.enqueue_due_case_audit_jobs(
@@ -450,21 +483,11 @@ async def _run_cycle(
             max_attempts=settings.job_max_attempts,
             interval_days=settings.case_audit_interval_days,
         )
-        if settings.case_audit_automatic_enabled
+        if settings.case_audit_automatic_enabled and AUDIT_CASE_COHERENCE_JOB in job_types
         else EnqueueStats(0, 0, 0, 0, 0)
     )
-    if enqueue_stats.ensured_jobs:
-        logger.info(
-            "worker_ml_jobs_enqueued",
-            extra={
-                "scanned_articles": enqueue_stats.scanned_articles,
-                "ensured_jobs": enqueue_stats.ensured_jobs,
-                "inserted_jobs": enqueue_stats.inserted_jobs,
-                "requeued_jobs": enqueue_stats.requeued_jobs,
-                "existing_jobs": enqueue_stats.existing_jobs,
-                "job_type": "classify_article",
-            },
-        )
+    _log_enqueue_stats(logger, job_type=CLASSIFY_ARTICLE_JOB, stats=classification_stats)
+    _log_enqueue_stats(logger, job_type=CREATE_ARTICLE_CARD_JOB, stats=article_card_stats)
 
     executor = _CycleExecutor(
         settings=settings,
@@ -472,12 +495,16 @@ async def _run_cycle(
         job_store=job_store,
         cooldown_store=cooldown_store,
         handlers=handlers,
+        job_types=job_types,
     )
     processed_jobs, failed_jobs = await executor.run()
 
     stats = {
-        "scanned_articles": enqueue_stats.scanned_articles,
-        "ensured_jobs": enqueue_stats.ensured_jobs + audit_stats.ensured_jobs,
+        "scanned_articles": classification_stats.scanned_articles
+        + article_card_stats.scanned_articles,
+        "ensured_jobs": classification_stats.ensured_jobs
+        + article_card_stats.ensured_jobs
+        + audit_stats.ensured_jobs,
         "processed_jobs": processed_jobs,
         "failed_jobs": failed_jobs,
         "duration_seconds": round(time.monotonic() - cycle_started_at, 6),
@@ -497,12 +524,16 @@ class _CycleExecutor:
         job_store: ArticleJobStore,
         cooldown_store: LlmCooldownStore,
         handlers: Mapping[str, JobHandler],
+        job_types: tuple[str, ...],
     ) -> None:
         self._settings = settings
         self._logger = logger
         self._job_store = job_store
         self._cooldown_store = cooldown_store
         self._handlers = handlers
+        self._job_type_schedule = tuple(
+            job_type for job_type in JOB_TYPE_SCHEDULE if job_type in job_types
+        )
         self._claim_lock = asyncio.Lock()
         self._rate_limit_lock = asyncio.Lock()
         self._stop_claiming = asyncio.Event()
@@ -545,9 +576,9 @@ class _CycleExecutor:
             if self._stop_claiming.is_set() or reached_limit:
                 return None
             attempted: set[str] = set()
-            while len(attempted) < len(JOB_TYPE_SCHEDULE):
-                job_type = JOB_TYPE_SCHEDULE[self._schedule_index]
-                self._schedule_index = (self._schedule_index + 1) % len(JOB_TYPE_SCHEDULE)
+            while len(attempted) < len(self._job_type_schedule):
+                job_type = self._job_type_schedule[self._schedule_index]
+                self._schedule_index = (self._schedule_index + 1) % len(self._job_type_schedule)
                 if job_type in attempted:
                     continue
                 attempted.add(job_type)
@@ -695,6 +726,27 @@ def _empty_cycle_stats() -> dict[str, int | float]:
     }
 
 
+def _log_enqueue_stats(
+    logger: logging.Logger,
+    *,
+    job_type: str,
+    stats: EnqueueStats,
+) -> None:
+    if not stats.ensured_jobs:
+        return
+    logger.info(
+        "worker_ml_jobs_enqueued",
+        extra={
+            "scanned_articles": stats.scanned_articles,
+            "ensured_jobs": stats.ensured_jobs,
+            "inserted_jobs": stats.inserted_jobs,
+            "requeued_jobs": stats.requeued_jobs,
+            "existing_jobs": stats.existing_jobs,
+            "job_type": job_type,
+        },
+    )
+
+
 def _processed_revision(job: ClaimedJob) -> int | None:
     if getattr(job, "case_id", None) is None:
         return None
@@ -788,16 +840,39 @@ def main() -> None:
         action="store_true",
         help="Drain all ML jobs, waiting for deferred work, then exit.",
     )
+    parser.add_argument(
+        "--job-type",
+        action="append",
+        choices=SUPPORTED_JOB_TYPES,
+        dest="job_types",
+        help="Process only this job type. Repeat to select multiple types.",
+    )
     args = parser.parse_args()
+    job_types = _ordered_job_types(args.job_types)
     if args.loop:
-        asyncio.run(run_worker())
+        if args.job_types is None:
+            asyncio.run(run_worker())
+        else:
+            asyncio.run(run_worker(job_types=job_types))
         return
     if args.backfill:
-        summary = asyncio.run(run_backfill())
+        if args.job_types is None:
+            summary = asyncio.run(run_backfill())
+        else:
+            summary = asyncio.run(run_backfill(job_types=job_types))
         if summary.failed_jobs or summary.blocked_jobs:
             raise SystemExit(1)
         return
-    asyncio.run(run_once())
+    if args.job_types is None:
+        asyncio.run(run_once())
+    else:
+        asyncio.run(run_once(job_types=job_types))
+
+
+def _ordered_job_types(selected: list[str] | None) -> tuple[str, ...]:
+    if selected is None:
+        return SUPPORTED_JOB_TYPES
+    return tuple(job_type for job_type in JOB_TYPE_SCHEDULE if job_type in selected)
 
 
 def _exception_message(error: Exception) -> str:

@@ -74,6 +74,10 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - `worker-ml` uses weighted fair scheduling and four concurrent execution slots
   by default. Case, Entity, and Event mutation namespaces remain independently
   serialized, and stale pending LLM runs are failed during worker startup.
+- `worker-ml` accepts repeatable `--job-type` filters in one-shot, loop, and
+  backfill modes. Enabled classification and article-card stages discover
+  missing durable jobs; filtered backfills drain and report only selected job
+  types while leaving unselected downstream work queued.
 - Claiming a job increments `attempt_count`; crashes count as attempts. Failed jobs with attempts remaining return to `queued` with `run_after`, and exhausted jobs become `failed`.
 - Qdrant failures remain retryable job failures and include operation,
   collection, and point context where available. Persisted job errors are never

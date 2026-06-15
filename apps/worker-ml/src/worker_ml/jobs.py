@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from shkandal_database.jobs import ArticleJobStore
-from shkandal_database.models import Article, ArticleRelevance, Case
+from shkandal_database.models import Article, ArticleCard, ArticleRelevance, Case
 from sqlalchemy import Select, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -61,6 +61,39 @@ class MlJobPlanner:
 
         result = await self._job_store.enqueue_article_jobs(
             job_type=CLASSIFY_ARTICLE_JOB,
+            article_ids=article_ids,
+            max_attempts=max_attempts,
+            requeue_failed=requeue_failed,
+        )
+
+        return EnqueueStats(
+            scanned_articles=len(article_ids),
+            ensured_jobs=result.inserted_jobs + result.requeued_jobs,
+            inserted_jobs=result.inserted_jobs,
+            requeued_jobs=result.requeued_jobs,
+            existing_jobs=result.existing_jobs,
+        )
+
+    async def enqueue_missing_article_card_jobs(
+        self,
+        *,
+        limit: int,
+        max_attempts: int,
+        requeue_failed: bool = True,
+    ) -> EnqueueStats:
+        """Create one article-card job for each relevant article missing a card."""
+
+        async with self._session_factory() as session:
+            article_ids = list(
+                (
+                    await session.scalars(
+                        self._articles_missing_card_query(limit=limit),
+                    )
+                ).all()
+            )
+
+        result = await self._job_store.enqueue_article_jobs(
+            job_type=CREATE_ARTICLE_CARD_JOB,
             article_ids=article_ids,
             max_attempts=max_attempts,
             requeue_failed=requeue_failed,
@@ -131,6 +164,20 @@ class MlJobPlanner:
             .where(
                 ArticleRelevance.id.is_(None),
                 Article.fetch_status == "succeeded",
+            )
+            .order_by(Article.published_at.asc().nulls_last(), Article.created_at.asc())
+            .limit(limit)
+        )
+
+    @staticmethod
+    def _articles_missing_card_query(*, limit: int) -> Select[tuple[UUID]]:
+        return (
+            select(Article.id)
+            .join(ArticleRelevance, ArticleRelevance.article_id == Article.id)
+            .outerjoin(ArticleCard, ArticleCard.article_id == Article.id)
+            .where(
+                ArticleRelevance.is_relevant.is_(True),
+                ArticleCard.id.is_(None),
             )
             .order_by(Article.published_at.asc().nulls_last(), Article.created_at.asc())
             .limit(limit)

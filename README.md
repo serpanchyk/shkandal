@@ -321,6 +321,9 @@ remain per-job failures. LLM requests time out after five minutes.
 For the initial historical run, `worker-ml --backfill` drains all supported ML
 jobs and waits through deferred retries or provider cooldowns. It preserves
 exhausted failed jobs for inspection and exits nonzero when any remain.
+Repeatable `--job-type` flags restrict one-shot, loop, or backfill execution to
+selected stages. Enabled article-card runs discover relevant articles missing
+cards; downstream jobs they create remain queued unless also selected.
 The worker uses four concurrent execution slots and weighted fair scheduling by
 default, while Case, Entity, and Event mutation namespaces remain independently
 serialized.

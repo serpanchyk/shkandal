@@ -29,6 +29,7 @@ async def test_run_cycle_enqueues_and_processes_bounded_batch() -> None:
             existing_jobs=6,
         )
     )
+    planner.enqueue_missing_article_card_jobs = AsyncMock(return_value=EnqueueStats(0, 0, 0, 0, 0))
     claimed_jobs = [
         SimpleNamespace(
             id=f"job-{index}",
@@ -78,6 +79,55 @@ async def test_run_cycle_enqueues_and_processes_bounded_batch() -> None:
         len(call.kwargs["job_types"]) == 1 for call in job_store.claim_next_job.await_args_list
     )
     assert job_store.complete_job.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_run_cycle_discovers_and_claims_only_selected_job_types() -> None:
+    planner = Mock(spec=MlJobPlanner)
+    planner.enqueue_missing_article_card_jobs = AsyncMock(
+        return_value=EnqueueStats(
+            scanned_articles=2,
+            ensured_jobs=1,
+            inserted_jobs=1,
+        )
+    )
+    card_job = SimpleNamespace(
+        id="card-job",
+        article_id="article-id",
+        job_type="create_article_card",
+        attempt_count=1,
+        max_attempts=3,
+    )
+
+    job_store = Mock(spec=ArticleJobStore)
+    job_store.claim_next_job = AsyncMock(side_effect=[card_job, None])
+    job_store.complete_job = AsyncMock()
+    job_store.fail_job = AsyncMock()
+    cooldown_store = Mock(spec=LlmCooldownStore)
+    cooldown_store.active_resume_at = AsyncMock(return_value=None)
+    handler = Mock(spec=ArticleCardJobHandler)
+    handler.handle = AsyncMock()
+
+    result = await _run_cycle(
+        settings=MlConfig(claim_batch_size=2, worker_concurrency=1),
+        logger=Mock(),
+        planner=planner,
+        job_store=job_store,
+        cooldown_store=cooldown_store,
+        handlers={"create_article_card": handler},
+        job_types=("create_article_card",),
+    )
+
+    assert result["scanned_articles"] == 2
+    assert result["ensured_jobs"] == 1
+    planner.enqueue_missing_classification_jobs.assert_not_awaited()
+    planner.enqueue_due_case_audit_jobs.assert_not_awaited()
+    planner.enqueue_missing_article_card_jobs.assert_awaited_once()
+    assert all(
+        call.kwargs["job_types"] == ("create_article_card",)
+        for call in job_store.claim_next_job.await_args_list
+    )
+    handler.handle.assert_awaited_once_with(card_job)
 
 
 @pytest.mark.asyncio
@@ -548,6 +598,37 @@ def test_loop_flag_dispatches_worker_loop(monkeypatch: pytest.MonkeyPatch) -> No
     run_worker.assert_awaited_once_with()
 
 
+def test_job_type_flags_filter_and_order_worker_jobs(monkeypatch: pytest.MonkeyPatch) -> None:
+    run_once = AsyncMock()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "worker-ml",
+            "--job-type",
+            "classify_article",
+            "--job-type",
+            "create_article_card",
+            "--job-type",
+            "create_article_card",
+        ],
+    )
+    monkeypatch.setattr(entrypoint, "run_once", run_once)
+
+    entrypoint.main()
+
+    run_once.assert_awaited_once_with(
+        job_types=("create_article_card", "classify_article"),
+    )
+
+
+def test_job_type_flag_rejects_unsupported_type(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys, "argv", ["worker-ml", "--job-type", "unknown"])
+
+    with pytest.raises(SystemExit, match="2"):
+        entrypoint.main()
+
+
 def test_backfill_flag_dispatches_successful_backfill(monkeypatch: pytest.MonkeyPatch) -> None:
     run_backfill = AsyncMock(
         return_value=JobQueueSummary(
@@ -692,6 +773,47 @@ async def test_backfill_drains_new_jobs_before_exiting(monkeypatch: pytest.Monke
     assert run_cycle.await_count == 2
     assert run_cycle.await_args is not None
     assert run_cycle.await_args.kwargs["requeue_failed"] is False
+
+
+@pytest.mark.asyncio
+async def test_filtered_backfill_summarizes_only_selected_job_types(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_cycle = AsyncMock(
+        return_value={
+            "scanned_articles": 0,
+            "ensured_jobs": 0,
+            "processed_jobs": 0,
+            "failed_jobs": 0,
+        }
+    )
+    monkeypatch.setattr(entrypoint, "_run_cycle", run_cycle)
+    job_store = Mock(spec=ArticleJobStore)
+    job_store.summarize_jobs = AsyncMock(
+        return_value=JobQueueSummary(
+            queued_jobs=0,
+            running_jobs=0,
+            blocked_jobs=0,
+            failed_jobs=0,
+            next_run_after=None,
+        )
+    )
+    cooldown_store = Mock(spec=LlmCooldownStore)
+    cooldown_store.active_resume_at = AsyncMock(return_value=None)
+
+    await _drain_backfill(
+        settings=MlConfig(),
+        logger=Mock(),
+        planner=Mock(spec=MlJobPlanner),
+        job_store=job_store,
+        cooldown_store=cooldown_store,
+        handlers={},
+        job_types=("create_article_card",),
+    )
+
+    assert run_cycle.await_args is not None
+    assert run_cycle.await_args.kwargs["job_types"] == ("create_article_card",)
+    job_store.summarize_jobs.assert_awaited_once_with(job_types=("create_article_card",))
 
 
 @pytest.mark.asyncio

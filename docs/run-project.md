@@ -371,11 +371,20 @@ while processing, run explicit backfill mode:
 docker compose --profile jobs run --rm worker-ml python -m worker_ml.main --backfill
 ```
 
-Backfill mode waits through deferred retries and provider cooldowns. It exits
-zero only after no queued or running ML jobs remain; exhausted failed jobs are
-left in PostgreSQL for inspection and produce a nonzero exit code. A stale
-running job that exhausted its final attempt is also reported as blocked and
-produces a nonzero exit code instead of making backfill wait forever.
+Use repeatable `--job-type` flags to run selected stages only. For example, this
+discovers relevant articles missing cards, drains their card jobs, and leaves
+newly-created downstream resolution jobs queued:
+
+```bash
+docker compose --profile jobs run --rm worker-ml python -m worker_ml.main --backfill --job-type create_article_card
+```
+
+The filter also works with the default one-shot mode and `--loop`. Backfill
+mode waits through deferred retries and provider cooldowns. A filtered backfill
+exits based only on its selected job types; exhausted selected failures are
+left in PostgreSQL for inspection and produce a nonzero exit code. A selected
+stale running job that exhausted its final attempt is also reported as blocked
+and produces a nonzero exit code instead of making backfill wait forever.
 
 After fixing the cause, inspect exhausted jobs before explicitly requeueing
 them. The recovery command is dry-run by default and does not modify successful
