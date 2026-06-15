@@ -97,7 +97,7 @@ def test_invalid_entity_link_is_rejected() -> None:
         )
 
 
-def test_invalid_event_link_becomes_source_grounded_create() -> None:
+def test_invalid_event_link_is_rejected() -> None:
     case_id = uuid4()
     output = EventResolutionOutput(
         events=[
@@ -114,26 +114,21 @@ def test_invalid_event_link_becomes_source_grounded_create() -> None:
         ]
     )
 
-    normalized = normalize_invalid_event_links(
-        [
-            {
-                "provisional_ref": "event_a",
-                "title_uk": "Нова подія",
-                "description_uk": "Опис.",
-                "event_date": "2026-06",
-                "event_date_precision": "month",
-                "location_uk": "Київ",
-            }
-        ],
-        output,
-        {"event_a": set()},
-    )
-
-    decision = normalized.events[0]
-    assert decision.action == "create_new"
-    assert decision.existing_event_id is None
-    assert decision.new_title_uk == "Нова подія"
-    assert decision.event_date == "2026-06"
+    with pytest.raises(ValueError, match="non-candidate identity"):
+        normalize_invalid_event_links(
+            [
+                {
+                    "provisional_ref": "event_a",
+                    "title_uk": "Нова подія",
+                    "description_uk": "Опис.",
+                    "event_date": "2026-06",
+                    "event_date_precision": "month",
+                    "location_uk": "Київ",
+                }
+            ],
+            output,
+            {"event_a": set()},
+        )
 
 
 def test_conflicting_event_date_link_becomes_source_grounded_create() -> None:
@@ -147,6 +142,7 @@ def test_conflicting_event_date_link_becomes_source_grounded_create() -> None:
                 existing_event_id=str(event_id),
                 event_date="2026-07",
                 event_date_precision="month",
+                date_evidence_text="У липні 2026 року.",
                 confidence=0.9,
                 reason_uk="Та сама подія.",
                 case_assignments=[
@@ -198,6 +194,7 @@ def test_event_link_anchors_are_source_grounded_before_persistence() -> None:
                 existing_event_id=str(event_id),
                 event_date="2026-07",
                 event_date_precision="month",
+                date_evidence_text="У липні 2026 року.",
                 confidence=0.9,
                 reason_uk="Та сама подія.",
                 case_assignments=[
@@ -232,8 +229,9 @@ def test_event_link_anchors_are_source_grounded_before_persistence() -> None:
 
     decision = normalized.events[0]
     assert decision.action == "link_existing"
-    assert decision.event_date == "2026-06"
-    assert decision.event_date_precision == "month"
+    assert decision.event_date is None
+    assert decision.event_date_precision == "unknown"
+    assert decision.date_evidence_text is None
 
 
 def test_conflicting_links_to_same_event_become_separate_source_grounded_events() -> None:
@@ -245,6 +243,9 @@ def test_conflicting_links_to_same_event_become_separate_source_grounded_events(
                 provisional_ref=provisional_ref,
                 action="link_existing",
                 existing_event_id=str(event_id),
+                event_date=f"2026-{'06' if provisional_ref == 'event_june' else '07'}",
+                event_date_precision="month",
+                date_evidence_text="Місяць прямо вказано у статті.",
                 confidence=0.9,
                 reason_uk="Та сама подія.",
                 case_assignments=[

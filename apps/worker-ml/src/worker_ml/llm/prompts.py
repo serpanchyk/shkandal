@@ -41,7 +41,7 @@ PROMPTS: dict[str, PromptDefinition] = {
     ),
     "event_resolution": PromptDefinition(
         name="event_resolution",
-        version="2026-06-12-2",
+        version="2026-06-15-1",
         filename="event_resolution.uk.md",
         input_variables=("resolution_json", "schema_json"),
     ),

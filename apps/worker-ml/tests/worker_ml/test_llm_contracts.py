@@ -220,6 +220,140 @@ def test_entity_resolution_contract_accepts_strict_rejection_reasons(
     assert output.entities[0].rejection_reason == rejection_reason
 
 
+def event_resolution_decision(**changes: object) -> dict[str, object]:
+    """Build one valid accepted Event decision for contract tests."""
+
+    decision: dict[str, object] = {
+        "provisional_ref": "event_decision",
+        "reason_uk": "Описано конкретну подію.",
+        "action": "create_new",
+        "existing_event_id": None,
+        "new_title_uk": "НАБУ повідомило посадовцю про підозру",
+        "description_uk": "НАБУ повідомило посадовцю про підозру.",
+        "event_date": None,
+        "event_date_precision": "unknown",
+        "date_evidence_text": None,
+        "confidence": 0.9,
+        "case_assignments": [{"case_id": "case-a", "relevance_reason_uk": "Етап справи."}],
+        "rejection_reason": None,
+    }
+    decision.update(changes)
+    return decision
+
+
+@pytest.mark.parametrize(
+    "rejection_reason",
+    [
+        "not_an_event",
+        "insufficient_identity",
+        "too_broad",
+        "multi_event_summary",
+        "background_fact",
+        "planned_future_event",
+        "opinion_or_prediction",
+        "date_conflict_with_candidate",
+        "unsupported_by_context",
+    ],
+)
+def test_event_resolution_contract_accepts_strict_rejection_reasons(
+    rejection_reason: str,
+) -> None:
+    output = EventResolutionOutput.model_validate(
+        {
+            "events": [
+                {
+                    "provisional_ref": "event_rejected",
+                    "reason_uk": "Це не придатна глобальна подія.",
+                    "action": "reject",
+                    "confidence": 0.9,
+                    "rejection_reason": rejection_reason,
+                }
+            ]
+        }
+    )
+
+    assert output.events[0].rejection_reason == rejection_reason
+
+
+@pytest.mark.parametrize(
+    ("event_date", "precision"),
+    [
+        (None, "day"),
+        ("2026-06", "day"),
+        ("2026-06-10", "month"),
+        ("2026-06", "year"),
+        ("2026", "unknown"),
+    ],
+)
+def test_event_resolution_contract_rejects_inconsistent_event_dates(
+    event_date: str | None,
+    precision: str,
+) -> None:
+    with pytest.raises(ValidationError):
+        EventResolutionOutput.model_validate(
+            {
+                "events": [
+                    event_resolution_decision(
+                        event_date=event_date,
+                        event_date_precision=precision,
+                        date_evidence_text="Дата вказана у статті.",
+                    )
+                ]
+            }
+        )
+
+
+def test_event_resolution_contract_requires_date_evidence() -> None:
+    with pytest.raises(ValidationError, match="date_evidence_text"):
+        EventResolutionOutput.model_validate(
+            {
+                "events": [
+                    event_resolution_decision(
+                        event_date="2026-06-10",
+                        event_date_precision="day",
+                    )
+                ]
+            }
+        )
+
+
+def test_event_resolution_contract_rejects_evidence_without_date() -> None:
+    with pytest.raises(ValidationError, match="null date evidence"):
+        EventResolutionOutput.model_validate(
+            {"events": [event_resolution_decision(date_evidence_text="10 червня")]}
+        )
+
+
+@pytest.mark.parametrize("title", ["Подія 1", "опис події 12", " Подія 2. "])
+def test_event_resolution_contract_rejects_placeholder_titles(title: str) -> None:
+    with pytest.raises(ValidationError, match="placeholder"):
+        EventResolutionOutput.model_validate(
+            {"events": [event_resolution_decision(new_title_uk=title)]}
+        )
+
+
+def test_event_resolution_contract_rejects_reject_with_case_assignments() -> None:
+    with pytest.raises(ValidationError, match="reject cannot have Case assignments"):
+        EventResolutionOutput.model_validate(
+            {
+                "events": [
+                    event_resolution_decision(
+                        action="reject",
+                        new_title_uk=None,
+                        rejection_reason="not_an_event",
+                    )
+                ]
+            }
+        )
+
+
+def test_event_resolution_contract_rejects_accepted_event_without_case_assignment() -> None:
+    with pytest.raises(ValidationError, match="at least one Case assignment"):
+        EventResolutionOutput.model_validate(
+            {"events": [event_resolution_decision(case_assignments=[])]}
+        )
+
+
 @pytest.mark.parametrize(
     "alias",
     [

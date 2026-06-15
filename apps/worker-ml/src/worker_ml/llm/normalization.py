@@ -290,6 +290,7 @@ def _normalize_date(item: dict[str, Any], actions: list[str], path: str) -> None
                 break
     if precision is None:
         _set(item, "event_date", None, actions, f"{path}: clear invalid event date")
+        _set(item, "date_evidence_text", None, actions, f"{path}: clear invalid date evidence")
         precision = "unknown"
     _set(item, "event_date_precision", precision, actions, f"{path}: infer event date precision")
 

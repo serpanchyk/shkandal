@@ -53,19 +53,14 @@ def normalize_invalid_event_links(
     output: EventResolutionOutput,
     candidate_ids: dict[str, set[str]],
 ) -> EventResolutionOutput:
-    """Create a source-grounded Event instead of merging an invalid identity."""
+    """Reject links to identities outside the provisional Event candidates."""
 
-    by_ref = {str(item["provisional_ref"]): item for item in provisional}
-    decisions = []
     for decision in output.events:
-        if decision.action in {"create_new", "reject"}:
-            decisions.append(decision)
-            continue
-        if decision.existing_event_id in candidate_ids[decision.provisional_ref]:
-            decisions.append(decision)
-            continue
-        decisions.append(source_grounded_event_create(decision, by_ref[decision.provisional_ref]))
-    return EventResolutionOutput(events=decisions)
+        if decision.action not in {"create_new", "reject"} and (
+            decision.existing_event_id not in candidate_ids[decision.provisional_ref]
+        ):
+            raise ValueError("event decision references non-candidate identity")
+    return output
 
 
 def normalize_event_link_anchors(
@@ -103,11 +98,13 @@ def normalize_event_link_anchors(
             decisions.append(source_grounded_event_create(decision, item))
             continue
         accepted_anchors[event_id] = _merge_event_anchors(anchors, year, month, day, location)
+        grounded_date, grounded_precision, grounded_evidence = _grounded_event_date(decision, item)
         decisions.append(
             decision.model_copy(
                 update={
-                    "event_date": event_date,
-                    "event_date_precision": precision,
+                    "event_date": grounded_date,
+                    "event_date_precision": grounded_precision,
+                    "date_evidence_text": grounded_evidence,
                     "location_uk": location,
                 }
             )
@@ -121,17 +118,39 @@ def source_grounded_event_create(
 ) -> EventResolutionDecision:
     """Replace an unsafe Event merge with a source-grounded Event creation."""
 
+    event_date, precision, date_evidence_text = _grounded_event_date(decision, item)
     return decision.model_copy(
         update={
             "action": "create_new",
             "existing_event_id": None,
             "new_title_uk": str(item["title_uk"]),
             "description_uk": str(item["description_uk"]),
-            "event_date": item.get("event_date"),
-            "event_date_precision": item.get("event_date_precision", "unknown"),
+            "event_date": event_date,
+            "event_date_precision": precision,
+            "date_evidence_text": date_evidence_text,
             "location_uk": item.get("location_uk"),
         }
     )
+
+
+def _grounded_event_date(
+    decision: EventResolutionDecision,
+    item: dict[str, Any],
+) -> tuple[str | None, str, str | None]:
+    """Keep a provisional date only when the decision supplies matching evidence."""
+
+    event_date = item.get("event_date")
+    if (
+        event_date is not None
+        and decision.event_date == event_date
+        and decision.date_evidence_text is not None
+    ):
+        return (
+            str(event_date),
+            str(item.get("event_date_precision", "unknown")),
+            (decision.date_evidence_text),
+        )
+    return None, "unknown", None
 
 
 def merged_assignments(

@@ -18,6 +18,7 @@ CASE_ROLE_DESCRIPTION_PATTERNS = (
     r"\b(який|яка|яке|які)\s+(викрив|викрила|продовжив|продовжила|фігурує)\b",
     r"\bде\s+(затримали|повідомили|провели|викрили)\b",
 )
+EVENT_PLACEHOLDER_TITLE_PATTERN = r"^\s*(?:подія|опис події)\s*\d+\s*[.!]?\s*$"
 
 
 class EntityCaseAssignment(StrictOutput):
@@ -205,6 +206,10 @@ class EventResolutionDecision(StrictOutput):
         default="unknown",
         description="Точність визначеної дати події.",
     )
+    date_evidence_text: str | None = Field(
+        default=None,
+        description="Фрагмент або доказ із контексту, який підтверджує дату події.",
+    )
     location_uk: str | None = Field(
         default=None,
         description="Місце події, якщо воно стосується саме цієї події.",
@@ -225,6 +230,13 @@ class EventResolutionDecision(StrictOutput):
             "insufficient_identity",
             "conflicting_identity_anchors",
             "duplicate_extraction",
+            "too_broad",
+            "multi_event_summary",
+            "background_fact",
+            "planned_future_event",
+            "opinion_or_prediction",
+            "date_conflict_with_candidate",
+            "unsupported_by_context",
         ]
         | None
     ) = Field(
@@ -236,12 +248,36 @@ class EventResolutionDecision(StrictOutput):
     def validate_action(self) -> EventResolutionDecision:
         """Require action-specific identity fields and relevant Case assignments."""
 
+        patterns = {
+            "day": r"\d{4}-\d{2}-\d{2}",
+            "month": r"\d{4}-\d{2}",
+            "year": r"\d{4}",
+        }
+        if self.event_date is None:
+            if self.event_date_precision != "unknown":
+                raise ValueError("null event date requires unknown precision")
+            if self.date_evidence_text is not None:
+                raise ValueError("null event date requires null date evidence")
+        else:
+            if (
+                self.event_date_precision == "unknown"
+                or re.fullmatch(patterns[self.event_date_precision], self.event_date) is None
+            ):
+                raise ValueError("event date must match its declared precision")
+            if self.date_evidence_text is None or not self.date_evidence_text.strip():
+                raise ValueError("event date requires date_evidence_text")
         if self.action == "link_existing" and self.existing_event_id is None:
             raise ValueError("link_existing requires existing_event_id")
         if self.action == "create_new" and self.existing_event_id is not None:
             raise ValueError("create_new cannot reference an existing event")
         if self.action == "create_new" and self.new_title_uk is None:
             raise ValueError("create_new requires new_title_uk")
+        if self.action == "create_new" and re.fullmatch(
+            EVENT_PLACEHOLDER_TITLE_PATTERN,
+            self.new_title_uk or "",
+            re.IGNORECASE,
+        ):
+            raise ValueError("create_new title cannot be a placeholder")
         if self.action == "link_existing" and self.new_title_uk is not None:
             raise ValueError("link_existing cannot replace the Event title")
         if self.action == "reject":
@@ -256,19 +292,6 @@ class EventResolutionDecision(StrictOutput):
             raise ValueError("accepted event cannot have rejection_reason")
         if not self.case_assignments:
             raise ValueError("accepted event requires at least one Case assignment")
-        patterns = {
-            "day": r"\d{4}-\d{2}-\d{2}",
-            "month": r"\d{4}-\d{2}",
-            "year": r"\d{4}",
-        }
-        if self.event_date_precision == "unknown":
-            if self.event_date is not None:
-                raise ValueError("unknown event date precision requires a null event date")
-        elif (
-            self.event_date is None
-            or re.fullmatch(patterns[self.event_date_precision], self.event_date) is None
-        ):
-            raise ValueError("event date must match its declared precision")
         return self
 
 
