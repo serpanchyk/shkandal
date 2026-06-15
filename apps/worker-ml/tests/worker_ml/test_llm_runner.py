@@ -165,6 +165,13 @@ async def test_runner_repairs_only_unescaped_json_control_characters() -> None:
                 [
                     {
                         "provisional_ref": "entity_a",
+                        "diagnosis": {
+                            "is_named_stable_actor": True,
+                            "material_case_ids": ["case-a"],
+                            "identity_match_evidence_uk": None,
+                            "identity_conflict_uk": None,
+                            "rejection_signal_uk": None,
+                        },
                         "action": "create_new",
                         "existing_entity_id": None,
                         "new_canonical_name_uk": "Орган",
@@ -190,6 +197,15 @@ async def test_runner_repairs_only_unescaped_json_control_characters() -> None:
                 [
                     {
                         "provisional_ref": "event_a",
+                        "diagnosis": {
+                            "is_concrete_occurrence": True,
+                            "occurrence_core_uk": "Подія.",
+                            "anchor_summary_uk": "Дія і учасники визначені.",
+                            "candidate_match_evidence_uk": None,
+                            "anchor_conflict_uk": None,
+                            "material_case_ids": ["case-a"],
+                            "rejection_signal_uk": None,
+                        },
                         "action": "create_new",
                         "existing_event_id": None,
                         "new_title_uk": "Подія",
@@ -405,6 +421,14 @@ async def test_runner_normalizes_case_audit_story_reasons_and_duplicate_article_
             "case_coherence_audit": FakeChain(
                 json.dumps(
                     {
+                        "diagnosis": {
+                            "shared_specific_core_uk": None,
+                            "shared_only_broad_theme_uk": None,
+                            "merge_blockers_uk": ["Є щонайменше дві історії."],
+                            "split_story_cores_uk": ["Перша справа.", "Друга справа."],
+                            "detached_article_signals_uk": [],
+                            "coherence_test_uk": "Ні, це дві різні історії.",
+                        },
                         "reason_uk": "Статті описують одну історію.",
                         "outcome": "split",
                         "stories": [

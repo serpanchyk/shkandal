@@ -58,5 +58,25 @@ def test_review_cards_keep_only_bounded_factual_context() -> None:
 
 
 def test_specialized_audit_contracts_allow_inconclusive_without_mutation() -> None:
-    assert CasePublicInterestAuditOutput(reason_uk="Недостатньо доказів.", outcome="inconclusive")
-    assert CaseDuplicateAuditOutput(reason_uk="Недостатньо доказів.", outcome="inconclusive")
+    assert CasePublicInterestAuditOutput(
+        diagnosis={
+            "concrete_story_core_uk": None,
+            "public_interest_anchor_uk": None,
+            "durability_signal_uk": None,
+            "hide_signals_uk": [],
+        },
+        reason_uk="Недостатньо доказів.",
+        outcome="inconclusive",
+    )
+    assert CaseDuplicateAuditOutput(
+        diagnosis={
+            "case_a_core_uk": None,
+            "case_b_core_uk": None,
+            "shared_specific_core_uk": None,
+            "relation_anchor_uk": None,
+            "only_broad_overlap_uk": None,
+            "merge_blockers_uk": [],
+        },
+        reason_uk="Недостатньо доказів.",
+        outcome="inconclusive",
+    )

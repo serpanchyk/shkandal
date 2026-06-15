@@ -44,11 +44,39 @@ class LlmTaskDefinition:
 
         if not self.inconclusive_on_invalid_output:
             return None
-        return self.output_model.model_validate(
-            {
-                "outcome": "inconclusive",
-                "reason_uk": ("Автоматичний аудит не зміг сформувати валідний безпечний висновок."),
+        payload: dict[str, Any] = {
+            "outcome": "inconclusive",
+            "reason_uk": ("Автоматичний аудит не зміг сформувати валідний безпечний висновок."),
+        }
+        if self.output_model is CaseCoherenceAuditOutput:
+            payload["diagnosis"] = {
+                "shared_specific_core_uk": None,
+                "shared_only_broad_theme_uk": None,
+                "merge_blockers_uk": [],
+                "split_story_cores_uk": [],
+                "detached_article_signals_uk": [],
+                "coherence_test_uk": "Недостатньо доказів для одного конкретного формулювання.",
             }
+            payload["stories"] = []
+            payload["detached_articles"] = []
+        elif self.output_model is CasePublicInterestAuditOutput:
+            payload["diagnosis"] = {
+                "concrete_story_core_uk": None,
+                "public_interest_anchor_uk": None,
+                "durability_signal_uk": None,
+                "hide_signals_uk": [],
+            }
+        elif self.output_model is CaseDuplicateAuditOutput:
+            payload["diagnosis"] = {
+                "case_a_core_uk": None,
+                "case_b_core_uk": None,
+                "shared_specific_core_uk": None,
+                "relation_anchor_uk": None,
+                "only_broad_overlap_uk": None,
+                "merge_blockers_uk": [],
+            }
+        return self.output_model.model_validate(
+            payload
         )
 
 

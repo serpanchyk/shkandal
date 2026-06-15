@@ -102,15 +102,40 @@ class CaseRelationDecision(StrictOutput):
         return self
 
 
+class CaseResolutionDiagnosis(StrictOutput):
+    """Short factual checks before resolving an article into Cases."""
+
+    article_story_core_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Коротке фактичне ядро історії в основному матеріалі статті.",
+    )
+    matching_existing_case_ids: list[str] = Field(
+        default_factory=list,
+        description="Ідентифікатори наявних справ, що збігаються саме з цим ядром.",
+    )
+    new_case_core_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Коротке ядро нової найвужчої справи, якщо її треба створити.",
+    )
+    rejection_signals_uk: list[str] = Field(
+        default_factory=list,
+        max_length=6,
+        description="Короткі фактичні сигнали, чому статтю слід відхилити як справу.",
+    )
+    broad_theme_warning_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Попередження, якщо збіг є лише тематичним або інституційним.",
+    )
+
+
 class CaseResolutionOutput(StrictOutput):
     """Article-to-case resolution output."""
 
-    decision_reason_uk: str = Field(
-        min_length=1,
-        description="Фактичне обґрунтування підсумкового рішення щодо статті.",
-    )
-    outcome: Literal["resolved", "rejected"] = Field(
-        description="Підсумок: статтю розподілено до справ або відхилено.",
+    diagnosis: CaseResolutionDiagnosis = Field(
+        description="Коротка структурована діагностика перед підсумковим рішенням щодо статті.",
     )
     existing_case_links: list[CaseLinkDecision] = Field(
         default_factory=list,
@@ -124,17 +149,40 @@ class CaseResolutionOutput(StrictOutput):
         default_factory=list,
         description="Явні зв'язки між справами, визначені під час розподілу.",
     )
+    decision_reason_uk: str = Field(
+        min_length=1,
+        max_length=320,
+        description="Короткий висновок із діагностики щодо розподілу статті по справах.",
+    )
+    outcome: Literal["resolved", "rejected"] = Field(
+        description="Підсумок: статтю розподілено до справ або відхилено.",
+    )
 
     @model_validator(mode="after")
     def validate_resolution(self) -> CaseResolutionOutput:
         """Validate outcome shape and references to proposed new cases."""
 
+        if self.diagnosis.broad_theme_warning_uk is not None and (
+            self.diagnosis.article_story_core_uk is None
+        ):
+            if self.outcome != "rejected":
+                raise ValueError("broad thematic warnings without story core must be rejected")
         if self.outcome == "resolved" and not self.existing_case_links and not self.new_cases:
             raise ValueError("resolved case resolution must link or create at least one case")
+        if self.outcome == "resolved" and self.diagnosis.article_story_core_uk is None:
+            raise ValueError("resolved case resolution requires a concrete article story core")
+        if self.outcome == "resolved" and not (
+            self.diagnosis.matching_existing_case_ids or self.diagnosis.new_case_core_uk
+        ):
+            raise ValueError("resolved case resolution requires matching or new-case diagnosis")
         if self.outcome == "rejected" and (
             self.existing_case_links or self.new_cases or self.case_relations
         ):
             raise ValueError("rejected case resolution cannot contain case actions")
+        if self.outcome == "rejected" and not (
+            self.diagnosis.rejection_signals_uk or self.diagnosis.article_story_core_uk is None
+        ):
+            raise ValueError("rejected case resolution requires rejection signals or no story core")
         existing_ids = [link.case_id for link in self.existing_case_links]
         if len(existing_ids) != len(set(existing_ids)):
             raise ValueError("existing case links must be unique")
@@ -149,15 +197,29 @@ class CaseResolutionOutput(StrictOutput):
         return self
 
 
+class CaseCopyTitleDiagnosis(StrictOutput):
+    """Short factual checks before deciding whether to replace a Case title."""
+
+    current_title_specific_enough: bool = Field(
+        description="Чи поточна назва достатньо конкретно й стабільно описує справу."
+    )
+    replacement_needed_reason_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Короткий факт, чому поточну назву потрібно замінити, якщо це потрібно.",
+    )
+    proposed_title_core_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Коротке ядро стабільної замінної назви, якщо її пропонують.",
+    )
+
+
 class CaseCopyUpdateOutput(StrictOutput):
     """Updated reader-facing copy for one existing case."""
 
-    title_reason_uk: str = Field(
-        min_length=1,
-        description="Фактична підстава зберегти або замінити поточний заголовок справи.",
-    )
-    title_action: Literal["keep", "replace"] = Field(
-        description="Дія щодо поточного заголовка справи.",
+    title_diagnosis: CaseCopyTitleDiagnosis = Field(
+        description="Коротка структурована діагностика перед рішенням щодо заголовка справи.",
     )
     replacement_title_uk: str | None = Field(
         default=None,
@@ -167,6 +229,14 @@ class CaseCopyUpdateOutput(StrictOutput):
         min_length=1,
         description="Оновлений нейтральний український підсумок справи.",
     )
+    title_reason_uk: str = Field(
+        min_length=1,
+        max_length=320,
+        description="Фактична підстава зберегти або замінити поточний заголовок справи.",
+    )
+    title_action: Literal["keep", "replace"] = Field(
+        description="Дія щодо поточного заголовка справи.",
+    )
 
     @model_validator(mode="after")
     def validate_title_action(self) -> CaseCopyUpdateOutput:
@@ -174,6 +244,11 @@ class CaseCopyUpdateOutput(StrictOutput):
 
         if self.title_action == "replace" and not self.replacement_title_uk:
             raise ValueError("replacement title is required when title_action is replace")
+        if (
+            self.title_action == "replace"
+            and self.title_diagnosis.replacement_needed_reason_uk is None
+        ):
+            raise ValueError("replace requires a replacement-needed diagnosis reason")
         if self.title_action == "keep" and self.replacement_title_uk is not None:
             raise ValueError("replacement title must be null when title_action is keep")
         return self
@@ -208,15 +283,46 @@ class CaseAuditDetachedArticle(StrictOutput):
     reason_uk: str = Field(min_length=1, description="Фактична підстава від'єднання.")
 
 
+class CaseCoherenceDiagnosis(StrictOutput):
+    """Short factual checks before deciding Case coherence."""
+
+    shared_specific_core_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Одне конкретне фактичне ядро, спільне для всіх статей, якщо воно існує.",
+    )
+    shared_only_broad_theme_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Короткий факт, якщо статті збігаються лише широкою темою або інституцією.",
+    )
+    merge_blockers_uk: list[str] = Field(
+        default_factory=list,
+        max_length=8,
+        description="Короткі факти, що заважають вважати всі статті однією історією.",
+    )
+    split_story_cores_uk: list[str] = Field(
+        default_factory=list,
+        max_length=8,
+        description="Короткі ядра окремих історій, якщо справу треба розділити.",
+    )
+    detached_article_signals_uk: list[str] = Field(
+        default_factory=list,
+        max_length=8,
+        description="Короткі сигнали, чому окремі статті можуть не належати жодній історії.",
+    )
+    coherence_test_uk: str = Field(
+        min_length=1,
+        max_length=240,
+        description="Коротка відповідь на тест, чи всі статті можна описати одним конкретним реченням.",
+    )
+
+
 class CaseCoherenceAuditOutput(StrictOutput):
     """Decision from a recurring Case coherence audit."""
 
-    reason_uk: str = Field(
-        min_length=1,
-        description="Фактичне обґрунтування підсумку аудиту цілісності справи.",
-    )
-    outcome: Literal["coherent", "split", "inconclusive"] = Field(
-        description="Підсумок аудиту цілісності справи.",
+    diagnosis: CaseCoherenceDiagnosis = Field(
+        description="Коротка структурована діагностика перед підсумком аудиту цілісності справи.",
     )
     stories: list[CaseAuditStory] = Field(
         default_factory=list,
@@ -225,6 +331,14 @@ class CaseCoherenceAuditOutput(StrictOutput):
     detached_articles: list[CaseAuditDetachedArticle] = Field(
         default_factory=list,
         description="Статті, що не належать до жодної визначеної історії.",
+    )
+    reason_uk: str = Field(
+        min_length=1,
+        max_length=320,
+        description="Фактичне обґрунтування підсумку аудиту цілісності справи.",
+    )
+    outcome: Literal["coherent", "split", "inconclusive"] = Field(
+        description="Підсумок аудиту цілісності справи.",
     )
 
     @model_validator(mode="after")
@@ -240,10 +354,20 @@ class CaseCoherenceAuditOutput(StrictOutput):
             raise ValueError("decisive audit requires exactly one original story")
         if len(refs) != len(set(refs)):
             raise ValueError("audit story refs must be unique")
-        if self.outcome == "coherent" and len(self.stories) != 1:
-            raise ValueError("coherent audit requires only the original story")
-        if self.outcome == "split" and len(self.stories) < 2:
-            raise ValueError("split audit requires at least two stories")
+        if self.outcome == "coherent":
+            if self.diagnosis.shared_specific_core_uk is None:
+                raise ValueError("coherent audit requires a shared specific core")
+            if self.diagnosis.shared_only_broad_theme_uk is not None:
+                raise ValueError("coherent audit cannot rely on only a broad theme")
+            if self.diagnosis.merge_blockers_uk:
+                raise ValueError("coherent audit cannot contain merge blockers")
+            if len(self.stories) != 1:
+                raise ValueError("coherent audit requires only the original story")
+        if self.outcome == "split":
+            if len(self.diagnosis.split_story_cores_uk) < 2:
+                raise ValueError("split audit requires at least two split story cores")
+            if len(self.stories) < 2:
+                raise ValueError("split audit requires at least two stories")
         for story in self.stories:
             if len(story.article_ids) != len(set(story.article_ids)):
                 raise ValueError("story article ids must be unique")
@@ -256,19 +380,121 @@ class CaseCoherenceAuditOutput(StrictOutput):
         return self
 
 
+class CasePublicInterestDiagnosis(StrictOutput):
+    """Short factual checks before deciding whether a Case stays public."""
+
+    concrete_story_core_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Коротке конкретне ядро історії, якщо воно підтверджене контекстом.",
+    )
+    public_interest_anchor_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Короткий якір суспільної важливості або підзвітності.",
+    )
+    durability_signal_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Короткий факт про тривалий розвиток або майбутні етапи справи.",
+    )
+    hide_signals_uk: list[str] = Field(
+        default_factory=list,
+        max_length=6,
+        description="Короткі сигнали, що справа є шумом або звичайною хронікою.",
+    )
+
+
 class CasePublicInterestAuditOutput(StrictOutput):
     """Decision whether one Case remains a durable public-interest story."""
 
-    reason_uk: str = Field(min_length=1, description="Фактична підстава рішення.")
+    diagnosis: CasePublicInterestDiagnosis = Field(
+        description="Коротка структурована діагностика перед рішенням про видимість справи.",
+    )
+    reason_uk: str = Field(
+        min_length=1,
+        max_length=320,
+        description="Фактична підстава рішення.",
+    )
     outcome: Literal["keep", "hide", "inconclusive"] = Field(
         description="Підсумок перевірки суспільної важливості."
+    )
+
+    @model_validator(mode="after")
+    def validate_outcome(self) -> CasePublicInterestAuditOutput:
+        """Require explicit evidence for keep or hide outcomes."""
+
+        if self.outcome == "keep":
+            if self.diagnosis.concrete_story_core_uk is None:
+                raise ValueError("keep requires a concrete story core")
+            if self.diagnosis.public_interest_anchor_uk is None:
+                raise ValueError("keep requires a public-interest anchor")
+        if self.outcome == "hide" and not self.diagnosis.hide_signals_uk:
+            raise ValueError("hide requires at least one hide signal")
+        return self
+
+
+class CaseDuplicateDiagnosis(StrictOutput):
+    """Short factual checks before deciding whether two Cases duplicate each other."""
+
+    case_a_core_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Коротке конкретне ядро справи A.",
+    )
+    case_b_core_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Коротке конкретне ядро справи B.",
+    )
+    shared_specific_core_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Одне спільне конкретне ядро, якщо обидві справи описують ту саму історію.",
+    )
+    relation_anchor_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Короткий сильний якір корисного зв'язку між різними справами.",
+    )
+    only_broad_overlap_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Короткий факт, якщо збіг є лише широким або інституційним.",
+    )
+    merge_blockers_uk: list[str] = Field(
+        default_factory=list,
+        max_length=8,
+        description="Короткі факти, що заважають merge двох справ.",
     )
 
 
 class CaseDuplicateAuditOutput(StrictOutput):
     """Decision for one possible duplicate Case pair."""
 
-    reason_uk: str = Field(min_length=1, description="Фактична підстава рішення щодо пари.")
+    diagnosis: CaseDuplicateDiagnosis = Field(
+        description="Коротка структурована діагностика перед рішенням щодо пари справ.",
+    )
+    reason_uk: str = Field(
+        min_length=1,
+        max_length=320,
+        description="Фактична підстава рішення щодо пари.",
+    )
     outcome: Literal["merge", "related", "distinct", "inconclusive"] = Field(
         description="Підсумок перевірки можливої тотожності справ."
     )
+
+    @model_validator(mode="after")
+    def validate_outcome(self) -> CaseDuplicateAuditOutput:
+        """Require diagnosis support for merge or related outcomes."""
+
+        if self.outcome == "merge":
+            if self.diagnosis.shared_specific_core_uk is None:
+                raise ValueError("merge requires a shared specific core")
+            if self.diagnosis.merge_blockers_uk:
+                raise ValueError("merge cannot contain merge blockers")
+        if self.outcome == "related" and self.diagnosis.relation_anchor_uk is None:
+            raise ValueError("related requires a relation anchor")
+        if self.outcome == "distinct" and self.diagnosis.only_broad_overlap_uk is None:
+            raise ValueError("distinct requires a broad-overlap diagnosis")
+        return self

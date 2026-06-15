@@ -86,6 +86,36 @@ class ProvisionalEvent(StrictOutput):
         return self
 
 
+class ArticleCaseDiagnosis(StrictOutput):
+    """Short factual checks before deciding whether an article is a Case candidate."""
+
+    ukraine_nexus_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Короткий факт про прямий і суттєвий зв'язок основної історії з Україною.",
+    )
+    concrete_story_core_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Коротке конкретне фактичне ядро відстежуваної історії.",
+    )
+    public_accountability_anchor_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Короткий якір публічної підзвітності, якщо він прямо є в матеріалі.",
+    )
+    continuation_potential_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Короткий факт про можливість майбутнього розвитку або наступних етапів.",
+    )
+    noise_signals_uk: list[str] = Field(
+        default_factory=list,
+        max_length=6,
+        description="Короткі сигнали шуму або тематичної розмитості.",
+    )
+
+
 class ArticleCardOutput(StrictOutput):
     """Compact Ukrainian article card generated from one source article."""
 
@@ -97,16 +127,8 @@ class ArticleCardOutput(StrictOutput):
         min_length=1,
         description="Нейтральний фактичний підсумок основного матеріалу у 1-2 реченнях.",
     )
-    case_decision_reason_uk: str | None = Field(
-        default=None,
-        description="Коротка фактична підстава для рішення, чи є матеріал справою.",
-    )
-    is_case_candidate: bool = Field(
-        description="Чи описує стаття конкретну суспільно важливу справу або дію.",
-    )
-    noise_reason: NoiseReason | None = Field(
-        default=None,
-        description="Категорія шуму; обов'язкова лише для матеріалу, що не є справою.",
+    case_diagnosis: ArticleCaseDiagnosis = Field(
+        description="Коротка структурована діагностика перед рішенням, чи є матеріал справою.",
     )
     main_event_title_uk: str | None = Field(
         default=None,
@@ -127,6 +149,18 @@ class ArticleCardOutput(StrictOutput):
         max_length=8,
         description="Специфічні не загальні якорі для кластеризації тієї самої справи.",
     )
+    noise_reason: NoiseReason | None = Field(
+        default=None,
+        description="Категорія шуму; обов'язкова лише для матеріалу, що не є справою.",
+    )
+    case_decision_reason_uk: str | None = Field(
+        default=None,
+        max_length=320,
+        description="Короткий висновок із діагностики про те, чи є матеріал справою.",
+    )
+    is_case_candidate: bool = Field(
+        description="Чи описує стаття конкретну суспільно важливу справу або дію.",
+    )
 
     @model_validator(mode="after")
     def validate_case_candidate_shape(self) -> ArticleCardOutput:
@@ -135,6 +169,17 @@ class ArticleCardOutput(StrictOutput):
         if self.is_case_candidate:
             if self.noise_reason is not None:
                 raise ValueError("case candidates cannot have a noise reason")
+            if self.case_diagnosis.ukraine_nexus_uk is None:
+                raise ValueError("case candidates require a Ukraine nexus diagnosis")
+            if self.case_diagnosis.concrete_story_core_uk is None:
+                raise ValueError("case candidates require a concrete story core diagnosis")
+            if (
+                self.case_diagnosis.public_accountability_anchor_uk is None
+                and self.case_diagnosis.continuation_potential_uk is None
+            ):
+                raise ValueError(
+                    "case candidates require a public accountability anchor or clear continuation"
+                )
             if not self.main_event_title_uk:
                 raise ValueError("case candidates require a main event title")
             if not self.events:

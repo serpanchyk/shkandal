@@ -42,14 +42,16 @@ def test_runtime_repair_schema_retains_categorical_constraints() -> None:
 def test_prompt_schema_places_decision_basis_before_article_choice() -> None:
     properties = list(prompt_schema(ArticleCardOutput)["properties"])
 
-    assert properties.index("case_decision_reason_uk") < properties.index("is_case_candidate")
+    assert properties.index("case_diagnosis") < properties.index("case_decision_reason_uk")
+    assert properties[-1] == "is_case_candidate"
 
 
 def test_prompt_schema_places_resolution_reason_before_action() -> None:
     schema = prompt_schema(EntityResolutionOutput)
     decision_properties = list(schema["$defs"]["EntityResolutionDecision"]["properties"])
 
-    assert decision_properties.index("reason_uk") < decision_properties.index("action")
+    assert decision_properties.index("diagnosis") < decision_properties.index("reason_uk")
+    assert decision_properties[-1] == "action"
 
 
 def test_case_resolution_schema_requires_outcome_and_reason_before_actions() -> None:
@@ -57,8 +59,27 @@ def test_case_resolution_schema_requires_outcome_and_reason_before_actions() -> 
     properties = list(schema["properties"])
 
     assert {"decision_reason_uk", "outcome"} <= set(schema["required"])
-    assert properties.index("decision_reason_uk") < properties.index("outcome")
-    assert properties.index("outcome") < properties.index("existing_case_links")
+    assert properties.index("diagnosis") < properties.index("decision_reason_uk")
+    assert properties[-1] == "outcome"
+
+
+def test_schema_exposes_diagnosis_objects_and_terminal_choice_fields() -> None:
+    schema = prompt_schema(CaseCoherenceAuditOutput)
+    coherence_properties = list(schema["properties"])
+    assert coherence_properties[-1] == "outcome"
+    assert "diagnosis" in coherence_properties
+
+    duplicate_properties = list(prompt_schema(CaseDuplicateAuditOutput)["properties"])
+    assert duplicate_properties[-1] == "outcome"
+    assert "diagnosis" in duplicate_properties
+
+    interest_properties = list(prompt_schema(CasePublicInterestAuditOutput)["properties"])
+    assert interest_properties[-1] == "outcome"
+    assert "diagnosis" in interest_properties
+
+    copy_properties = list(prompt_schema(CaseCopyUpdateOutput)["properties"])
+    assert copy_properties[-1] == "title_action"
+    assert "title_diagnosis" in copy_properties
 
 
 def test_prompt_schemas_describe_every_property() -> None:

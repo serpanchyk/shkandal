@@ -15,6 +15,13 @@ def test_normalizes_observed_article_card_contract_failures() -> None:
         output={
             "title_uk": "Справа",
             "summary_uk": "Опис.",
+            "case_diagnosis": {
+                "ukraine_nexus_uk": "Подія стосується українського суду.",
+                "concrete_story_core_uk": "Судове рішення у конкретній справі.",
+                "public_accountability_anchor_uk": "Йдеться про дію державного органу.",
+                "continuation_potential_uk": "Можливе оскарження або наступні етапи.",
+                "noise_signals_uk": [],
+            },
             "is_case_candidate": True,
             "noise_reason": "generic_news",
             "main_event_title_uk": "Суд ухвалив рішення",

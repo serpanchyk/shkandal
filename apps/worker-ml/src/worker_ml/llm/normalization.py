@@ -105,6 +105,20 @@ def normalize_llm_output(
 
 
 def _normalize_article_card(output: dict[str, Any], actions: list[str]) -> None:
+    if not isinstance(output.get("case_diagnosis"), dict):
+        _set(
+            output,
+            "case_diagnosis",
+            {
+                "ukraine_nexus_uk": None,
+                "concrete_story_core_uk": None,
+                "public_accountability_anchor_uk": None,
+                "continuation_potential_uk": None,
+                "noise_signals_uk": [],
+            },
+            actions,
+            "default case diagnosis",
+        )
     if output.get("is_case_candidate") is False:
         if output.get("noise_reason") not in NOISE_REASONS:
             _set(output, "noise_reason", "generic_news", actions, "default non-case noise reason")
@@ -137,6 +151,20 @@ def _normalize_article_card(output: dict[str, Any], actions: list[str]) -> None:
 
 
 def _normalize_entity_decision(decision: dict[str, Any], actions: list[str], path: str) -> None:
+    if not isinstance(decision.get("diagnosis"), dict):
+        _set(
+            decision,
+            "diagnosis",
+            {
+                "is_named_stable_actor": False,
+                "material_case_ids": [],
+                "identity_match_evidence_uk": None,
+                "identity_conflict_uk": None,
+                "rejection_signal_uk": None,
+            },
+            actions,
+            f"{path}: default diagnosis",
+        )
     if "new_canonical_name_en" in decision:
         decision.pop("new_canonical_name_en")
         actions.append(f"{path}: remove unsupported English canonical name")
@@ -178,6 +206,22 @@ def _normalize_entity_decision(decision: dict[str, Any], actions: list[str], pat
 
 
 def _normalize_event_decision(decision: dict[str, Any], actions: list[str], path: str) -> None:
+    if not isinstance(decision.get("diagnosis"), dict):
+        _set(
+            decision,
+            "diagnosis",
+            {
+                "is_concrete_occurrence": False,
+                "occurrence_core_uk": None,
+                "anchor_summary_uk": None,
+                "candidate_match_evidence_uk": None,
+                "anchor_conflict_uk": None,
+                "material_case_ids": [],
+                "rejection_signal_uk": None,
+            },
+            actions,
+            f"{path}: default diagnosis",
+        )
     _normalize_date(decision, actions, path)
     action = decision.get("action")
     assignments = decision.get("case_assignments")

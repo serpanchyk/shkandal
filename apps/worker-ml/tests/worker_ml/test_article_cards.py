@@ -74,6 +74,13 @@ async def test_handler_creates_article_card_from_valid_llm_output() -> None:
     output = ArticleCardOutput(
         title_uk="Картка",
         summary_uk="Короткий опис",
+        case_diagnosis={
+            "ukraine_nexus_uk": "Подія стосується українського регулятора.",
+            "concrete_story_core_uk": "НБУ оштрафував банк у конкретній справі.",
+            "public_accountability_anchor_uk": "Йдеться про дії державного регулятора.",
+            "continuation_potential_uk": "Можливі подальші рішення або оскарження.",
+            "noise_signals_uk": [],
+        },
         is_case_candidate=True,
         main_event_title_uk="НБУ оштрафував банк",
         entities=[],
@@ -134,6 +141,13 @@ async def test_handler_persists_non_case_card_without_case_signals() -> None:
     output = ArticleCardOutput(
         title_uk="Словаччина підтримала переговори з ЄС",
         summary_uk="Словаччина заявила про підтримку переговорів.",
+        case_diagnosis={
+            "ukraine_nexus_uk": None,
+            "concrete_story_core_uk": None,
+            "public_accountability_anchor_uk": None,
+            "continuation_potential_uk": None,
+            "noise_signals_uk": ["Дипломатична новина без окремої справи Shkandal."],
+        },
         is_case_candidate=False,
         noise_reason="diplomacy",
     )

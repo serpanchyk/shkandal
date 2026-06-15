@@ -49,6 +49,13 @@ def test_invalid_optional_case_relations_are_discarded() -> None:
     invalid_id = uuid4()
     output = CaseResolutionOutput.model_validate(
         {
+            "diagnosis": {
+                "article_story_core_uk": "Стаття описує дві конкретні пов'язані справи.",
+                "matching_existing_case_ids": [str(candidate_id)],
+                "new_case_core_uk": "Окрема нова справа з цього ж матеріалу.",
+                "rejection_signals_uk": [],
+                "broad_theme_warning_uk": None,
+            },
             "decision_reason_uk": "Стаття описує дві пов'язані справи.",
             "outcome": "resolved",
             "existing_case_links": [
@@ -123,6 +130,13 @@ async def test_handler_stops_after_explicit_case_rejection() -> None:
     session.commit = AsyncMock()
     session_factory = Mock(return_value=_session_context(session))
     output = CaseResolutionOutput(
+        diagnosis={
+            "article_story_core_uk": None,
+            "matching_existing_case_ids": [],
+            "new_case_core_uk": None,
+            "rejection_signals_uk": ["Немає конкретної відстежуваної справи."],
+            "broad_theme_warning_uk": None,
+        },
         decision_reason_uk="Матеріал не містить конкретної відстежуваної справи.",
         outcome="rejected",
     )

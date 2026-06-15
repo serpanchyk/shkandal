@@ -5,15 +5,84 @@ from pydantic import ValidationError
 from worker_ml.llm.contracts import (
     ArticleCardOutput,
     CaseCoherenceAuditOutput,
+    CaseDuplicateAuditOutput,
     CaseResolutionOutput,
     EntityResolutionOutput,
     EventResolutionOutput,
 )
 
 
+def article_case_diagnosis(**changes: object) -> dict[str, object]:
+    diagnosis: dict[str, object] = {
+        "ukraine_nexus_uk": "Подія стосується українського органу місцевого самоврядування.",
+        "concrete_story_core_uk": "Розслідування щодо закупівель міської ради.",
+        "public_accountability_anchor_uk": "Йдеться про публічні закупівлі та підозру посадовцям.",
+        "continuation_potential_uk": "Можливі подальші процесуальні дії.",
+        "noise_signals_uk": [],
+    }
+    diagnosis.update(changes)
+    return diagnosis
+
+
+def case_coherence_diagnosis(**changes: object) -> dict[str, object]:
+    diagnosis: dict[str, object] = {
+        "shared_specific_core_uk": "Усі статті описують одну закупівельну справу.",
+        "shared_only_broad_theme_uk": None,
+        "merge_blockers_uk": [],
+        "split_story_cores_uk": [],
+        "detached_article_signals_uk": [],
+        "coherence_test_uk": "Так, усі статті описуються одним конкретним реченням.",
+    }
+    diagnosis.update(changes)
+    return diagnosis
+
+
+def case_resolution_diagnosis(**changes: object) -> dict[str, object]:
+    diagnosis: dict[str, object] = {
+        "article_story_core_uk": "Стаття описує окрему відстежувану закупівельну історію.",
+        "matching_existing_case_ids": [],
+        "new_case_core_uk": "Закупівля міськрадою послуг за завищеною ціною.",
+        "rejection_signals_uk": [],
+        "broad_theme_warning_uk": None,
+    }
+    diagnosis.update(changes)
+    return diagnosis
+
+
+def entity_diagnosis(**changes: object) -> dict[str, object]:
+    diagnosis: dict[str, object] = {
+        "is_named_stable_actor": True,
+        "material_case_ids": ["case-a"],
+        "identity_match_evidence_uk": "Назва і роль точно збігаються з candidate.",
+        "identity_conflict_uk": None,
+        "rejection_signal_uk": None,
+    }
+    diagnosis.update(changes)
+    return diagnosis
+
+
+def event_diagnosis(**changes: object) -> dict[str, object]:
+    diagnosis: dict[str, object] = {
+        "is_concrete_occurrence": True,
+        "occurrence_core_uk": "НАБУ повідомило посадовцю про підозру.",
+        "anchor_summary_uk": "Дія, учасник і процесуальний етап збігаються.",
+        "candidate_match_evidence_uk": "Candidate описує ту саму підозру тому самому посадовцю.",
+        "anchor_conflict_uk": None,
+        "material_case_ids": ["case-a"],
+        "rejection_signal_uk": None,
+    }
+    diagnosis.update(changes)
+    return diagnosis
+
+
 def test_case_coherence_audit_accepts_overlapping_article_assignments() -> None:
     output = CaseCoherenceAuditOutput.model_validate(
         {
+            "diagnosis": case_coherence_diagnosis(
+                shared_specific_core_uk=None,
+                split_story_cores_uk=["Перша закупівельна справа.", "Друга закупівельна справа."],
+                coherence_test_uk="Ні, це дві різні історії.",
+            ),
             "outcome": "split",
             "reason_uk": "Змішані дві справи.",
             "stories": [
@@ -42,6 +111,11 @@ def test_case_coherence_audit_rejects_split_without_original_story() -> None:
     with pytest.raises(ValueError, match="exactly one original"):
         CaseCoherenceAuditOutput.model_validate(
             {
+                "diagnosis": case_coherence_diagnosis(
+                    shared_specific_core_uk=None,
+                    split_story_cores_uk=["Перша історія.", "Друга історія."],
+                    coherence_test_uk="Ні, це дві різні історії.",
+                ),
                 "outcome": "split",
                 "reason_uk": "Змішані справи.",
                 "stories": [
@@ -68,6 +142,7 @@ def test_case_coherence_audit_rejects_assigned_detached_article() -> None:
     with pytest.raises(ValueError, match="cannot both assign and detach"):
         CaseCoherenceAuditOutput.model_validate(
             {
+                "diagnosis": case_coherence_diagnosis(),
                 "outcome": "coherent",
                 "reason_uk": "Одна справа.",
                 "stories": [
@@ -93,6 +168,7 @@ def test_case_coherence_audit_rejects_duplicate_detached_article() -> None:
     with pytest.raises(ValueError, match="detached article ids must be unique"):
         CaseCoherenceAuditOutput.model_validate(
             {
+                "diagnosis": case_coherence_diagnosis(),
                 "outcome": "coherent",
                 "reason_uk": "Одна справа.",
                 "stories": [
@@ -118,11 +194,35 @@ def test_case_coherence_audit_rejects_duplicate_detached_article() -> None:
         )
 
 
+def test_case_coherence_audit_rejects_coherent_without_shared_specific_core() -> None:
+    with pytest.raises(ValueError, match="shared specific core"):
+        CaseCoherenceAuditOutput.model_validate(
+            {
+                "diagnosis": case_coherence_diagnosis(
+                    shared_specific_core_uk=None,
+                    coherence_test_uk="Ні, це не одна конкретна історія.",
+                ),
+                "outcome": "coherent",
+                "reason_uk": "Надто широке об'єднання.",
+                "stories": [
+                    {
+                        "story_ref": "original",
+                        "title_uk": "Справа",
+                        "summary_uk": "Опис.",
+                        "article_ids": ["article-a"],
+                        "reason_uk": "Стаття належить до історії.",
+                    }
+                ],
+            }
+        )
+
+
 def test_article_card_contract_accepts_representative_json() -> None:
     output = ArticleCardOutput.model_validate(
         {
             "title_uk": "Справа про закупівлі у міській раді",
             "summary_uk": "Стаття описує підозру щодо закупівель.",
+            "case_diagnosis": article_case_diagnosis(),
             "is_case_candidate": True,
             "noise_reason": None,
             "main_event_title_uk": "НАБУ повідомило про підозру",
@@ -171,6 +271,13 @@ def test_article_card_contract_accepts_non_case_card_without_case_signals(
         {
             "title_uk": "Огляд культурної виставки",
             "summary_uk": "Матеріал розповідає про мистецьку виставку.",
+            "case_diagnosis": article_case_diagnosis(
+                ukraine_nexus_uk=None,
+                concrete_story_core_uk=None,
+                public_accountability_anchor_uk=None,
+                continuation_potential_uk=None,
+                noise_signals_uk=["Культурний матеріал без справи."],
+            ),
             "is_case_candidate": False,
             "noise_reason": noise_reason,
             "main_event_title_uk": None,
@@ -207,6 +314,7 @@ def test_article_card_contract_rejects_invalid_case_shape(changes: dict[str, obj
     payload: dict[str, object] = {
         "title_uk": "Справа",
         "summary_uk": "Опис справи.",
+        "case_diagnosis": article_case_diagnosis(),
         "is_case_candidate": True,
         "noise_reason": None,
         "main_event_title_uk": "НБУ оштрафував банк",
@@ -231,12 +339,42 @@ def test_article_card_contract_rejects_case_signals_for_non_case_card() -> None:
             {
                 "title_uk": "Рейтинг",
                 "summary_uk": "Матеріал містить рейтинг.",
+                "case_diagnosis": article_case_diagnosis(
+                    ukraine_nexus_uk=None,
+                    concrete_story_core_uk=None,
+                    public_accountability_anchor_uk=None,
+                    continuation_potential_uk=None,
+                    noise_signals_uk=["Рейтинг без конкретної справи."],
+                ),
                 "is_case_candidate": False,
                 "noise_reason": "ranking",
                 "main_event_title_uk": None,
                 "entities": [],
                 "events": [],
                 "case_signature_terms": ["рейтинг"],
+            }
+        )
+
+
+def test_article_card_contract_rejects_case_candidate_without_ukraine_nexus() -> None:
+    with pytest.raises(ValidationError, match="Ukraine nexus"):
+        ArticleCardOutput.model_validate(
+            {
+                "title_uk": "Справа",
+                "summary_uk": "Опис справи.",
+                "case_diagnosis": article_case_diagnosis(ukraine_nexus_uk=None),
+                "is_case_candidate": True,
+                "noise_reason": None,
+                "main_event_title_uk": "Суд ухвалив рішення",
+                "entities": [],
+                "events": [
+                    {
+                        "provisional_ref": "event_core",
+                        "title_uk": "Суд ухвалив рішення",
+                        "description_uk": "Суд розглянув справу.",
+                    }
+                ],
+                "case_signature_terms": ["суд", "рішення"],
             }
         )
 
@@ -262,6 +400,12 @@ def test_entity_resolution_contract_accepts_strict_rejection_reasons(
             "entities": [
                 {
                     "provisional_ref": "entity_rejected",
+                    "diagnosis": entity_diagnosis(
+                        is_named_stable_actor=False,
+                        material_case_ids=[],
+                        identity_match_evidence_uk=None,
+                        rejection_signal_uk="Це не придатна глобальна сутність.",
+                    ),
                     "reason_uk": "Сутність не можна додати до глобального графа.",
                     "action": "reject",
                     "confidence": 0.9,
@@ -279,6 +423,9 @@ def event_resolution_decision(**changes: object) -> dict[str, object]:
 
     decision: dict[str, object] = {
         "provisional_ref": "event_decision",
+        "diagnosis": event_diagnosis(
+            candidate_match_evidence_uk=None,
+        ),
         "reason_uk": "Описано конкретну подію.",
         "action": "create_new",
         "existing_event_id": None,
@@ -317,6 +464,14 @@ def test_event_resolution_contract_accepts_strict_rejection_reasons(
             "events": [
                 {
                     "provisional_ref": "event_rejected",
+                    "diagnosis": event_diagnosis(
+                        is_concrete_occurrence=False,
+                        occurrence_core_uk=None,
+                        anchor_summary_uk=None,
+                        candidate_match_evidence_uk=None,
+                        material_case_ids=[],
+                        rejection_signal_uk="Це не конкретна глобальна подія.",
+                    ),
                     "reason_uk": "Це не придатна глобальна подія.",
                     "action": "reject",
                     "confidence": 0.9,
@@ -327,6 +482,73 @@ def test_event_resolution_contract_accepts_strict_rejection_reasons(
     )
 
     assert output.events[0].rejection_reason == rejection_reason
+
+
+def test_entity_resolution_contract_rejects_accepted_entity_without_stable_actor() -> None:
+    with pytest.raises(ValidationError, match="named stable actor"):
+        EntityResolutionOutput.model_validate(
+            {
+                "entities": [
+                    {
+                        "provisional_ref": "entity_actor",
+                        "diagnosis": entity_diagnosis(
+                            is_named_stable_actor=False,
+                            identity_match_evidence_uk=None,
+                        ),
+                        "reason_uk": "Хибно прийнята сутність.",
+                        "action": "link_existing",
+                        "existing_entity_id": "00000000-0000-0000-0000-000000000001",
+                        "confidence": 0.9,
+                        "case_assignments": [
+                            {"case_id": "case-a", "relevance_reason_uk": "Причина"}
+                        ],
+                    }
+                ]
+            }
+        )
+
+
+def test_entity_resolution_contract_rejects_accepted_entity_without_material_cases() -> None:
+    with pytest.raises(ValidationError, match="material case ids"):
+        EntityResolutionOutput.model_validate(
+            {
+                "entities": [
+                    {
+                        "provisional_ref": "entity_actor",
+                        "diagnosis": entity_diagnosis(material_case_ids=[]),
+                        "reason_uk": "Хибно прийнята сутність.",
+                        "action": "create_new",
+                        "new_canonical_name_uk": "ТОВ «Приклад»",
+                        "entity_type": "company",
+                        "confidence": 0.9,
+                        "case_assignments": [
+                            {"case_id": "case-a", "relevance_reason_uk": "Причина"}
+                        ],
+                    }
+                ]
+            }
+        )
+
+
+def test_entity_resolution_contract_rejects_link_without_identity_evidence() -> None:
+    with pytest.raises(ValidationError, match="identity match evidence"):
+        EntityResolutionOutput.model_validate(
+            {
+                "entities": [
+                    {
+                        "provisional_ref": "entity_actor",
+                        "diagnosis": entity_diagnosis(identity_match_evidence_uk=None),
+                        "reason_uk": "Хибне link-рішення.",
+                        "action": "link_existing",
+                        "existing_entity_id": "00000000-0000-0000-0000-000000000001",
+                        "confidence": 0.9,
+                        "case_assignments": [
+                            {"case_id": "case-a", "relevance_reason_uk": "Причина"}
+                        ],
+                    }
+                ]
+            }
+        )
 
 
 @pytest.mark.parametrize(
@@ -408,6 +630,38 @@ def test_event_resolution_contract_rejects_accepted_event_without_case_assignmen
         )
 
 
+def test_event_resolution_contract_rejects_accepted_event_without_concrete_occurrence() -> None:
+    with pytest.raises(ValidationError, match="concrete occurrence"):
+        EventResolutionOutput.model_validate(
+            {
+                "events": [
+                    event_resolution_decision(
+                        diagnosis=event_diagnosis(
+                            is_concrete_occurrence=False,
+                            occurrence_core_uk=None,
+                        )
+                    )
+                ]
+            }
+        )
+
+
+def test_event_resolution_contract_rejects_link_with_anchor_conflict() -> None:
+    with pytest.raises(ValidationError, match="anchor conflict"):
+        EventResolutionOutput.model_validate(
+            {
+                "events": [
+                    event_resolution_decision(
+                        action="link_existing",
+                        existing_event_id="00000000-0000-0000-0000-000000000001",
+                        new_title_uk=None,
+                        diagnosis=event_diagnosis(anchor_conflict_uk="Дата суперечить candidate."),
+                    )
+                ]
+            }
+        )
+
+
 @pytest.mark.parametrize(
     "alias",
     [
@@ -424,6 +678,7 @@ def test_entity_resolution_contract_rejects_role_aliases(alias: str) -> None:
                 "entities": [
                     {
                         "provisional_ref": "entity_company",
+                        "diagnosis": entity_diagnosis(identity_match_evidence_uk=None),
                         "reason_uk": "Компанія матеріально важлива для справи.",
                         "action": "create_new",
                         "new_canonical_name_uk": "ТОВ «Приклад»",
@@ -459,6 +714,7 @@ def test_entity_resolution_contract_rejects_case_role_descriptions(
                 "entities": [
                     {
                         "provisional_ref": "entity_company",
+                        "diagnosis": entity_diagnosis(identity_match_evidence_uk=None),
                         "reason_uk": "Компанія матеріально важлива для справи.",
                         "action": "create_new",
                         "new_canonical_name_uk": "ТОВ «Приклад»",
@@ -492,6 +748,7 @@ def test_article_card_contract_rejects_inconsistent_event_dates(
             {
                 "title_uk": "Справа",
                 "summary_uk": "Опис справи.",
+                "case_diagnosis": article_case_diagnosis(),
                 "is_case_candidate": True,
                 "noise_reason": None,
                 "main_event_title_uk": "Суд ухвалив рішення",
@@ -512,6 +769,11 @@ def test_article_card_contract_rejects_inconsistent_event_dates(
 def test_case_resolution_contract_accepts_explicit_rejection() -> None:
     output = CaseResolutionOutput.model_validate(
         {
+            "diagnosis": case_resolution_diagnosis(
+                article_story_core_uk=None,
+                new_case_core_uk=None,
+                rejection_signals_uk=["Немає конкретної відстежуваної історії."],
+            ),
             "decision_reason_uk": "Немає конкретної відстежуваної справи.",
             "outcome": "rejected",
             "existing_case_links": [],
@@ -523,10 +785,57 @@ def test_case_resolution_contract_accepts_explicit_rejection() -> None:
     assert output.outcome == "rejected"
 
 
+def test_case_resolution_contract_rejects_resolved_without_story_core() -> None:
+    with pytest.raises(ValidationError, match="story core"):
+        CaseResolutionOutput.model_validate(
+            {
+                "diagnosis": case_resolution_diagnosis(
+                    article_story_core_uk=None,
+                    new_case_core_uk="Нова справа.",
+                ),
+                "decision_reason_uk": "Немає конкретного ядра статті.",
+                "outcome": "resolved",
+                "existing_case_links": [],
+                "new_cases": [
+                    {
+                        "new_case_ref": "new_case",
+                        "title_uk": "Нова справа",
+                        "summary_uk": "Опис.",
+                        "link_reason_uk": "Причина.",
+                        "confidence": 0.8,
+                    }
+                ],
+                "case_relations": [],
+            }
+        )
+
+
+def test_case_duplicate_audit_rejects_merge_without_shared_specific_core() -> None:
+    with pytest.raises(ValidationError, match="shared specific core"):
+        CaseDuplicateAuditOutput.model_validate(
+            {
+                "diagnosis": {
+                    "case_a_core_uk": "Перша справа.",
+                    "case_b_core_uk": "Друга справа.",
+                    "shared_specific_core_uk": None,
+                    "relation_anchor_uk": None,
+                    "only_broad_overlap_uk": "Спільний лише орган.",
+                    "merge_blockers_uk": [],
+                },
+                "reason_uk": "Недостатньо підстав для merge.",
+                "outcome": "merge",
+            }
+        )
+
+
 @pytest.mark.parametrize(
     "payload",
     [
         {
+            "diagnosis": case_resolution_diagnosis(
+                new_case_core_uk=None,
+                matching_existing_case_ids=[],
+            ),
             "decision_reason_uk": "Немає дії.",
             "outcome": "resolved",
             "existing_case_links": [],
@@ -534,6 +843,11 @@ def test_case_resolution_contract_accepts_explicit_rejection() -> None:
             "case_relations": [],
         },
         {
+            "diagnosis": case_resolution_diagnosis(
+                article_story_core_uk=None,
+                new_case_core_uk=None,
+                rejection_signals_uk=["Статтю треба було відхилити."],
+            ),
             "decision_reason_uk": "Помилкова дія.",
             "outcome": "rejected",
             "existing_case_links": [],

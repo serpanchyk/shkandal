@@ -31,6 +31,33 @@ class EntityCaseAssignment(StrictOutput):
     )
 
 
+class EntityResolutionDiagnosis(StrictOutput):
+    """Short factual checks before deciding how to resolve one provisional entity."""
+
+    is_named_stable_actor: bool = Field(
+        description="Чи є provisional сутність названим стабільним актором, а не роллю чи фоном."
+    )
+    material_case_ids: list[str] = Field(
+        default_factory=list,
+        description="Ідентифікатори пов'язаних справ, для яких сутність матеріально важлива.",
+    )
+    identity_match_evidence_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Короткий доказ тотожності з candidate, якщо застосовно.",
+    )
+    identity_conflict_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Короткий конфлікт тотожності, якщо link/rename/retype небезпечні.",
+    )
+    rejection_signal_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Короткий факт, чому сутність слід відхилити.",
+    )
+
+
 class EntityResolutionDecision(StrictOutput):
     """Decision for one provisional entity."""
 
@@ -38,17 +65,9 @@ class EntityResolutionDecision(StrictOutput):
         pattern=r"^entity_[a-z0-9_]+$",
         description="Посилання на попередню сутність із картки статті.",
     )
-    reason_uk: str = Field(
-        min_length=1,
-        description="Фактичне обґрунтування рішення щодо сутності.",
+    diagnosis: EntityResolutionDiagnosis = Field(
+        description="Коротка структурована діагностика перед рішенням щодо provisional сутності.",
     )
-    action: Literal[
-        "link_existing",
-        "create_new",
-        "reject",
-        "rename_existing",
-        "retype_existing",
-    ] = Field(description="Дія для глобального запису сутності.")
     existing_entity_id: str | None = Field(
         default=None,
         description="Ідентифікатор наявної сутності для дій над наявним записом.",
@@ -97,6 +116,18 @@ class EntityResolutionDecision(StrictOutput):
         default=None,
         description="Причина відхилення; заповнюється лише для дії reject.",
     )
+    reason_uk: str = Field(
+        min_length=1,
+        max_length=320,
+        description="Короткий висновок із діагностики щодо рішення по сутності.",
+    )
+    action: Literal[
+        "link_existing",
+        "create_new",
+        "reject",
+        "rename_existing",
+        "retype_existing",
+    ] = Field(description="Дія для глобального запису сутності.")
 
     @model_validator(mode="after")
     def validate_action(self) -> EntityResolutionDecision:
@@ -114,6 +145,7 @@ class EntityResolutionDecision(StrictOutput):
         ):
             raise ValueError("description_uk cannot describe a case-specific role")
         existing_actions = {"link_existing", "rename_existing", "retype_existing"}
+        accepted_actions = existing_actions | {"create_new"}
         if self.action in existing_actions and self.existing_entity_id is None:
             raise ValueError(f"{self.action} requires existing_entity_id")
         if self.action == "create_new" and self.existing_entity_id is not None:
@@ -132,6 +164,8 @@ class EntityResolutionDecision(StrictOutput):
         if self.action == "reject":
             if self.rejection_reason is None:
                 raise ValueError("reject requires rejection_reason")
+            if self.diagnosis.rejection_signal_uk is None and self.rejection_reason is None:
+                raise ValueError("reject requires a rejection signal")
             if self.existing_entity_id is not None or self.new_canonical_name_uk is not None:
                 raise ValueError("reject cannot reference an identity")
             if self.case_assignments:
@@ -139,8 +173,16 @@ class EntityResolutionDecision(StrictOutput):
             return self
         if self.rejection_reason is not None:
             raise ValueError("accepted entity cannot have rejection_reason")
+        if self.action in accepted_actions and not self.diagnosis.is_named_stable_actor:
+            raise ValueError("accepted entity requires a named stable actor diagnosis")
+        if self.action in accepted_actions and not self.diagnosis.material_case_ids:
+            raise ValueError("accepted entity requires material case ids")
         if not self.case_assignments:
             raise ValueError("accepted entity requires at least one Case assignment")
+        if self.action in existing_actions and self.diagnosis.identity_match_evidence_uk is None:
+            raise ValueError(f"{self.action} requires identity match evidence")
+        if self.action in existing_actions and self.diagnosis.identity_conflict_uk is not None:
+            raise ValueError(f"{self.action} cannot proceed with identity conflict")
         return self
 
 
@@ -172,6 +214,43 @@ class EventCaseAssignment(StrictOutput):
     )
 
 
+class EventResolutionDiagnosis(StrictOutput):
+    """Short factual checks before deciding how to resolve one provisional event."""
+
+    is_concrete_occurrence: bool = Field(
+        description="Чи є provisional подія конкретною occurrence, а не темою, станом чи переказом."
+    )
+    occurrence_core_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Коротке конкретне ядро occurrence.",
+    )
+    anchor_summary_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Короткий підсумок anchors, які ідентифікують occurrence.",
+    )
+    candidate_match_evidence_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Короткий доказ, що candidate є тією самою occurrence.",
+    )
+    anchor_conflict_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Короткий опис суперечливого anchor, якщо link_existing небезпечний.",
+    )
+    material_case_ids: list[str] = Field(
+        default_factory=list,
+        description="Ідентифікатори пов'язаних справ, для яких подія матеріально важлива.",
+    )
+    rejection_signal_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Короткий факт, чому подію слід відхилити.",
+    )
+
+
 class EventResolutionDecision(StrictOutput):
     """Decision for one provisional event."""
 
@@ -179,12 +258,8 @@ class EventResolutionDecision(StrictOutput):
         pattern=r"^event_[a-z0-9_]+$",
         description="Посилання на попередню подію з картки статті.",
     )
-    reason_uk: str = Field(
-        min_length=1,
-        description="Фактичне обґрунтування рішення щодо події.",
-    )
-    action: Literal["link_existing", "create_new", "reject"] = Field(
-        description="Дія для глобального запису події.",
+    diagnosis: EventResolutionDiagnosis = Field(
+        description="Коротка структурована діагностика перед рішенням щодо provisional події.",
     )
     existing_event_id: str | None = Field(
         default=None,
@@ -243,6 +318,14 @@ class EventResolutionDecision(StrictOutput):
         default=None,
         description="Причина відхилення; заповнюється лише для дії reject.",
     )
+    reason_uk: str = Field(
+        min_length=1,
+        max_length=320,
+        description="Короткий висновок із діагностики щодо рішення по події.",
+    )
+    action: Literal["link_existing", "create_new", "reject"] = Field(
+        description="Дія для глобального запису події.",
+    )
 
     @model_validator(mode="after")
     def validate_action(self) -> EventResolutionDecision:
@@ -283,6 +366,8 @@ class EventResolutionDecision(StrictOutput):
         if self.action == "reject":
             if self.rejection_reason is None:
                 raise ValueError("reject requires rejection_reason")
+            if self.diagnosis.rejection_signal_uk is None and self.rejection_reason is None:
+                raise ValueError("reject requires a rejection signal")
             if self.existing_event_id is not None or self.new_title_uk is not None:
                 raise ValueError("reject cannot reference an identity")
             if self.case_assignments:
@@ -290,8 +375,18 @@ class EventResolutionDecision(StrictOutput):
             return self
         if self.rejection_reason is not None:
             raise ValueError("accepted event cannot have rejection_reason")
+        if not self.diagnosis.is_concrete_occurrence:
+            raise ValueError("accepted event requires a concrete occurrence diagnosis")
+        if self.diagnosis.occurrence_core_uk is None:
+            raise ValueError("accepted event requires an occurrence core diagnosis")
+        if not self.diagnosis.material_case_ids:
+            raise ValueError("accepted event requires material case ids")
         if not self.case_assignments:
             raise ValueError("accepted event requires at least one Case assignment")
+        if self.action == "link_existing" and self.diagnosis.candidate_match_evidence_uk is None:
+            raise ValueError("link_existing requires candidate match evidence")
+        if self.action == "link_existing" and self.diagnosis.anchor_conflict_uk is not None:
+            raise ValueError("link_existing cannot proceed with anchor conflict")
         return self
 
 

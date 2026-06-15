@@ -29,6 +29,32 @@ from worker_ml.llm.contracts import (
 from worker_ml.retrieval.vector_index import VectorIndexService
 
 
+def _entity_diagnosis(**changes: object) -> dict[str, object]:
+    diagnosis: dict[str, object] = {
+        "is_named_stable_actor": True,
+        "material_case_ids": ["case-a"],
+        "identity_match_evidence_uk": "Назва і контекст збігаються.",
+        "identity_conflict_uk": None,
+        "rejection_signal_uk": None,
+    }
+    diagnosis.update(changes)
+    return diagnosis
+
+
+def _event_diagnosis(**changes: object) -> dict[str, object]:
+    diagnosis: dict[str, object] = {
+        "is_concrete_occurrence": True,
+        "occurrence_core_uk": "Конкретна подія у справі.",
+        "anchor_summary_uk": "Дія, учасники та дата збігаються.",
+        "candidate_match_evidence_uk": "Це та сама occurrence.",
+        "anchor_conflict_uk": None,
+        "material_case_ids": ["case-a"],
+        "rejection_signal_uk": None,
+    }
+    diagnosis.update(changes)
+    return diagnosis
+
+
 def test_rollout_refs_are_deterministic_and_preserve_existing_refs() -> None:
     items = [{"name_uk": "A"}, {"provisional_ref": "entity_b", "name_uk": "B"}]
 
@@ -83,6 +109,12 @@ def test_resolution_must_cover_every_provisional_ref() -> None:
     case_id = uuid4()
     decision = EntityResolutionDecision(
         provisional_ref="entity_a",
+        diagnosis=_entity_diagnosis(
+            is_named_stable_actor=False,
+            material_case_ids=[],
+            identity_match_evidence_uk=None,
+            rejection_signal_uk="Не є стабільною названою сутністю.",
+        ),
         action="reject",
         confidence=0.8,
         reason_uk="Не є сутністю.",
@@ -100,6 +132,7 @@ def test_resolution_must_cover_every_provisional_ref() -> None:
 def test_resolution_rejects_assignment_to_unlinked_case() -> None:
     decision = EventResolutionDecision(
         provisional_ref="event_a",
+        diagnosis=_event_diagnosis(candidate_match_evidence_uk=None),
         action="create_new",
         new_title_uk="Подія",
         confidence=0.9,
@@ -117,6 +150,7 @@ def test_invalid_entity_link_is_rejected() -> None:
         entities=[
             EntityResolutionDecision(
                 provisional_ref="entity_a",
+                diagnosis=_entity_diagnosis(),
                 action="link_existing",
                 existing_entity_id=str(case_id),
                 confidence=0.9,
@@ -150,6 +184,7 @@ def test_invalid_event_link_is_rejected() -> None:
         events=[
             EventResolutionDecision(
                 provisional_ref="event_a",
+                diagnosis=_event_diagnosis(),
                 action="link_existing",
                 existing_event_id=str(case_id),
                 confidence=0.9,
@@ -185,6 +220,7 @@ def test_conflicting_event_date_link_becomes_source_grounded_create() -> None:
         events=[
             EventResolutionDecision(
                 provisional_ref="event_a",
+                diagnosis=_event_diagnosis(),
                 action="link_existing",
                 existing_event_id=str(event_id),
                 event_date="2026-07",
@@ -237,6 +273,7 @@ def test_event_link_anchors_are_source_grounded_before_persistence() -> None:
         events=[
             EventResolutionDecision(
                 provisional_ref="event_a",
+                diagnosis=_event_diagnosis(),
                 action="link_existing",
                 existing_event_id=str(event_id),
                 event_date="2026-07",
@@ -288,6 +325,7 @@ def test_conflicting_links_to_same_event_become_separate_source_grounded_events(
         events=[
             EventResolutionDecision(
                 provisional_ref=provisional_ref,
+                diagnosis=_event_diagnosis(),
                 action="link_existing",
                 existing_event_id=str(event_id),
                 event_date=f"2026-{'06' if provisional_ref == 'event_june' else '07'}",
@@ -341,6 +379,7 @@ def test_duplicate_provisionals_merge_case_assignments() -> None:
     decisions = [
         EntityResolutionDecision(
             provisional_ref=f"entity_{suffix}",
+            diagnosis=_entity_diagnosis(),
             action="link_existing",
             existing_entity_id=str(uuid4()),
             confidence=0.9,

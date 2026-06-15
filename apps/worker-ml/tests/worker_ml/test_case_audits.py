@@ -24,6 +24,14 @@ def _output(article_ids: list[str]) -> CaseCoherenceAuditOutput:
     ]
     return CaseCoherenceAuditOutput.model_validate(
         {
+            "diagnosis": {
+                "shared_specific_core_uk": "Усі статті описують одну справу.",
+                "shared_only_broad_theme_uk": None,
+                "merge_blockers_uk": [],
+                "split_story_cores_uk": [],
+                "detached_article_signals_uk": [],
+                "coherence_test_uk": "Так, це одна конкретна історія.",
+            },
             "outcome": "coherent",
             "reason_uk": "Одна справа.",
             "stories": stories,
@@ -67,6 +75,14 @@ def _cards(*article_ids: str) -> list[dict[str, str]]:
 
 def _inconclusive() -> CaseCoherenceAuditOutput:
     return CaseCoherenceAuditOutput(
+        diagnosis={
+            "shared_specific_core_uk": None,
+            "shared_only_broad_theme_uk": None,
+            "merge_blockers_uk": [],
+            "split_story_cores_uk": [],
+            "detached_article_signals_uk": [],
+            "coherence_test_uk": "Недостатньо доказів для одного конкретного формулювання.",
+        },
         outcome="inconclusive",
         reason_uk="Недостатньо доказів.",
         stories=[],
@@ -88,6 +104,14 @@ def _session_context(session: MagicMock) -> MagicMock:
 def _split_output(article_a: str, article_b: str) -> CaseCoherenceAuditOutput:
     return CaseCoherenceAuditOutput.model_validate(
         {
+            "diagnosis": {
+                "shared_specific_core_uk": None,
+                "shared_only_broad_theme_uk": None,
+                "merge_blockers_uk": ["Різні фактичні ядра."],
+                "split_story_cores_uk": ["Перша справа.", "Друга справа."],
+                "detached_article_signals_uk": [],
+                "coherence_test_uk": "Ні, це дві різні історії.",
+            },
             "outcome": "split",
             "reason_uk": "Дві справи.",
             "stories": [
@@ -345,7 +369,19 @@ def test_audit_coverage_rejects_unknown_articles() -> None:
 
 def test_inconclusive_audit_needs_no_article_assignments() -> None:
     output = CaseCoherenceAuditOutput.model_validate(
-        {"outcome": "inconclusive", "reason_uk": "Недостатньо доказів.", "stories": []}
+        {
+            "diagnosis": {
+                "shared_specific_core_uk": None,
+                "shared_only_broad_theme_uk": None,
+                "merge_blockers_uk": [],
+                "split_story_cores_uk": [],
+                "detached_article_signals_uk": [],
+                "coherence_test_uk": "Недостатньо доказів для одного конкретного формулювання.",
+            },
+            "outcome": "inconclusive",
+            "reason_uk": "Недостатньо доказів.",
+            "stories": [],
+        }
     )
 
     _validate_article_coverage(output, {str(uuid4())})
