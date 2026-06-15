@@ -222,11 +222,52 @@ def test_article_card_contract_rejects_inconsistent_event_dates(
         )
 
 
-def test_case_resolution_contract_rejects_empty_decisions() -> None:
+def test_case_resolution_contract_accepts_explicit_rejection() -> None:
+    output = CaseResolutionOutput.model_validate(
+        {
+            "decision_reason_uk": "Немає конкретної відстежуваної справи.",
+            "outcome": "rejected",
+            "existing_case_links": [],
+            "new_cases": [],
+            "case_relations": [],
+        }
+    )
+
+    assert output.outcome == "rejected"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "decision_reason_uk": "Немає дії.",
+            "outcome": "resolved",
+            "existing_case_links": [],
+            "new_cases": [],
+            "case_relations": [],
+        },
+        {
+            "decision_reason_uk": "Помилкова дія.",
+            "outcome": "rejected",
+            "existing_case_links": [],
+            "new_cases": [
+                {
+                    "new_case_ref": "new_case",
+                    "title_uk": "Нова справа",
+                    "summary_uk": "Опис.",
+                    "link_reason_uk": "Причина.",
+                    "confidence": 0.8,
+                }
+            ],
+            "case_relations": [],
+        },
+    ],
+)
+def test_case_resolution_contract_rejects_inconsistent_outcome(
+    payload: dict[str, object],
+) -> None:
     with pytest.raises(ValidationError):
-        CaseResolutionOutput.model_validate(
-            {"existing_case_links": [], "new_cases": [], "case_relations": []}
-        )
+        CaseResolutionOutput.model_validate(payload)
 
 
 def test_other_resolution_contracts_accept_empty_decisions() -> None:

@@ -218,11 +218,15 @@ The article card is embedded and used to retrieve candidate cases from Qdrant. T
 
 - link the article to one or more existing cases;
 - create one or more new durable reader-facing cases;
+- explicitly reject the candidate when it has no concrete trackable case;
 - create explicit case relations when useful.
 
-Every case-candidate article must link to or create at least one case. Empty
-resolution is invalid. Case mutation is serialized, and new or changed case
-vectors must be written before the PostgreSQL mutation commits.
+Every resolution includes a Ukrainian decision reason and an explicit
+`resolved` or `rejected` outcome. A resolved candidate must link to or create at
+least one case. A rejected candidate has no case actions, remains auditable
+through its LLM run, and does not continue to Entity or Event resolution. Case
+mutation is serialized, and new or changed case vectors must be written before
+the PostgreSQL mutation commits.
 
 Case titles should be broader durable dossier names, not one-off event headlines.
 Existing case copy is refreshed by a unique case-scoped job after each new

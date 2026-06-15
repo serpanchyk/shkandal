@@ -103,6 +103,8 @@ class ArticleCaseResolutionJobHandler:
             output = cast(CaseResolutionOutput, result.output)
             candidate_ids = {candidate["case_id"] for candidate in candidates}
             output = _normalize_invalid_case_relations(output, candidate_ids)
+            if output.outcome == "rejected":
+                return output
             affected_case_ids = await self._persist_resolution(
                 session,
                 article=article,

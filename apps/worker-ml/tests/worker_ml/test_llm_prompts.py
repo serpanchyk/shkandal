@@ -34,3 +34,12 @@ def test_case_coherence_audit_prompt_requires_story_reasons() -> None:
     assert "кожен вхідний `article_id` мусить належати щонайменше одній історії" in text
     assert "`previous_invalid_audit` і `coverage_validation_error`" in text
     assert "поверни `inconclusive`" in text
+
+
+def test_case_resolution_prompt_supports_explicit_rejection() -> None:
+    text = PromptRegistry().load_text("case_resolution")
+
+    assert '`outcome = "rejected"`' in text
+    assert '`outcome = "resolved"`' in text
+    assert "порожні `existing_case_links`, `new_cases` та `case_relations`" in text
+    assert "`decision_reason_uk`" in text

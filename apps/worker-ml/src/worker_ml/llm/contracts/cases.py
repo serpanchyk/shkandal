@@ -68,16 +68,22 @@ class CaseRelationDecision(StrictOutput):
 class CaseResolutionOutput(StrictOutput):
     """Article-to-case resolution output."""
 
+    decision_reason_uk: str = Field(min_length=1)
+    outcome: Literal["resolved", "rejected"]
     existing_case_links: list[CaseLinkDecision] = Field(default_factory=list)
     new_cases: list[NewCaseDecision] = Field(default_factory=list)
     case_relations: list[CaseRelationDecision] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_resolution(self) -> CaseResolutionOutput:
-        """Require a case and validate references to proposed new cases."""
+        """Validate outcome shape and references to proposed new cases."""
 
-        if not self.existing_case_links and not self.new_cases:
-            raise ValueError("case resolution must link or create at least one case")
+        if self.outcome == "resolved" and not self.existing_case_links and not self.new_cases:
+            raise ValueError("resolved case resolution must link or create at least one case")
+        if self.outcome == "rejected" and (
+            self.existing_case_links or self.new_cases or self.case_relations
+        ):
+            raise ValueError("rejected case resolution cannot contain case actions")
         existing_ids = [link.case_id for link in self.existing_case_links]
         if len(existing_ids) != len(set(existing_ids)):
             raise ValueError("existing case links must be unique")

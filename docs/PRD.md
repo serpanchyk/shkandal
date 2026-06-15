@@ -99,8 +99,9 @@ current database rows.
 - Article-card extraction is limited to the main article and excludes related
   articles, recommendations, boilerplate, and unrelated background.
 - Article-case resolution happens before entity and event resolution.
-- Every case-candidate article must link to or create at least one case; empty
-  case resolution is invalid.
+- Case resolution explicitly resolves or rejects each case candidate. Resolved
+  candidates must link to or create at least one case; rejected candidates have
+  no case actions or downstream identity-resolution jobs.
 - Case copy updates are unique case-scoped jobs triggered after every new
   article-case link.
 - Entity and event resolvers receive all linked cases and assign each resolved item only to relevant cases.

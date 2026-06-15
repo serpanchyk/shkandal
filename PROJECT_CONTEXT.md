@@ -103,6 +103,8 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - Case relations are symmetric `related` or `possible_duplicate` links.
 - One relevant article is enough to create a public case.
 - Articles, entities, and events can connect to multiple cases.
+- Case resolution can explicitly reject a case-candidate article without
+  creating domain records; the decision remains auditable through its LLM run.
 - A Case Split preserves the dominant story on the original Case and creates
   new Cases for other coherent stories; it does not merge duplicate Cases or
   globally reject Article candidacy.

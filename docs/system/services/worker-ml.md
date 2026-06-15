@@ -110,15 +110,18 @@ Case, Entity, and Event resolution handlers load cards through the
 case-candidate gate. A stored non-case card remains available for inspection but
 does not create provisional cases, events, or entities downstream.
 
-Case resolution is mandatory for case-candidate cards: a successful output must
-link at least one existing Case or create at least one new Case. It may create
-only symmetric `related` and `possible_duplicate` relations. After every new
-article-case link, a unique case-scoped job regenerates summary copy and reviews
-whether the stable title materially needs replacement.
+Case resolution returns an explicit `resolved` or `rejected` outcome with a
+Ukrainian decision reason. A resolved output must link at least one existing
+Case or create at least one new Case. A rejected output contains no case actions,
+remains auditable through `llm_runs`, and enqueues no Entity or Event jobs. Case
+resolution may create only symmetric `related` and `possible_duplicate`
+relations. After every new article-case link, a unique case-scoped job
+regenerates summary copy and reviews whether the stable title materially needs
+replacement.
 
-Successful Case resolution enqueues separate article-scoped Entity and Event
-jobs. Each stage retrieves candidates independently for every provisional item,
-then resolves the article batch in one LLM call with all linked Case context.
+Resolved Case output enqueues separate article-scoped Entity and Event jobs.
+Each stage retrieves candidates independently for every provisional item, then
+resolves the article batch in one LLM call with all linked Case context.
 Every provisional item receives an explicit link, create, or reject decision,
 and every accepted identity is assigned to at least one linked Case.
 

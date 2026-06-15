@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from worker_ml.llm.contracts import ArticleCardOutput, EntityResolutionOutput
+from worker_ml.llm.contracts import ArticleCardOutput, CaseResolutionOutput, EntityResolutionOutput
 from worker_ml.llm.schema import prompt_schema
 
 
@@ -24,6 +24,15 @@ def test_prompt_schema_places_resolution_reason_before_action() -> None:
     decision_properties = list(schema["$defs"]["EntityResolutionDecision"]["properties"])
 
     assert decision_properties.index("reason_uk") < decision_properties.index("action")
+
+
+def test_case_resolution_schema_requires_outcome_and_reason_before_actions() -> None:
+    schema = prompt_schema(CaseResolutionOutput)
+    properties = list(schema["properties"])
+
+    assert {"decision_reason_uk", "outcome"} <= set(schema["required"])
+    assert properties.index("decision_reason_uk") < properties.index("outcome")
+    assert properties.index("outcome") < properties.index("existing_case_links")
 
 
 def _contains_key(value: Any, key: str) -> bool:
