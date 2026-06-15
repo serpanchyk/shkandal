@@ -188,6 +188,105 @@ def test_article_card_contract_rejects_case_signals_for_non_case_card() -> None:
 
 
 @pytest.mark.parametrize(
+    "rejection_reason",
+    [
+        "not_an_entity",
+        "insufficient_identity",
+        "not_stable_actor",
+        "not_material_to_case",
+        "background_or_related_material",
+        "location_only",
+        "role_without_name",
+        "unsupported_by_context",
+    ],
+)
+def test_entity_resolution_contract_accepts_strict_rejection_reasons(
+    rejection_reason: str,
+) -> None:
+    output = EntityResolutionOutput.model_validate(
+        {
+            "entities": [
+                {
+                    "provisional_ref": "entity_rejected",
+                    "reason_uk": "Сутність не можна додати до глобального графа.",
+                    "action": "reject",
+                    "confidence": 0.9,
+                    "rejection_reason": rejection_reason,
+                }
+            ]
+        }
+    )
+
+    assert output.entities[0].rejection_reason == rejection_reason
+
+
+@pytest.mark.parametrize(
+    "alias",
+    [
+        "орган, який викрив схему",
+        "колишній посадовець",
+        "підозрюваний у справі",
+        "переможець тендеру",
+    ],
+)
+def test_entity_resolution_contract_rejects_role_aliases(alias: str) -> None:
+    with pytest.raises(ValidationError, match="aliases cannot be role descriptions"):
+        EntityResolutionOutput.model_validate(
+            {
+                "entities": [
+                    {
+                        "provisional_ref": "entity_company",
+                        "reason_uk": "Компанія матеріально важлива для справи.",
+                        "action": "create_new",
+                        "new_canonical_name_uk": "ТОВ «Приклад»",
+                        "entity_type": "company",
+                        "aliases": [alias],
+                        "confidence": 0.9,
+                        "case_assignments": [
+                            {"case_id": "case-a", "relevance_reason_uk": "Предмет справи."}
+                        ],
+                    }
+                ]
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    "description_uk",
+    [
+        "Орган, який викрив схему.",
+        "Суд, який продовжив обов'язки.",
+        "Компанія, яка фігурує у справі.",
+        "Країна, де затримали особу.",
+    ],
+)
+def test_entity_resolution_contract_rejects_case_role_descriptions(
+    description_uk: str,
+) -> None:
+    with pytest.raises(
+        ValidationError, match="description_uk cannot describe a case-specific role"
+    ):
+        EntityResolutionOutput.model_validate(
+            {
+                "entities": [
+                    {
+                        "provisional_ref": "entity_company",
+                        "reason_uk": "Компанія матеріально важлива для справи.",
+                        "action": "create_new",
+                        "new_canonical_name_uk": "ТОВ «Приклад»",
+                        "entity_type": "company",
+                        "description_uk": description_uk,
+                        "confidence": 0.9,
+                        "case_assignments": [
+                            {"case_id": "case-a", "relevance_reason_uk": "Предмет справи."}
+                        ],
+                    }
+                ]
+            }
+        )
+
+
+@pytest.mark.parametrize(
     ("event_date", "precision"),
     [
         ("2026-06", "day"),

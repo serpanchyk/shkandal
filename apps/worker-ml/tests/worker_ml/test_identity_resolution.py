@@ -64,7 +64,7 @@ def test_resolution_rejects_assignment_to_unlinked_case() -> None:
         validate_coverage([{"provisional_ref": "event_a"}], [decision], {uuid4()})
 
 
-def test_invalid_entity_link_becomes_source_grounded_create() -> None:
+def test_invalid_entity_link_is_rejected() -> None:
     case_id = uuid4()
     output = EntityResolutionOutput(
         entities=[
@@ -81,25 +81,20 @@ def test_invalid_entity_link_becomes_source_grounded_create() -> None:
         ]
     )
 
-    normalized = normalize_invalid_entity_links(
-        [
-            {
-                "provisional_ref": "entity_a",
-                "name_uk": "Нова сутність",
-                "entity_type": "institution",
-                "aliases": ["НС"],
-                "description_uk": "Опис.",
-            }
-        ],
-        output,
-        {"entity_a": set()},
-    )
-
-    decision = normalized.entities[0]
-    assert decision.action == "create_new"
-    assert decision.existing_entity_id is None
-    assert decision.new_canonical_name_uk == "Нова сутність"
-    assert decision.entity_type == "institution"
+    with pytest.raises(ValueError, match="non-candidate identity"):
+        normalize_invalid_entity_links(
+            [
+                {
+                    "provisional_ref": "entity_a",
+                    "name_uk": "Нова сутність",
+                    "entity_type": "institution",
+                    "aliases": ["НС"],
+                    "description_uk": "Опис.",
+                }
+            ],
+            output,
+            {"entity_a": set()},
+        )
 
 
 def test_invalid_event_link_becomes_source_grounded_create() -> None:

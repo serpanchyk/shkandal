@@ -38,31 +38,14 @@ def normalize_invalid_entity_links(
     output: EntityResolutionOutput,
     candidate_ids: dict[str, set[str]],
 ) -> EntityResolutionOutput:
-    """Create a source-grounded Entity instead of merging an invalid identity."""
+    """Reject links to identities outside the provisional Entity candidates."""
 
-    by_ref = {str(item["provisional_ref"]): item for item in provisional}
-    decisions = []
     for decision in output.entities:
-        if decision.action in {"create_new", "reject"}:
-            decisions.append(decision)
-            continue
-        if decision.existing_entity_id in candidate_ids[decision.provisional_ref]:
-            decisions.append(decision)
-            continue
-        item = by_ref[decision.provisional_ref]
-        decisions.append(
-            decision.model_copy(
-                update={
-                    "action": "create_new",
-                    "existing_entity_id": None,
-                    "new_canonical_name_uk": str(item["name_uk"]),
-                    "entity_type": str(item["entity_type"]),
-                    "aliases": list(item.get("aliases", [])),
-                    "description_uk": str(item["description_uk"]),
-                }
-            )
-        )
-    return EntityResolutionOutput(entities=decisions)
+        if decision.action not in {"create_new", "reject"} and (
+            decision.existing_entity_id not in candidate_ids[decision.provisional_ref]
+        ):
+            raise ValueError("entity decision references non-candidate identity")
+    return output
 
 
 def normalize_invalid_event_links(

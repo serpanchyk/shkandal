@@ -9,6 +9,16 @@ from pydantic import Field, model_validator
 
 from worker_ml.llm.contracts.types import EntityType, EventDatePrecision, StrictOutput
 
+ROLE_ALIAS_PATTERNS = (
+    r"\b(колишн(?:ій|я|є|і)|підозрюван(?:ий|а|е|і)|обвинувачен(?:ий|а|е|і)|"
+    r"фігурант|переможець|посадовець|бухгалтер|водій|підприємець|правоохоронець)\b",
+    r"\b(у справі|тендеру|який|яка|яке|які)\b",
+)
+CASE_ROLE_DESCRIPTION_PATTERNS = (
+    r"\b(який|яка|яке|які)\s+(викрив|викрила|продовжив|продовжила|фігурує)\b",
+    r"\bде\s+(затримали|повідомили|провели|викрили)\b",
+)
+
 
 class EntityCaseAssignment(StrictOutput):
     """Case-scoped relevance of a resolved entity."""
@@ -43,6 +53,12 @@ class EntityResolutionDecision(StrictOutput):
             "not_case_relevant",
             "insufficient_identity",
             "duplicate_extraction",
+            "not_stable_actor",
+            "not_material_to_case",
+            "background_or_related_material",
+            "location_only",
+            "role_without_name",
+            "unsupported_by_context",
         ]
         | None
     ) = None
@@ -51,6 +67,17 @@ class EntityResolutionDecision(StrictOutput):
     def validate_action(self) -> EntityResolutionDecision:
         """Require action-specific identity fields and relevant Case assignments."""
 
+        if any(
+            re.search(pattern, alias, re.IGNORECASE)
+            for alias in self.aliases
+            for pattern in ROLE_ALIAS_PATTERNS
+        ):
+            raise ValueError("aliases cannot be role descriptions")
+        if self.description_uk is not None and any(
+            re.search(pattern, self.description_uk, re.IGNORECASE)
+            for pattern in CASE_ROLE_DESCRIPTION_PATTERNS
+        ):
+            raise ValueError("description_uk cannot describe a case-specific role")
         existing_actions = {"link_existing", "rename_existing", "retype_existing"}
         if self.action in existing_actions and self.existing_entity_id is None:
             raise ValueError(f"{self.action} requires existing_entity_id")

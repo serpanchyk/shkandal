@@ -43,3 +43,25 @@ def test_case_resolution_prompt_supports_explicit_rejection() -> None:
     assert '`outcome = "resolved"`' in text
     assert "порожні `existing_case_links`, `new_cases` та `case_relations`" in text
     assert "`decision_reason_uk`" in text
+
+
+def test_entity_resolution_prompt_protects_global_entity_graph() -> None:
+    text = " ".join(PromptRegistry().load_text("entity_resolution").split())
+
+    assert "матеріально важлива хоча б для однієї справи з `linked_cases`" in text
+    assert '`rejection_reason = "not_material_to_case"`' in text
+    assert "«організатор схеми»" in text
+    assert "Країни, міста, регіони, області та географічні об'єкти" in text
+    assert "високий retrieval score" in text
+    assert "та сама установа" in text
+    assert "той самий стабільний реальний актор" in text
+    assert "закупівельна справа, може бути прийнята" in text
+    assert "«приватна компанія» без назви — ні" in text
+    assert "Якщо доступна лише роль актора в цій статті або справі" in text
+    assert "Aliases — лише реальні скорочення або альтернативні назви" in text
+    assert "широку тематичну схожість" in text
+    assert "дуже рідкісними діями" in text
+    assert "поточна canonical name очевидно неправильна" in text
+    assert "поточний type очевидно неправильний" in text
+    assert "{schema_json}" in text
+    assert "{resolution_json}" in text
