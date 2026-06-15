@@ -3,6 +3,7 @@
 from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import RedirectResponse
 
 from shkandal_backend.public_repository import PublicRepository
 from shkandal_backend.schemas import (
@@ -41,9 +42,13 @@ async def latest_events(repository: Repository) -> list[LatestEvent]:
 
 
 @router.get("/cases/{slug}", response_model=CasePage)
-async def case_page(slug: str, repository: Repository) -> CasePage:
+async def case_page(slug: str, repository: Repository) -> CasePage | RedirectResponse:
     result = await repository.case_page(slug)
     if result is None:
+        redirect_lookup = getattr(repository, "case_redirect_slug", None)
+        redirect_slug = await redirect_lookup(slug) if redirect_lookup is not None else None
+        if redirect_slug is not None:
+            return RedirectResponse(url=f"/api/cases/{redirect_slug}", status_code=307)
         raise HTTPException(status_code=404, detail="Case not found")
     return result
 

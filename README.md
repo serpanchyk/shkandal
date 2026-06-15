@@ -45,16 +45,16 @@ Cases can overlap. One article can belong to multiple cases. One event can be re
 
 One relevant article is enough to create a public case. The system optimizes for coverage and speed, with source provenance visible to readers.
 
-Recurring Case Coherence Audits inspect all linked Article Cards after evidence
-changes and on a 30-day fallback. A mixed Case is split atomically: the
-dominant story keeps the original Case identity, other coherent stories become
-new Cases, and overlapping Article assignments remain valid. Inconclusive
-audits leave public data unchanged.
+An automatic ordered Case Audit Pipeline runs after evidence changes and on a
+30-day fallback. Coherence audits split mixed Cases or detach unsupported
+Articles, public-interest audits permanently hide unsuitable dossiers, and
+duplicate audits merge or resolve internal candidate pairs. Inconclusive audits
+leave public data unchanged.
 
 Case relationships are explicit:
 
 - `related` for shared central actors or specific accountability themes;
-- `possible_duplicate` for later automatic or manual merge handling.
+- `possible_duplicate` for automatic duplicate audit handling.
 
 ### Article
 
@@ -365,7 +365,6 @@ Planned later layers:
 
 - simple "Повідомити про помилку" feedback link or form;
 - human review/correction tooling;
-- automatic merge handling for duplicate cases with redirects/aliases;
 - event relations such as appeal/reaction/correction;
 - image proxying or caching if needed;
 - richer analytics beyond anonymous aggregate counters.

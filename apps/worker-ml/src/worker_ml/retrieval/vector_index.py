@@ -71,6 +71,11 @@ class VectorIndexService:
             )
         )
 
+    async def delete_case(self, point_id: UUID) -> None:
+        """Delete one case-card vector."""
+
+        await self.case_repository.delete(point_id)
+
     async def upsert_entity(self, point_id: UUID, payload: EntityVectorPayload) -> None:
         """Embed and upsert one entity-card vector."""
 

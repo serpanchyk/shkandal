@@ -15,6 +15,8 @@ EXPECTED_TABLES = {
     "case_articles",
     "case_relations",
     "case_coherence_audits",
+    "case_public_interest_audits",
+    "case_duplicate_audits",
     "entities",
     "article_entities",
     "article_entity_cases",

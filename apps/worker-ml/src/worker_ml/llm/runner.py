@@ -369,6 +369,8 @@ def model_aliases(settings: MlConfig) -> dict[str, str]:
         "event_resolution": settings.llm_event_resolution_model,
         "case_copy_update": settings.llm_case_copy_update_model,
         "case_coherence_audit": settings.llm_case_coherence_audit_model,
+        "case_public_interest_audit": settings.llm_case_public_interest_audit_model,
+        "case_duplicate_audit": settings.llm_case_duplicate_audit_model,
         "repair": settings.llm_repair_model,
     }
 

@@ -13,6 +13,8 @@ LlmRunType = Literal[
     "event_resolution",
     "case_copy_update",
     "case_coherence_audit",
+    "case_public_interest_audit",
+    "case_duplicate_audit",
 ]
 EntityType = Literal[
     "person",

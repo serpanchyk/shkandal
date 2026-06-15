@@ -129,7 +129,9 @@ async def run_cycle(
             max_attempts=settings.job_max_attempts,
             interval_days=settings.case_audit_interval_days,
         )
-        if settings.case_audit_automatic_enabled and AUDIT_CASE_COHERENCE_JOB in job_types
+        if settings.case_audit_automatic_enabled
+        and AUDIT_CASE_COHERENCE_JOB in job_types
+        and AUDIT_CASE_COHERENCE_JOB in handlers
         else EnqueueStats(0, 0, 0, 0, 0)
     )
     _log_enqueue_stats(logger, job_type=CLASSIFY_ARTICLE_JOB, stats=classification_stats)

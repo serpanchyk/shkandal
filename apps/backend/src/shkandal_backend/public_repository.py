@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, date, datetime, timedelta
 from math import ceil
-from typing import Protocol
+from typing import Protocol, cast
 from uuid import UUID
 
 from shkandal_database.models import (
@@ -59,6 +59,8 @@ class PublicRepository(Protocol):
     async def latest_events(self) -> list[LatestEvent]: ...
 
     async def case_page(self, slug: str) -> CasePage | None: ...
+
+    async def case_redirect_slug(self, slug: str) -> str | None: ...
 
     async def entity_page(self, slug: str) -> EntityPage | None: ...
 
@@ -243,6 +245,18 @@ class SqlAlchemyPublicRepository:
                 articles=articles,
                 related_cases=related_cases,
                 disclaimer_uk=DISCLAIMER_UK,
+            )
+
+    async def case_redirect_slug(self, slug: str) -> str | None:
+        async with self._session_factory() as session:
+            target = aliased(Case)
+            return cast(
+                str | None,
+                await session.scalar(
+                    select(target.slug)
+                    .join(Case, Case.merged_into_case_id == target.id)
+                    .where(Case.slug == slug, Case.status == "merged", target.status == "active")
+                ),
             )
 
     async def entity_page(self, slug: str) -> EntityPage | None:

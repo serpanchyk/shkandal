@@ -179,7 +179,8 @@ class LlmRun(Base):
     __table_args__ = (
         CheckConstraint(
             "run_type in ('article_card', 'case_resolution', 'entity_resolution', "
-            "'event_resolution', 'case_copy_update', 'case_coherence_audit')",
+            "'event_resolution', 'case_copy_update', 'case_coherence_audit', "
+            "'case_public_interest_audit', 'case_duplicate_audit')",
             name="ck_llm_runs_run_type",
         ),
         CheckConstraint(
@@ -288,6 +289,17 @@ class Case(Base):
         server_default=text("0"),
     )
     last_audited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_interest_audited_revision: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    last_interest_audited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_duplicate_audited_revision: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    last_duplicate_audited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    merged_into_case_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("cases.id", ondelete="RESTRICT")
+    )
     metadata_: Mapped[dict[str, Any]] = mapped_column(
         "metadata",
         JSONB,
@@ -325,12 +337,69 @@ class CaseCoherenceAudit(Base):
     created_at: Mapped[datetime] = created_at_column()
 
 
+class CasePublicInterestAudit(Base):
+    """Immutable result of one Case public-interest audit."""
+
+    __tablename__ = "case_public_interest_audits"
+    __table_args__ = (
+        CheckConstraint(
+            "outcome in ('keep', 'hide', 'inconclusive', 'superseded')",
+            name="ck_case_public_interest_audits_outcome",
+        ),
+        Index("ix_case_public_interest_audits_case_id_created_at", "case_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = uuid_pk_column()
+    case_id: Mapped[UUID] = mapped_column(
+        ForeignKey("cases.id", ondelete="CASCADE"), nullable=False
+    )
+    evidence_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    outcome: Mapped[str] = mapped_column(Text, nullable=False)
+    llm_run_id: Mapped[UUID | None] = mapped_column(ForeignKey("llm_runs.id"))
+    result_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=json_object_default
+    )
+    created_at: Mapped[datetime] = created_at_column()
+
+
+class CaseDuplicateAudit(Base):
+    """Immutable result of one Case duplicate-pair audit."""
+
+    __tablename__ = "case_duplicate_audits"
+    __table_args__ = (
+        CheckConstraint("case_a_id < case_b_id", name="ck_case_duplicate_audits_canonical_pair"),
+        CheckConstraint(
+            "outcome in ('merge', 'related', 'distinct', 'inconclusive', 'superseded')",
+            name="ck_case_duplicate_audits_outcome",
+        ),
+        Index("ix_case_duplicate_audits_case_a_id_created_at", "case_a_id", "created_at"),
+        Index("ix_case_duplicate_audits_case_b_id_created_at", "case_b_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = uuid_pk_column()
+    case_a_id: Mapped[UUID] = mapped_column(
+        ForeignKey("cases.id", ondelete="CASCADE"), nullable=False
+    )
+    case_b_id: Mapped[UUID] = mapped_column(
+        ForeignKey("cases.id", ondelete="CASCADE"), nullable=False
+    )
+    case_a_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    case_b_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    outcome: Mapped[str] = mapped_column(Text, nullable=False)
+    llm_run_id: Mapped[UUID | None] = mapped_column(ForeignKey("llm_runs.id"))
+    result_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=json_object_default
+    )
+    created_at: Mapped[datetime] = created_at_column()
+
+
 class CaseArticle(Base):
     """Many-to-many article to case link."""
 
     __tablename__ = "case_articles"
     __table_args__ = (
         UniqueConstraint("case_id", "article_id", name="uq_case_articles_case_id_article_id"),
+        Index("ix_case_articles_case_id_article_id", "case_id", "article_id"),
         Index("ix_case_articles_article_id_case_id", "article_id", "case_id"),
         Index("ix_case_articles_case_id_created_at", "case_id", "created_at"),
     )

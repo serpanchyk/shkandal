@@ -177,7 +177,7 @@ async def test_batch_coverage_is_corrected_before_reconciliation() -> None:
         _output([article_ids[0]]),
         _output(article_ids[:2]),
         _output(article_ids[2:]),
-        _output(article_ids),
+        _output(["group_1_1", "group_2_1"]),
         card_batch_size=2,
     )
 
@@ -188,6 +188,7 @@ async def test_batch_coverage_is_corrected_before_reconciliation() -> None:
     )
 
     assert output.outcome == "coherent"
+    assert output.stories[0].article_ids == article_ids
     phases = [call.kwargs["metadata"]["phase"] for call in invoke.await_args_list]
     assert phases == ["batch_1", "batch_1_coverage_retry", "batch_2", "reconciliation"]
     reconciliation_payload = _call_payload(invoke.await_args_list[3])
@@ -197,13 +198,13 @@ async def test_batch_coverage_is_corrected_before_reconciliation() -> None:
 
 
 @pytest.mark.asyncio
-async def test_reconciliation_retry_receives_all_original_article_cards() -> None:
+async def test_reconciliation_retry_receives_stable_evidence_groups() -> None:
     article_ids = [str(uuid4()) for _ in range(4)]
     handler, invoke = _handler(
         _output(article_ids[:2]),
         _output(article_ids[2:]),
-        _output(article_ids[:3]),
-        _output(article_ids),
+        _output(["group_1_1"]),
+        _output(["group_1_1", "group_2_1"]),
         card_batch_size=2,
     )
     cards = _cards(*article_ids)
@@ -217,7 +218,8 @@ async def test_reconciliation_retry_receives_all_original_article_cards() -> Non
     assert output.outcome == "coherent"
     retry_call = invoke.await_args_list[3]
     assert retry_call.kwargs["metadata"]["phase"] == "reconciliation_coverage_retry"
-    assert _call_payload(retry_call)["article_cards"] == cards
+    retry_cards = cast(list[dict[str, Any]], _call_payload(retry_call)["article_cards"])
+    assert [card["article_id"] for card in retry_cards] == ["group_1_1", "group_2_1"]
 
 
 @pytest.mark.asyncio
@@ -334,3 +336,18 @@ def test_audit_coverage_allows_overlapping_article_assignments() -> None:
     article_b = str(uuid4())
 
     _validate_article_coverage(_split_output(article_a, article_b), {article_a, article_b})
+
+
+def test_audit_coverage_allows_explicit_detachment() -> None:
+    article_a = str(uuid4())
+    article_b = str(uuid4())
+    output = CaseCoherenceAuditOutput.model_validate(
+        {
+            **_output([article_a]).model_dump(mode="json"),
+            "detached_articles": [
+                {"article_id": article_b, "reason_uk": "Стаття не підтримує цю справу."}
+            ],
+        }
+    )
+
+    _validate_article_coverage(output, {article_a, article_b})

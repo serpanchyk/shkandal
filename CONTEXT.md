@@ -30,9 +30,10 @@ A public-body decision with accountability stakes, such as misuse of power or fu
 _Avoid_: announcement, press release, routine update
 
 **Case**:
-A reader-facing dossier about one durable accountability story. Procedural stages
-and later developments about the same underlying conduct remain in the same Case.
-Shared actors or broad topics alone do not establish Case identity.
+A reader-facing dossier about one durable public-interest story. Accountability
+stories, concrete institutional processes, and exceptionally notable incidents
+may qualify. Shared actors, similar incidents, or broad topics alone do not
+establish Case identity.
 _Avoid_: article cluster, actor dossier, broad topic
 
 **Material Article Contribution**:
@@ -53,8 +54,35 @@ _Avoid_: related cases, uncertain relationship
 
 **Case Coherence Audit**:
 A recurring evaluation of whether every linked Article materially contributes
-to a Case's one durable accountability story.
+to a Case's one durable public-interest story. It may split mixed stories or
+detach unsupported Article links.
 _Avoid_: cluster validation, relevance review
+
+**Case Public-Interest Audit**:
+A recurring evaluation of whether a coherent Case remains a durable story worth
+publishing. Routine incidents, isolated headlines, and broad topic umbrellas do
+not qualify.
+_Avoid_: popularity check, lifecycle status
+
+**Case Duplicate Audit**:
+An evaluation of whether two candidate Cases describe the same durable story,
+are related but distinct, or are distinct.
+_Avoid_: similarity check, Case Coherence Audit
+
+**Case Audit Pipeline**:
+The ordered automatic correction process of Case Coherence Audit, Case
+Public-Interest Audit, and Case Duplicate Audit.
+_Avoid_: one combined audit
+
+**Hidden Case**:
+A terminal editorial rejection that remains fully preserved internally but is
+excluded from public and retrieval surfaces.
+_Avoid_: inactive Case, archived Case
+
+**Merged Case**:
+A duplicate Case absorbed into a surviving Case. Its public identity redirects
+to the survivor.
+_Avoid_: hidden Case, deleted Case
 
 **Case Split**:
 An automatic correction that preserves the dominant durable story on the

@@ -8,7 +8,7 @@ from decimal import Decimal
 from typing import Any, cast
 from uuid import UUID, uuid4
 
-from shkandal_database.jobs import ClaimedJob
+from shkandal_database.jobs import ArticleJobStore, ClaimedJob
 from shkandal_database.models import (
     Article,
     ArticleCard,
@@ -56,12 +56,14 @@ class CaseCoherenceAuditJobHandler:
         runner: LlmTaskRunner,
         vector_index: VectorIndexService,
         *,
+        job_store: ArticleJobStore | None = None,
         model_name: str,
         card_batch_size: int,
     ) -> None:
         self._session_factory = session_factory
         self._runner = runner
         self._vector_index = vector_index
+        self._job_store = job_store
         self._model_name = model_name
         self._card_batch_size = max(2, card_batch_size)
 
@@ -130,6 +132,13 @@ class CaseCoherenceAuditJobHandler:
                     case_vector_payload(affected_case),
                 )
             await session.commit()
+        if self._job_store is not None:
+            for affected_case in affected:
+                await self._job_store.enqueue_case_job(
+                    job_type="audit_case_public_interest",
+                    case_id=affected_case.id,
+                    payload={"case_id": str(affected_case.id)},
+                )
         return output
 
     async def _run_audit(
@@ -152,6 +161,8 @@ class CaseCoherenceAuditJobHandler:
             )
 
         batch_results: list[dict[str, Any]] = []
+        evidence_groups: list[dict[str, Any]] = []
+        group_articles: dict[str, list[str]] = {}
         for index, batch in enumerate(batches):
             output, _ = await self._invoke_with_coverage_retry(
                 job=job,
@@ -162,12 +173,42 @@ class CaseCoherenceAuditJobHandler:
             if output.outcome == "inconclusive":
                 return output, None
             batch_results.append(output.model_dump(mode="json"))
-        return await self._invoke_with_coverage_retry(
+            assigned = {article_id for story in output.stories for article_id in story.article_ids}
+            for story_index, story in enumerate(output.stories):
+                group_ref = f"group_{index + 1}_{story_index + 1}"
+                group_articles[group_ref] = story.article_ids
+                evidence_groups.append(
+                    {
+                        "article_id": group_ref,
+                        "title_uk": story.title_uk,
+                        "summary_uk": story.summary_uk,
+                        "reason_uk": story.reason_uk,
+                    }
+                )
+            for detached_index, detached in enumerate(output.detached_articles):
+                if detached.article_id in assigned:
+                    continue
+                group_ref = f"group_{index + 1}_detached_{detached_index + 1}"
+                group_articles[group_ref] = [detached.article_id]
+                evidence_groups.append(
+                    {
+                        "article_id": group_ref,
+                        "title_uk": "Від'єднана стаття",
+                        "summary_uk": detached.reason_uk,
+                        "reason_uk": detached.reason_uk,
+                    }
+                )
+        output, run_id = await self._invoke_with_coverage_retry(
             job=job,
-            payload={**case_context, "batch_audits": batch_results},
-            relevant_cards=cards,
+            payload={
+                **case_context,
+                "batch_audits": batch_results,
+                "evidence_groups": evidence_groups,
+            },
+            relevant_cards=evidence_groups,
             phase="reconciliation",
         )
+        return _expand_evidence_groups(output, group_articles), run_id
 
     async def _invoke_with_coverage_retry(
         self,
@@ -242,8 +283,12 @@ def _validate_article_coverage(output: CaseCoherenceAuditOutput, article_ids: se
     if output.outcome == "inconclusive":
         return
     assigned = {article_id for story in output.stories for article_id in story.article_ids}
-    unknown = assigned - article_ids
-    missing = article_ids - assigned
+    detached = {item.article_id for item in output.detached_articles}
+    unknown = (assigned | detached) - article_ids
+    missing = article_ids - assigned - detached
+    if assigned & detached:
+        duplicates = sorted(assigned & detached)
+        raise ValueError(f"audit both assigns and detaches article ids: {duplicates}")
     if unknown:
         raise ValueError(f"audit references unknown article ids: {sorted(unknown)}")
     if missing:
@@ -258,6 +303,31 @@ def _inconclusive_coverage_fallback() -> CaseCoherenceAuditOutput:
         ),
         stories=[],
     )
+
+
+def _expand_evidence_groups(
+    output: CaseCoherenceAuditOutput,
+    group_articles: dict[str, list[str]],
+) -> CaseCoherenceAuditOutput:
+    """Expand reconciliation group refs into deterministic original Article IDs."""
+
+    if output.outcome == "inconclusive":
+        return output
+    payload = output.model_dump(mode="json")
+    for story in payload["stories"]:
+        story["article_ids"] = list(
+            dict.fromkeys(
+                article_id
+                for group_ref in story["article_ids"]
+                for article_id in group_articles[group_ref]
+            )
+        )
+    payload["detached_articles"] = [
+        {"article_id": article_id, "reason_uk": detached["reason_uk"]}
+        for detached in payload["detached_articles"]
+        for article_id in group_articles[detached["article_id"]]
+    ]
+    return CaseCoherenceAuditOutput.model_validate(payload)
 
 
 async def _apply_decisive_audit(
@@ -350,7 +420,8 @@ async def _apply_decisive_audit(
                 ]
             )
         )
-    case.evidence_revision = evidence_revision + (1 if output.outcome == "split" else 0)
+    evidence_changed = output.outcome == "split" or bool(output.detached_articles)
+    case.evidence_revision = evidence_revision + int(evidence_changed)
     case.last_audited_revision = case.evidence_revision
     case.last_audited_at = now
     session.add(

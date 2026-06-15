@@ -266,17 +266,19 @@ public copy, counts, related-Case links, and vectors before committing. Readers
 therefore see either the old complete dossier or the new complete split.
 Inconclusive and superseded audits are recorded without public mutation.
 
-Recurring audit enqueueing defaults off for the initial rollout. Inspect and
-enqueue a five-Case canary first:
+Case audits run as three chained typed jobs: coherence, public-interest, then
+duplicates. Each worker pass automatically enqueues a bounded set of active
+Cases whose evidence changed or whose last coherence audit is older than the
+configured 30-day fallback. Existing Cases therefore drain through a bounded
+automatic backfill.
 
-```bash
-docker compose --profile jobs run --rm worker-ml python -m worker_ml.enqueue_case_audits
-docker compose --profile jobs run --rm worker-ml python -m worker_ml.enqueue_case_audits --apply --limit 5
-```
-
-After verifying the canary, set `CASE_AUDIT_AUTOMATIC_ENABLED=true`. Each worker
-pass then enqueues a bounded set of active Cases whose evidence changed or whose
-last audit is older than the configured 30-day fallback.
+Coherence audits may detach unsupported Article links rather than forcing every
+Article into a resulting Case. Public-interest audits permanently hide routine
+incidents, isolated headlines, and broad topic umbrellas while preserving their
+complete internal dossiers. Duplicate audits review explicit
+`possible_duplicate` relations and pairs sharing at least two Articles that
+cover at least half of the smaller Case. A merge preserves the Case with the
+most Articles, redirects absorbed slugs, and regenerates the surviving dossier.
 
 Structured worker logs include job and cycle durations. LLM run metadata records
 request and repair durations. At startup, pending LLM runs older than the stale

@@ -6,6 +6,8 @@ from worker_ml.llm.contracts import (
     ArticleCardOutput,
     CaseCoherenceAuditOutput,
     CaseCopyUpdateOutput,
+    CaseDuplicateAuditOutput,
+    CasePublicInterestAuditOutput,
     CaseResolutionOutput,
     EntityResolutionOutput,
     EventResolutionOutput,
@@ -19,6 +21,8 @@ LLM_OUTPUT_MODELS = (
     EventResolutionOutput,
     CaseCopyUpdateOutput,
     CaseCoherenceAuditOutput,
+    CasePublicInterestAuditOutput,
+    CaseDuplicateAuditOutput,
 )
 
 

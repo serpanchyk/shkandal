@@ -10,6 +10,8 @@ from worker_ml.llm.contracts import (
     ArticleCardOutput,
     CaseCoherenceAuditOutput,
     CaseCopyUpdateOutput,
+    CaseDuplicateAuditOutput,
+    CasePublicInterestAuditOutput,
     CaseResolutionOutput,
     EntityResolutionOutput,
     EventResolutionOutput,
@@ -44,4 +46,6 @@ LLM_TASKS: dict[LlmRunType, LlmTaskDefinition] = {
     "event_resolution": LlmTaskDefinition(EventResolutionOutput, allow_top_level_array=True),
     "case_copy_update": LlmTaskDefinition(CaseCopyUpdateOutput),
     "case_coherence_audit": LlmTaskDefinition(CaseCoherenceAuditOutput),
+    "case_public_interest_audit": LlmTaskDefinition(CasePublicInterestAuditOutput),
+    "case_duplicate_audit": LlmTaskDefinition(CaseDuplicateAuditOutput),
 }

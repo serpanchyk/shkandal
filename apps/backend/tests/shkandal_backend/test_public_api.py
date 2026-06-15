@@ -64,7 +64,7 @@ class FakePublicRepository:
         )
 
     async def case_page(self, slug: str) -> CasePage | None:
-        if slug == "missing":
+        if slug in {"missing", "merged-case"}:
             return None
         return CasePage(
             slug=slug,
@@ -81,6 +81,9 @@ class FakePublicRepository:
             related_cases=[],
             disclaimer_uk="Автоматично зібрано.",
         )
+
+    async def case_redirect_slug(self, slug: str) -> str | None:
+        return "case-a" if slug == "merged-case" else None
 
     async def latest_events(self) -> list[LatestEvent]:
         return [
@@ -161,6 +164,16 @@ async def test_missing_public_pages_return_404() -> None:
         assert (await client.get("/api/cases/missing")).status_code == 404
         assert (await client.get("/api/entities/missing")).status_code == 404
         assert (await client.post("/api/cases/missing/views")).status_code == 404
+
+
+async def test_merged_case_redirects_to_surviving_case() -> None:
+    client, _ = _client()
+
+    async with client:
+        response = await client.get("/api/cases/merged-case", follow_redirects=False)
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "/api/cases/case-a"
 
 
 async def test_feed_validates_query_page_and_sort() -> None:

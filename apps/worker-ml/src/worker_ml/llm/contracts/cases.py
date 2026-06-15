@@ -201,6 +201,13 @@ class CaseAuditStory(StrictOutput):
     )
 
 
+class CaseAuditDetachedArticle(StrictOutput):
+    """An Article that materially supports none of the audited Case stories."""
+
+    article_id: str = Field(description="Ідентифікатор статті для від'єднання.")
+    reason_uk: str = Field(min_length=1, description="Фактична підстава від'єднання.")
+
+
 class CaseCoherenceAuditOutput(StrictOutput):
     """Decision from a recurring Case coherence audit."""
 
@@ -215,14 +222,18 @@ class CaseCoherenceAuditOutput(StrictOutput):
         default_factory=list,
         description="Цілісні історії, визначені для вирішального підсумку аудиту.",
     )
+    detached_articles: list[CaseAuditDetachedArticle] = Field(
+        default_factory=list,
+        description="Статті, що матеріально не підтримують жодну визначену історію.",
+    )
 
     @model_validator(mode="after")
     def validate_outcome(self) -> CaseCoherenceAuditOutput:
         """Require one original story for decisive outcomes."""
 
         if self.outcome == "inconclusive":
-            if self.stories:
-                raise ValueError("inconclusive audit cannot contain stories")
+            if self.stories or self.detached_articles:
+                raise ValueError("inconclusive audit cannot contain decisions")
             return self
         refs = [story.story_ref for story in self.stories]
         if refs.count("original") != 1:
@@ -237,3 +248,21 @@ class CaseCoherenceAuditOutput(StrictOutput):
             if len(story.article_ids) != len(set(story.article_ids)):
                 raise ValueError("story article ids must be unique")
         return self
+
+
+class CasePublicInterestAuditOutput(StrictOutput):
+    """Decision whether one Case remains a durable public-interest story."""
+
+    reason_uk: str = Field(min_length=1, description="Фактична підстава рішення.")
+    outcome: Literal["keep", "hide", "inconclusive"] = Field(
+        description="Підсумок перевірки суспільної важливості."
+    )
+
+
+class CaseDuplicateAuditOutput(StrictOutput):
+    """Decision for one possible duplicate Case pair."""
+
+    reason_uk: str = Field(min_length=1, description="Фактична підстава рішення щодо пари.")
+    outcome: Literal["merge", "related", "distinct", "inconclusive"] = Field(
+        description="Підсумок перевірки можливої тотожності справ."
+    )

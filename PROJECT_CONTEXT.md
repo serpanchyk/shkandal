@@ -54,10 +54,11 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - Jobs have exactly one typed article or Case subject. Article jobs are unique by
   `(job_type, article_id)`; revision-aware Case jobs are unique by
   `(job_type, case_id)`.
-- Active Cases receive Case Coherence Audits after evidence changes and after a
-  configurable 30-day fallback interval. Audits use all linked Article Cards
-  and atomically split mixed durable stories while preserving the dominant
-  story's Case ID.
+- Active Cases enter an automatic ordered Case Audit Pipeline after evidence
+  changes and after a configurable 30-day fallback interval. Coherence audits
+  split mixed stories or detach unsupported evidence, public-interest audits
+  permanently hide unsuitable dossiers, and duplicate audits resolve internal
+  candidate pairs.
 - Ingestion is not queued as a job in the MVP. After historical backfill, systemd starts a one-shot full-source pass every two hours that persists new articles to PostgreSQL and retries failed fetches up to five attempts.
 - `worker-ml` owns ML job creation. It polls PostgreSQL for articles missing
   `article_relevance`, enqueues idempotent `classify_article` jobs, and processes
@@ -99,15 +100,21 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 ## Domain Decisions
 
 - A `Case` is a reader-facing dossier/topic, not an exclusive article cluster.
-- A `Case` follows one durable accountability story across procedural stages.
+- A `Case` follows one durable public-interest story across procedural stages.
+- Similar routine incidents do not form a broad systemic Case without one
+  concrete shared scheme, investigation, decision, or causal chain.
 - Case relations are symmetric `related` or `possible_duplicate` links.
 - One relevant article is enough to create a public case.
 - Articles, entities, and events can connect to multiple cases.
 - Case resolution can explicitly reject a case-candidate article without
   creating domain records; the decision remains auditable through its LLM run.
 - A Case Split preserves the dominant story on the original Case and creates
-  new Cases for other coherent stories; it does not merge duplicate Cases or
-  globally reject Article candidacy.
+  new Cases for other coherent stories. A coherence audit may detach unsupported
+  Article links.
+- Hidden Cases are terminal and retain their complete internal dossier.
+- Duplicate merges preserve the Case with the most evidence, redirect absorbed
+  slugs, and resolve candidates from explicit relations or substantial shared
+  Article overlap.
 - Articles can link to cases even when they do not create extracted events.
 - `case_entities` and `case_events` are direct materialized links for public pages, created from article-level resolution plus article-case context.
 - `Entity` is one global typed table for people, organizations, institutions, companies, political parties, informal groups, and unknown actors.
