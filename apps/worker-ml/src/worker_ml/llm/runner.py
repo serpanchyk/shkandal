@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -21,10 +22,11 @@ from worker_ml.llm.contracts import LlmRunType
 from worker_ml.llm.normalization import NormalizationResult
 from worker_ml.llm.prompts import PromptRegistry
 from worker_ml.llm.runs import LlmRunStore
-from worker_ml.llm.schema import prompt_schema_json
+from worker_ml.llm.schema import runtime_schema_json
 from worker_ml.llm.tasks import LLM_TASKS
 
 OutputT = TypeVar("OutputT", bound=BaseModel)
+logger = logging.getLogger(__name__)
 
 
 class LlmRateLimitError(RuntimeError):
@@ -41,6 +43,24 @@ class LlmTaskResult:
 
     output: BaseModel
     run_id: UUID | None
+
+
+@dataclass(frozen=True)
+class JsonParseResult:
+    """Parsed JSON plus any narrowly applied syntax recovery."""
+
+    value: Any
+    repaired_unescaped_control_characters: bool = False
+
+
+@dataclass(frozen=True)
+class RepairAttempt:
+    """One repair response and its validation diagnostics."""
+
+    output: Any | None
+    raw_text: str | None
+    error: str | None
+    schema_echo: bool = False
 
 
 class AsyncTextChain(Protocol):
@@ -170,6 +190,7 @@ class LlmTaskRunner:
         raw_text = ""
         raw_json: Any = None
         normalized: NormalizationResult | None = None
+        parse_repaired = False
         request_duration_seconds: float | None = None
         repair_duration_seconds: float | None = None
         try:
@@ -177,7 +198,9 @@ class LlmTaskRunner:
             raw_text = str(await invoke_chain(self._chain_for(run_type), dict(variables)))
             request_duration_seconds = time.monotonic() - request_started_at
             await self._record_successful_request()
-            raw_json = parse_json_response(raw_text, allow_array=task.allow_top_level_array)
+            parse_result = _parse_json_response(raw_text, allow_array=task.allow_top_level_array)
+            raw_json = parse_result.value
+            parse_repaired = parse_result.repaired_unescaped_control_characters
             normalized = task.normalize(
                 run_type=run_type,
                 output=raw_json,
@@ -190,7 +213,7 @@ class LlmTaskRunner:
         except (ValueError, ValidationError) as exc:
             try:
                 repair_started_at = time.monotonic()
-                repaired_json, repair_error = await self._repair(
+                repair_attempt = await self._repair(
                     run_type=run_type,
                     output_model=output_model,
                     validation_error=str(exc),
@@ -211,24 +234,50 @@ class LlmTaskRunner:
                     ),
                 )
                 raise
-            if repaired_json is None:
+            if repair_attempt.output is None:
+                fallback = task.invalid_output_fallback(repair_attempt.error or str(exc))
+                failure_metadata = _repair_failure_metadata(
+                    metadata,
+                    repair_attempt,
+                    request_duration_seconds=request_duration_seconds,
+                    repair_duration_seconds=repair_duration_seconds,
+                )
+                if fallback is not None:
+                    fallback_reason = repair_attempt.error or str(exc)
+                    fallback_metadata = {
+                        **failure_metadata,
+                        "audit_fallback_reason": fallback_reason,
+                    }
+                    logger.warning(
+                        "worker_ml_llm_audit_inconclusive_fallback",
+                        extra={
+                            "run_type": run_type,
+                            "run_id": str(run_id) if run_id else None,
+                            "reason": fallback_reason,
+                        },
+                    )
+                    if self._run_store is not None and run_id is not None:
+                        await self._run_store.finish_run(
+                            run_id=run_id,
+                            status="repaired",
+                            raw_output=_raw_provenance(raw_text, raw_json, parse_repaired),
+                            repaired_output=fallback.model_dump(mode="json"),
+                            metadata=fallback_metadata,
+                        )
+                    return LlmTaskResult(output=fallback, run_id=run_id)
                 if self._run_store is not None and run_id is not None:
                     await self._run_store.finish_run(
                         run_id=run_id,
                         status="failed",
-                        raw_output=raw_json or {"text": raw_text},
-                        error_message=repair_error or str(exc),
-                        metadata=_timing_metadata(
-                            metadata,
-                            request_duration_seconds=request_duration_seconds,
-                            repair_duration_seconds=repair_duration_seconds,
-                        ),
+                        raw_output=_raw_provenance(raw_text, raw_json, parse_repaired),
+                        error_message=repair_attempt.error or str(exc),
+                        metadata=failure_metadata,
                     )
-                raise ValueError(repair_error or str(exc)) from exc
+                raise ValueError(repair_attempt.error or str(exc)) from exc
 
             normalized = task.normalize(
                 run_type=run_type,
-                output=repaired_json,
+                output=repair_attempt.output,
                 variables=variables,
             )
             parsed = output_model.model_validate(normalized.output)
@@ -236,7 +285,7 @@ class LlmTaskRunner:
                 await self._run_store.finish_run(
                     run_id=run_id,
                     status="repaired",
-                    raw_output=raw_json or {"text": raw_text},
+                    raw_output=_raw_provenance(raw_text, raw_json, parse_repaired),
                     repaired_output=normalized.output,
                     metadata=_timing_metadata(
                         _normalization_metadata(metadata, normalized.actions),
@@ -263,7 +312,7 @@ class LlmTaskRunner:
                 await self._run_store.finish_run(
                     run_id=run_id,
                     status="failed",
-                    raw_output=raw_json or {"text": raw_text},
+                    raw_output=_raw_provenance(raw_text, raw_json, parse_repaired),
                     error_message=str(exc),
                     metadata=failed_metadata,
                 )
@@ -271,13 +320,22 @@ class LlmTaskRunner:
 
         if self._run_store is not None and run_id is not None:
             was_normalized = normalized is not None and bool(normalized.actions)
+            was_repaired = parse_repaired or was_normalized
+            success_metadata = _normalization_metadata(
+                metadata, normalized.actions if normalized else []
+            )
+            if parse_repaired:
+                success_metadata = {
+                    **success_metadata,
+                    "parse_repair": "unescaped_control_characters",
+                }
             await self._run_store.finish_run(
                 run_id=run_id,
-                status="repaired" if was_normalized else "succeeded",
-                raw_output=raw_json,
-                repaired_output=normalized.output if was_normalized else None,
+                status="repaired" if was_repaired else "succeeded",
+                raw_output=_raw_provenance(raw_text, raw_json, parse_repaired),
+                repaired_output=normalized.output if was_repaired else None,
                 metadata=_timing_metadata(
-                    _normalization_metadata(metadata, normalized.actions if normalized else []),
+                    success_metadata,
                     request_duration_seconds=request_duration_seconds,
                     repair_duration_seconds=repair_duration_seconds,
                 ),
@@ -298,16 +356,17 @@ class LlmTaskRunner:
         validation_error: str,
         invalid_output: str,
         variables: Mapping[str, Any],
-    ) -> tuple[Any | None, str | None]:
+    ) -> RepairAttempt:
         if self._repair_chain is None:
-            return None, validation_error
+            return RepairAttempt(None, None, validation_error)
 
+        repaired_text = ""
         try:
             repaired_text = str(
                 await invoke_chain(
                     self._repair_chain,
                     {
-                        "schema_json": prompt_schema_json(output_model),
+                        "schema_json": runtime_schema_json(output_model),
                         "validation_error": validation_error,
                         "invalid_output": invalid_output,
                     },
@@ -318,6 +377,13 @@ class LlmTaskRunner:
             repaired_json = parse_json_response(
                 repaired_text, allow_array=task.allow_top_level_array
             )
+            if _is_schema_echo(repaired_json):
+                return RepairAttempt(
+                    None,
+                    repaired_text,
+                    "repair response echoed JSON schema",
+                    schema_echo=True,
+                )
             normalized = task.normalize(
                 run_type=run_type,
                 output=repaired_json,
@@ -327,9 +393,9 @@ class LlmTaskRunner:
             _validate_resolution_coverage(
                 run_type=run_type, output=normalized.output, variables=variables
             )
-            return repaired_json, None
+            return RepairAttempt(repaired_json, repaired_text, None)
         except (ValueError, ValidationError) as exc:
-            return None, str(exc)
+            return RepairAttempt(None, repaired_text, str(exc))
 
     async def _record_successful_request(self) -> None:
         if self._cooldown_observer is not None:
@@ -387,16 +453,66 @@ def parse_json_object(text: str) -> dict[str, Any]:
 def parse_json_response(text: str, *, allow_array: bool) -> Any:
     """Parse an LLM response as JSON, optionally allowing a top-level array."""
 
+    return _parse_json_response(text, allow_array=allow_array).value
+
+
+def _parse_json_response(text: str, *, allow_array: bool) -> JsonParseResult:
+    """Parse JSON with a fallback only for unescaped control characters."""
+
     stripped = text.strip()
     if stripped.startswith("```"):
         stripped = stripped.removeprefix("```json").removeprefix("```").strip()
         stripped = stripped.removesuffix("```").strip()
-    value = json.loads(stripped)
+    repaired_control_characters = False
+    try:
+        value = json.loads(stripped)
+    except json.JSONDecodeError as exc:
+        if not exc.msg.startswith("Invalid control character"):
+            raise
+        value = json.loads(stripped, strict=False)
+        repaired_control_characters = True
     if not allow_array and not isinstance(value, dict):
         raise ValueError("LLM output must be a JSON object")
     if allow_array and not isinstance(value, (dict, list)):
         raise ValueError("LLM output must be a JSON object or array")
-    return value
+    return JsonParseResult(value, repaired_control_characters)
+
+
+def _is_schema_echo(value: Any) -> bool:
+    """Detect repair responses that return a JSON Schema instead of task output."""
+
+    return isinstance(value, dict) and (
+        "$schema" in value
+        or "$defs" in value
+        or (value.get("type") in {"object", "array"} and isinstance(value.get("properties"), dict))
+    )
+
+
+def _repair_failure_metadata(
+    metadata: dict[str, Any] | None,
+    attempt: RepairAttempt,
+    *,
+    request_duration_seconds: float | None,
+    repair_duration_seconds: float | None,
+) -> dict[str, Any]:
+    result = _timing_metadata(
+        metadata,
+        request_duration_seconds=request_duration_seconds,
+        repair_duration_seconds=repair_duration_seconds,
+    )
+    if attempt.raw_text is not None:
+        result["repair_attempt_output"] = attempt.raw_text
+    if attempt.schema_echo:
+        result["schema_echo"] = True
+    if attempt.error:
+        result["repair_failure_reason"] = attempt.error
+    return result
+
+
+def _raw_provenance(raw_text: str, raw_json: Any, preserve_text: bool) -> Any:
+    """Return exact provider text when parsing required syntax recovery."""
+
+    return {"text": raw_text} if preserve_text or raw_json is None else raw_json
 
 
 def _validate_resolution_coverage(

@@ -23,6 +23,12 @@ def prompt_schema_json(model: type[BaseModel]) -> str:
     return json.dumps(prompt_schema(model), ensure_ascii=False)
 
 
+def runtime_schema_json(model: type[BaseModel]) -> str:
+    """Serialize the strict runtime schema used to repair invalid output."""
+
+    return json.dumps(model.model_json_schema(), ensure_ascii=False)
+
+
 def _remove_enums(value: Any) -> None:
     if isinstance(value, dict):
         value.pop("enum", None)

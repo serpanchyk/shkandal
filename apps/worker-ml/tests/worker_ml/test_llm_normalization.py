@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+from pydantic import ValidationError
 from worker_ml.llm.contracts import ArticleCardOutput, EntityResolutionOutput, EventResolutionOutput
 from worker_ml.llm.normalization import normalize_llm_output
 
@@ -192,6 +194,49 @@ def test_accepted_resolution_without_case_assignment_becomes_reject() -> None:
     assert decision.event_date is None
     assert decision.event_date_precision == "unknown"
     assert decision.rejection_reason == "not_case_relevant"
+
+
+def test_entity_resolution_removes_only_unsupported_english_canonical_name() -> None:
+    output = {
+        "entities": [
+            {
+                "provisional_ref": "entity_one",
+                "action": "reject",
+                "new_canonical_name_en": "Unsupported",
+                "confidence": 0.5,
+                "case_assignments": [],
+                "reason_uk": "Не сутність.",
+                "rejection_reason": "not_an_entity",
+            }
+        ]
+    }
+
+    result = normalize_llm_output(run_type="entity_resolution", variables={}, output=output)
+
+    EntityResolutionOutput.model_validate(result.output)
+    assert "new_canonical_name_en" not in result.output["entities"][0]
+    assert "entities[0]: remove unsupported English canonical name" in result.actions
+
+
+def test_entity_resolution_keeps_other_unknown_fields_strictly_invalid() -> None:
+    output = {
+        "entities": [
+            {
+                "provisional_ref": "entity_one",
+                "action": "reject",
+                "unknown_field": "unsupported",
+                "confidence": 0.5,
+                "case_assignments": [],
+                "reason_uk": "Не сутність.",
+                "rejection_reason": "not_an_entity",
+            }
+        ]
+    }
+
+    result = normalize_llm_output(run_type="entity_resolution", variables={}, output=output)
+
+    with pytest.raises(ValidationError):
+        EntityResolutionOutput.model_validate(result.output)
 
 
 def test_does_not_invent_missing_case_candidate_facts() -> None:

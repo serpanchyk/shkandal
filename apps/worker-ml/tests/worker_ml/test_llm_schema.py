@@ -12,7 +12,7 @@ from worker_ml.llm.contracts import (
     EntityResolutionOutput,
     EventResolutionOutput,
 )
-from worker_ml.llm.schema import prompt_schema
+from worker_ml.llm.schema import prompt_schema, runtime_schema_json
 
 LLM_OUTPUT_MODELS = (
     ArticleCardOutput,
@@ -31,6 +31,12 @@ def test_prompt_schema_contains_no_enum_or_const_constraints() -> None:
 
     assert not _contains_key(schema, "enum")
     assert not _contains_key(schema, "const")
+
+
+def test_runtime_repair_schema_retains_categorical_constraints() -> None:
+    schema_json = runtime_schema_json(CasePublicInterestAuditOutput)
+
+    assert '"enum": ["keep", "hide", "inconclusive"]' in schema_json
 
 
 def test_prompt_schema_places_decision_basis_before_article_choice() -> None:

@@ -245,16 +245,29 @@ class CaseCoherenceAuditJobHandler:
         payload: dict[str, Any],
         phase: str,
     ) -> tuple[CaseCoherenceAuditOutput, UUID | None]:
+        case_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        schema_json = prompt_schema_json(CaseCoherenceAuditOutput)
         result = await self._runner.run_with_provenance(
             run_type="case_coherence_audit",
             model_name=self._model_name,
             variables={
-                "case_json": json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
-                "schema_json": prompt_schema_json(CaseCoherenceAuditOutput),
+                "case_json": case_json,
+                "schema_json": schema_json,
             },
-            metadata={"case_id": str(job.case_id), "job_id": str(job.id), "phase": phase},
+            metadata={
+                "case_id": str(job.case_id),
+                "job_id": str(job.id),
+                "phase": phase,
+                "card_count": _audit_card_count(payload),
+                "prompt_size_chars": len(case_json) + len(schema_json),
+            },
         )
         return cast(CaseCoherenceAuditOutput, result.output), result.run_id
+
+
+def _audit_card_count(payload: dict[str, Any]) -> int:
+    cards = payload.get("article_cards", payload.get("evidence_groups", []))
+    return len(cards) if isinstance(cards, list) else 0
 
 
 async def _audit_cards(session: AsyncSession, case_id: UUID) -> list[dict[str, Any]]:

@@ -266,6 +266,11 @@ Missing or unknown Article IDs trigger one correction request with all relevant
 Article Cards, the invalid audit, and the exact coverage error. If that response
 also has invalid coverage, the audit is recorded as inconclusive without Case
 mutation or job failure and remains eligible for the periodic re-audit interval.
+Still-invalid structured output from any automatic audit also becomes an
+explicit inconclusive result without Case mutation. LLM run metadata records
+the fallback reason, failed repair output, schema echoes, audit phase, card
+count, and prompt size. Coherence audits use batches of 20 Article Cards by
+default while retaining the five-minute provider request timeout.
 
 Decisive audits prepare their LLM result before acquiring the Case, Entity, and
 Event mutation locks. They then rebuild Article, Entity, and Event Case links,

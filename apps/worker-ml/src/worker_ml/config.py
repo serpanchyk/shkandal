@@ -39,7 +39,7 @@ class MlConfig(BaseServiceConfig):
     llm_repair_model: str = "shkandal-repair"
     case_audit_interval_days: int = 30
     case_audit_enqueue_batch_size: int = 20
-    case_audit_card_batch_size: int = 40
+    case_audit_card_batch_size: int = 20
     case_audit_automatic_enabled: bool = True
 
     @property

@@ -1019,6 +1019,7 @@ def test_llm_config_defaults_to_litellm_proxy_aliases() -> None:
     fields = MlConfig.model_fields
 
     assert fields["llm_api_base"].default == "http://llm-proxy:4000/v1"
+    assert fields["case_audit_card_batch_size"].default == 20
     assert fields["llm_article_card_model"].default == "shkandal-article-card"
     assert fields["llm_case_resolution_model"].default == "shkandal-case-resolution"
     assert fields["llm_entity_resolution_model"].default == "shkandal-entity-resolution"

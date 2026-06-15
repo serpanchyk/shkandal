@@ -137,6 +137,9 @@ def _normalize_article_card(output: dict[str, Any], actions: list[str]) -> None:
 
 
 def _normalize_entity_decision(decision: dict[str, Any], actions: list[str], path: str) -> None:
+    if "new_canonical_name_en" in decision:
+        decision.pop("new_canonical_name_en")
+        actions.append(f"{path}: remove unsupported English canonical name")
     _normalize_entity_type(decision, actions, path)
     _normalize_aliases(decision, actions, path)
     action = decision.get("action")

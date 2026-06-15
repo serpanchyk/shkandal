@@ -71,14 +71,22 @@ class CasePublicInterestAuditJobHandler:
                 return None
             revision = case.evidence_revision
             payload = _case_payload(case, _compact_cards(await _audit_cards(session, case.id)))
+        case_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        schema_json = prompt_schema_json(CasePublicInterestAuditOutput)
         result = await self._runner.run_with_provenance(
             run_type="case_public_interest_audit",
             model_name=self._model_name,
             variables={
-                "case_json": json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
-                "schema_json": prompt_schema_json(CasePublicInterestAuditOutput),
+                "case_json": case_json,
+                "schema_json": schema_json,
             },
-            metadata={"case_id": str(job.case_id), "job_id": str(job.id)},
+            metadata={
+                "case_id": str(job.case_id),
+                "job_id": str(job.id),
+                "phase": "final",
+                "card_count": len(payload["article_cards"]),
+                "prompt_size_chars": len(case_json) + len(schema_json),
+            },
         )
         output = cast(CasePublicInterestAuditOutput, result.output)
         async with self._session_factory() as session:
@@ -214,17 +222,24 @@ class CaseDuplicateAuditJobHandler:
                     case_b, _compact_cards(await _audit_cards(session, case_b.id))
                 ),
             }
+        cases_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        schema_json = prompt_schema_json(CaseDuplicateAuditOutput)
         result = await self._runner.run_with_provenance(
             run_type="case_duplicate_audit",
             model_name=self._model_name,
             variables={
-                "cases_json": json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
-                "schema_json": prompt_schema_json(CaseDuplicateAuditOutput),
+                "cases_json": cases_json,
+                "schema_json": schema_json,
             },
             metadata={
                 "case_id": str(case_id),
                 "candidate_case_id": str(candidate_id),
                 "job_id": str(job.id),
+                "phase": "pair",
+                "card_count": sum(
+                    len(case_payload["article_cards"]) for case_payload in payload.values()
+                ),
+                "prompt_size_chars": len(cases_json) + len(schema_json),
             },
         )
         output = cast(CaseDuplicateAuditOutput, result.output)

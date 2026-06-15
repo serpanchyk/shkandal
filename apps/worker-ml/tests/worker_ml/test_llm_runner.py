@@ -4,17 +4,20 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, Mock
 from uuid import uuid4
 
 import httpx
 import openai
 import pytest
+from pydantic import BaseModel
 from worker_ml.config import MlConfig
 from worker_ml.llm.contracts import (
     ArticleCardOutput,
     CaseCoherenceAuditOutput,
+    CaseDuplicateAuditOutput,
+    CasePublicInterestAuditOutput,
     EntityResolutionOutput,
     EventResolutionOutput,
     LlmRunType,
@@ -27,6 +30,7 @@ from worker_ml.llm.runner import (
     invoke_chain,
     model_aliases,
     parse_json_object,
+    parse_json_response,
 )
 from worker_ml.llm.runs import LlmRunStore
 from worker_ml.llm.tasks import LLM_TASKS
@@ -117,6 +121,38 @@ async def test_runner_persists_deterministically_normalized_output_as_repaired()
     assert call["raw_output"]["main_event_title_uk"] == "Подія"
     assert call["repaired_output"]["main_event_title_uk"] is None
     assert call["metadata"]["normalization_actions"]
+
+
+@pytest.mark.asyncio
+async def test_runner_repairs_only_unescaped_json_control_characters() -> None:
+    run_id = uuid4()
+    run_store = Mock(spec=LlmRunStore)
+    run_store.create_run = AsyncMock(return_value=run_id)
+    run_store.finish_run = AsyncMock()
+    raw_output = (
+        '{"title_uk":"Заголовок","summary_uk":"Перший рядок\nДругий рядок",'
+        '"is_case_candidate":false,"noise_reason":"generic_news",'
+        '"main_event_title_uk":null,"entities":[],"events":[],"case_signature_terms":[]}'
+    )
+    runner = LlmTaskRunner(
+        prompt_registry=PromptRegistry(),
+        run_store=run_store,
+        task_chains={"article_card": FakeChain(raw_output)},
+    )
+
+    result = await runner.run_with_provenance(
+        run_type="article_card",
+        model_name="shkandal-article-card",
+        variables={"article_json": "{}", "schema_json": "{}"},
+    )
+
+    output = cast(ArticleCardOutput, result.output)
+    assert output.summary_uk == "Перший рядок\nДругий рядок"
+    call = run_store.finish_run.await_args.kwargs
+    assert call["status"] == "repaired"
+    assert call["raw_output"] == {"text": raw_output}
+    assert call["repaired_output"]["summary_uk"] == "Перший рядок\nДругий рядок"
+    assert call["metadata"]["parse_repair"] == "unescaped_control_characters"
 
 
 @pytest.mark.asyncio
@@ -283,6 +319,7 @@ async def test_runner_repairs_invalid_output_once() -> None:
     assert result.title_uk == "Виправлено"
     assert repair_chain.calls[0]["invalid_output"] == '{"title_uk":"Без обовязкових полів"}'
     assert "article_json" not in repair_chain.calls[0]
+    assert '"enum"' in repair_chain.calls[0]["schema_json"]
 
 
 @pytest.mark.asyncio
@@ -299,6 +336,60 @@ async def test_runner_fails_after_invalid_repair() -> None:
             model_name="shkandal-article-card",
             variables={"article_json": "{}", "schema_json": "{}"},
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("run_type", "output_type", "variables"),
+    [
+        (
+            "case_coherence_audit",
+            CaseCoherenceAuditOutput,
+            {"case_json": "{}", "schema_json": "{}"},
+        ),
+        (
+            "case_public_interest_audit",
+            CasePublicInterestAuditOutput,
+            {"case_json": "{}", "schema_json": "{}"},
+        ),
+        (
+            "case_duplicate_audit",
+            CaseDuplicateAuditOutput,
+            {"cases_json": "{}", "schema_json": "{}"},
+        ),
+    ],
+)
+async def test_invalid_audit_repair_becomes_persisted_inconclusive(
+    run_type: LlmRunType,
+    output_type: type[BaseModel],
+    variables: dict[str, str],
+) -> None:
+    run_id = uuid4()
+    run_store = Mock(spec=LlmRunStore)
+    run_store.create_run = AsyncMock(return_value=run_id)
+    run_store.finish_run = AsyncMock()
+    schema_echo = '{"type":"object","properties":{"outcome":{"type":"string"}}}'
+    runner = LlmTaskRunner(
+        prompt_registry=PromptRegistry(),
+        run_store=run_store,
+        task_chains={run_type: FakeChain("not json")},
+        repair_chain=FakeChain(schema_echo),
+    )
+
+    result = await runner.run_with_provenance(
+        run_type=run_type,
+        model_name=f"shkandal-{run_type.replace('_', '-')}",
+        variables=variables,
+    )
+
+    output = output_type.model_validate(result.output)
+    assert output.model_dump()["outcome"] == "inconclusive"
+    call = run_store.finish_run.await_args.kwargs
+    assert call["status"] == "repaired"
+    assert call["repaired_output"]["outcome"] == "inconclusive"
+    assert call["metadata"]["repair_attempt_output"] == schema_echo
+    assert call["metadata"]["schema_echo"] is True
+    assert call["metadata"]["audit_fallback_reason"] == "repair response echoed JSON schema"
 
 
 @pytest.mark.asyncio
@@ -376,6 +467,11 @@ async def test_runner_persists_unexpected_call_failure() -> None:
 
 def test_parse_json_object_accepts_markdown_json_fence() -> None:
     assert parse_json_object('```json\n{"ok": true}\n```') == {"ok": True}
+
+
+def test_json_parse_fallback_rejects_other_malformed_json() -> None:
+    with pytest.raises(json.JSONDecodeError):
+        parse_json_response('{"ok": true,}', allow_array=False)
 
 
 def test_model_aliases_use_stage_specific_settings() -> None:

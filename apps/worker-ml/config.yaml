@@ -7,7 +7,7 @@ stale_job_timeout_seconds: 1800
 job_max_attempts: 3
 case_audit_interval_days: 30
 case_audit_enqueue_batch_size: 20
-case_audit_card_batch_size: 40
+case_audit_card_batch_size: 20
 case_audit_automatic_enabled: true
 llm_case_public_interest_audit_model: shkandal-case-public-interest-audit
 llm_case_duplicate_audit_model: shkandal-case-duplicate-audit

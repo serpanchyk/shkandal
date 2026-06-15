@@ -26,6 +26,7 @@ class LlmTaskDefinition:
 
     output_model: type[BaseModel]
     allow_top_level_array: bool = False
+    inconclusive_on_invalid_output: bool = False
 
     def normalize(
         self,
@@ -38,6 +39,18 @@ class LlmTaskDefinition:
 
         return normalize_llm_output(run_type=run_type, output=output, variables=variables)
 
+    def invalid_output_fallback(self, _reason: str) -> BaseModel | None:
+        """Return a safe terminal audit result when invalid output remains."""
+
+        if not self.inconclusive_on_invalid_output:
+            return None
+        return self.output_model.model_validate(
+            {
+                "outcome": "inconclusive",
+                "reason_uk": ("Автоматичний аудит не зміг сформувати валідний безпечний висновок."),
+            }
+        )
+
 
 LLM_TASKS: dict[LlmRunType, LlmTaskDefinition] = {
     "article_card": LlmTaskDefinition(ArticleCardOutput),
@@ -45,7 +58,13 @@ LLM_TASKS: dict[LlmRunType, LlmTaskDefinition] = {
     "entity_resolution": LlmTaskDefinition(EntityResolutionOutput, allow_top_level_array=True),
     "event_resolution": LlmTaskDefinition(EventResolutionOutput, allow_top_level_array=True),
     "case_copy_update": LlmTaskDefinition(CaseCopyUpdateOutput),
-    "case_coherence_audit": LlmTaskDefinition(CaseCoherenceAuditOutput),
-    "case_public_interest_audit": LlmTaskDefinition(CasePublicInterestAuditOutput),
-    "case_duplicate_audit": LlmTaskDefinition(CaseDuplicateAuditOutput),
+    "case_coherence_audit": LlmTaskDefinition(
+        CaseCoherenceAuditOutput, inconclusive_on_invalid_output=True
+    ),
+    "case_public_interest_audit": LlmTaskDefinition(
+        CasePublicInterestAuditOutput, inconclusive_on_invalid_output=True
+    ),
+    "case_duplicate_audit": LlmTaskDefinition(
+        CaseDuplicateAuditOutput, inconclusive_on_invalid_output=True
+    ),
 }

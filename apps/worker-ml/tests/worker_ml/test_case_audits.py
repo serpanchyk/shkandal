@@ -254,6 +254,26 @@ async def test_valid_audit_is_not_retried() -> None:
 
 
 @pytest.mark.asyncio
+async def test_audit_records_phase_card_count_and_prompt_size() -> None:
+    article_id = str(uuid4())
+    handler, invoke = _handler(_output([article_id]))
+
+    await handler._run_audit(
+        job=_job(),
+        case_context={"case_id": str(uuid4())},
+        cards=_cards(article_id),
+    )
+
+    assert invoke.await_args is not None
+    call = invoke.await_args.kwargs
+    assert call["metadata"]["phase"] == "final"
+    assert call["metadata"]["card_count"] == 1
+    assert call["metadata"]["prompt_size_chars"] == len(call["variables"]["case_json"]) + len(
+        call["variables"]["schema_json"]
+    )
+
+
+@pytest.mark.asyncio
 async def test_invalid_coverage_fallback_is_recorded_without_decisive_mutation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
