@@ -588,7 +588,16 @@ def test_no_args_dispatches_one_cycle(monkeypatch: pytest.MonkeyPatch) -> None:
 
     cli_entrypoint.main()
 
-    run_once.assert_awaited_once_with()
+    run_once.assert_awaited_once_with(
+        job_types=(
+            "create_article_card",
+            "update_case_copy",
+            "resolve_article_cases",
+            "resolve_article_entities",
+            "resolve_article_events",
+            "classify_article",
+        ),
+    )
 
 
 def test_loop_flag_dispatches_worker_loop(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -598,7 +607,16 @@ def test_loop_flag_dispatches_worker_loop(monkeypatch: pytest.MonkeyPatch) -> No
 
     cli_entrypoint.main()
 
-    run_worker.assert_awaited_once_with()
+    run_worker.assert_awaited_once_with(
+        job_types=(
+            "create_article_card",
+            "update_case_copy",
+            "resolve_article_cases",
+            "resolve_article_entities",
+            "resolve_article_events",
+            "classify_article",
+        ),
+    )
 
 
 def test_job_type_flags_filter_and_order_worker_jobs(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -647,7 +665,16 @@ def test_backfill_flag_dispatches_successful_backfill(monkeypatch: pytest.Monkey
 
     cli_entrypoint.main()
 
-    run_backfill.assert_awaited_once_with()
+    run_backfill.assert_awaited_once_with(
+        job_types=(
+            "create_article_card",
+            "update_case_copy",
+            "resolve_article_cases",
+            "resolve_article_entities",
+            "resolve_article_events",
+            "classify_article",
+        ),
+    )
 
 
 def test_backfill_flag_exits_nonzero_for_exhausted_jobs(
