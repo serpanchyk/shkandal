@@ -22,6 +22,7 @@ def test_key_prompts_require_pre_decision_diagnostics() -> None:
     for name in (
         "article_card",
         "case_resolution",
+        "case_link_audit",
         "case_coherence_audit",
         "case_duplicate_audit",
         "case_public_interest_audit",
@@ -40,6 +41,7 @@ def test_prompts_no_longer_use_old_reason_then_choose_pattern() -> None:
 
     for name in (
         "article_card",
+        "case_link_audit",
         "case_coherence_audit",
         "case_duplicate_audit",
         "case_public_interest_audit",
@@ -67,6 +69,15 @@ def test_case_resolution_prompt_blocks_institutional_umbrellas() -> None:
     assert "ВАКС — це місце розгляду та інституція, а не ідентичність справи" in prompt
     assert "`case_coherence_test_uk`" in prompt
     assert "конкретне фактичне ядро" in prompt
+
+
+def test_case_link_audit_prompt_requires_safe_specific_membership() -> None:
+    prompt = PromptRegistry().load_text("case_link_audit")
+
+    assert "Ти повторно перевіряєш" in prompt
+    assert "`connect`" in prompt
+    assert "`drop`" in prompt
+    assert "ВАКС — це місце розгляду та інституція, а не ідентичність справи" in prompt
 
 
 def test_event_resolution_prompt_uses_current_date_check() -> None:

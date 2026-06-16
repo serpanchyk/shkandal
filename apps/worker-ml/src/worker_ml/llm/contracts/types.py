@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict
 LlmRunType = Literal[
     "article_card",
     "case_resolution",
+    "case_link_audit",
     "entity_resolution",
     "event_resolution",
     "case_copy_update",

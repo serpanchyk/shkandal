@@ -102,6 +102,9 @@ current database rows.
 - Case resolution explicitly resolves or rejects each case candidate. Resolved
   candidates must link to or create at least one case; rejected candidates have
   no case actions or downstream identity-resolution jobs.
+- Existing-case links are not persisted directly from the first match. Each
+  provisional existing-case link is rechecked against the chosen Case's linked
+  Article Cards, and inconclusive rechecks are treated as drops.
 - Case copy updates are unique case-scoped jobs triggered after every new
   article-case link.
 - Entity and event resolvers receive all linked cases and assign each resolved item only to relevant cases.

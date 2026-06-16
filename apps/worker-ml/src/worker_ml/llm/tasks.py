@@ -11,6 +11,7 @@ from worker_ml.llm.contracts import (
     CaseCoherenceAuditOutput,
     CaseCopyUpdateOutput,
     CaseDuplicateAuditOutput,
+    CaseLinkAuditOutput,
     CasePublicInterestAuditOutput,
     CaseResolutionOutput,
     EntityResolutionOutput,
@@ -66,6 +67,15 @@ class LlmTaskDefinition:
                 "durability_signal_uk": None,
                 "hide_signals_uk": [],
             }
+        elif self.output_model is CaseLinkAuditOutput:
+            payload["diagnosis"] = {
+                "article_story_core_uk": None,
+                "case_story_core_uk": None,
+                "shared_specific_core_uk": None,
+                "only_broad_overlap_uk": None,
+                "disconnect_signals_uk": [],
+                "coherence_test_uk": "Недостатньо доказів для безпечної прив'язки.",
+            }
         elif self.output_model is CaseDuplicateAuditOutput:
             payload["diagnosis"] = {
                 "case_a_core_uk": None,
@@ -81,6 +91,7 @@ class LlmTaskDefinition:
 LLM_TASKS: dict[LlmRunType, LlmTaskDefinition] = {
     "article_card": LlmTaskDefinition(ArticleCardOutput),
     "case_resolution": LlmTaskDefinition(CaseResolutionOutput),
+    "case_link_audit": LlmTaskDefinition(CaseLinkAuditOutput, inconclusive_on_invalid_output=True),
     "entity_resolution": LlmTaskDefinition(EntityResolutionOutput, allow_top_level_array=True),
     "event_resolution": LlmTaskDefinition(EventResolutionOutput, allow_top_level_array=True),
     "case_copy_update": LlmTaskDefinition(CaseCopyUpdateOutput),

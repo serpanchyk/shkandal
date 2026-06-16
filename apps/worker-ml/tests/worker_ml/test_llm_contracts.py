@@ -6,6 +6,7 @@ from worker_ml.llm.contracts import (
     ArticleCardOutput,
     CaseCoherenceAuditOutput,
     CaseDuplicateAuditOutput,
+    CaseLinkAuditOutput,
     CaseResolutionOutput,
     EntityResolutionOutput,
     EventResolutionOutput,
@@ -49,6 +50,19 @@ def case_resolution_diagnosis(**changes: object) -> dict[str, object]:
         "new_case_core_uk": "Закупівля міськрадою послуг за завищеною ціною.",
         "rejection_signals_uk": [],
         "broad_theme_warning_uk": None,
+    }
+    diagnosis.update(changes)
+    return diagnosis
+
+
+def case_link_audit_diagnosis(**changes: object) -> dict[str, object]:
+    diagnosis: dict[str, object] = {
+        "article_story_core_uk": "Стаття описує той самий тендер міськради.",
+        "case_story_core_uk": "Справу утворюють статті про той самий тендер міськради.",
+        "shared_specific_core_uk": "Той самий тендер міськради з підозрою в завищенні ціни.",
+        "only_broad_overlap_uk": None,
+        "disconnect_signals_uk": [],
+        "coherence_test_uk": "Так, це одне конкретне речення про той самий тендер.",
     }
     diagnosis.update(changes)
     return diagnosis
@@ -220,6 +234,43 @@ def test_case_coherence_audit_rejects_coherent_without_shared_specific_core() ->
                         "reason_uk": "Стаття належить до історії.",
                     }
                 ],
+            }
+        )
+
+
+def test_case_link_audit_accepts_connect_with_specific_shared_core() -> None:
+    output = CaseLinkAuditOutput.model_validate(
+        {
+            "diagnosis": case_link_audit_diagnosis(),
+            "reason_uk": "Стаття описує той самий тендер і той самий процес підзвітності.",
+            "outcome": "connect",
+        }
+    )
+
+    assert output.outcome == "connect"
+
+
+def test_case_link_audit_rejects_connect_on_broad_overlap() -> None:
+    with pytest.raises(ValueError, match="shared specific core"):
+        CaseLinkAuditOutput.model_validate(
+            {
+                "diagnosis": case_link_audit_diagnosis(
+                    shared_specific_core_uk=None,
+                    only_broad_overlap_uk="Збігається лише орган місцевого самоврядування.",
+                ),
+                "reason_uk": "Збіг лише інституційний.",
+                "outcome": "connect",
+            }
+        )
+
+
+def test_case_link_audit_rejects_drop_without_disconnect_basis() -> None:
+    with pytest.raises(ValueError, match="factual reason to disconnect"):
+        CaseLinkAuditOutput.model_validate(
+            {
+                "diagnosis": case_link_audit_diagnosis(),
+                "reason_uk": "Підстав від'єднання немає.",
+                "outcome": "drop",
             }
         )
 

@@ -25,7 +25,7 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from worker_ml.cases.audits import _audit_cards
+from worker_ml.cases.audits import load_case_article_cards
 from worker_ml.cases.publication import (
     ENTITY_MUTATION_ADVISORY_LOCK,
     EVENT_MUTATION_ADVISORY_LOCK,
@@ -70,7 +70,9 @@ class CasePublicInterestAuditJobHandler:
             if case is None or case.status != "active":
                 return None
             revision = case.evidence_revision
-            payload = _case_payload(case, _compact_cards(await _audit_cards(session, case.id)))
+            payload = _case_payload(
+                case, _compact_cards(await load_case_article_cards(session, case.id))
+            )
         case_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         schema_json = prompt_schema_json(CasePublicInterestAuditOutput)
         result = await self._runner.run_with_provenance(
@@ -216,10 +218,10 @@ class CaseDuplicateAuditJobHandler:
             revisions = (case_a.evidence_revision, case_b.evidence_revision)
             payload = {
                 "case_a": _case_payload(
-                    case_a, _compact_cards(await _audit_cards(session, case_a.id))
+                    case_a, _compact_cards(await load_case_article_cards(session, case_a.id))
                 ),
                 "case_b": _case_payload(
-                    case_b, _compact_cards(await _audit_cards(session, case_b.id))
+                    case_b, _compact_cards(await load_case_article_cards(session, case_b.id))
                 ),
             }
         cases_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))

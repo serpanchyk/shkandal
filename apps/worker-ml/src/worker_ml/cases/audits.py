@@ -77,7 +77,7 @@ class CaseCoherenceAuditJobHandler:
             if case is None or case.status != "active":
                 return None
             evidence_revision = case.evidence_revision
-            cards = await _audit_cards(session, case.id)
+            cards = await load_case_article_cards(session, case.id)
             if not cards:
                 return None
             case_context = {
@@ -270,7 +270,7 @@ def _audit_card_count(payload: dict[str, Any]) -> int:
     return len(cards) if isinstance(cards, list) else 0
 
 
-async def _audit_cards(session: AsyncSession, case_id: UUID) -> list[dict[str, Any]]:
+async def load_case_article_cards(session: AsyncSession, case_id: UUID) -> list[dict[str, Any]]:
     rows = (
         await session.execute(
             select(Article.id, Article.published_at, ArticleCard)

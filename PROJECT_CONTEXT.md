@@ -70,6 +70,11 @@ review and correction tooling are later quality layers, not blocking MVP stages.
   strict. Conservative deterministic normalization is recorded as repaired LLM
   provenance without changing raw provider output.
 - Article jobs are gated by durable outputs. Each successful step enqueues the next step only after its output row/link exists; downstream jobs are not pre-enqueued.
+- Case resolution is now two-stage for existing Cases: the first LLM pass
+  matches against retrieved Case cards, and each provisional existing-Case link
+  then goes through an inline second pass against that Case's linked Article
+  Cards before any `case_articles` row is written. Inconclusive second-pass
+  checks are dropped, not preserved.
 - Workers claim jobs with PostgreSQL `FOR UPDATE SKIP LOCKED` row locking so multiple workers do not process the same job.
 - `running` jobs are reclaimable leases. If `locked_at` becomes older than the configured stale-job timeout, defaulting to 30 minutes, another worker may retry the job.
 - `worker-ml` uses weighted fair scheduling and four concurrent execution slots
@@ -108,6 +113,8 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - Articles, entities, and events can connect to multiple cases.
 - Case resolution can explicitly reject a case-candidate article without
   creating domain records; the decision remains auditable through its LLM run.
+- Existing-Case links are persisted only after a second card-based coherence
+  recheck against the chosen Case's current evidence.
 - A Case Split preserves the dominant story on the original Case and creates
   new Cases for other coherent stories. A coherence audit preserves relevant
   repetition and may detach Article links that belong to no concrete story.

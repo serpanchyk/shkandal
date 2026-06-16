@@ -15,12 +15,17 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from worker_ml.articles.cards import get_case_candidate_card
+from worker_ml.cases.audits import load_case_article_cards
 from worker_ml.cases.publication import (
     CaseMutationBusyError,
     case_vector_payload,
     try_case_mutation_lock,
 )
-from worker_ml.llm.contracts import CaseResolutionOutput
+from worker_ml.llm.contracts import (
+    CaseLinkAuditOutput,
+    CaseRelationDecision,
+    CaseResolutionOutput,
+)
 from worker_ml.llm.runner import LlmTaskRunner
 from worker_ml.llm.schema import prompt_schema_json
 from worker_ml.retrieval.vector_index import VectorIndexService
@@ -106,6 +111,16 @@ class ArticleCaseResolutionJobHandler:
             output = _normalize_invalid_case_relations(output, candidate_ids)
             if output.outcome == "rejected":
                 return output
+            output = await self._recheck_existing_case_links(
+                session,
+                job=job,
+                article=article,
+                card=card,
+                output=output,
+                candidates=candidates,
+            )
+            if output.outcome == "rejected":
+                return output
             affected_case_ids = await self._persist_resolution(
                 session,
                 article=article,
@@ -158,6 +173,100 @@ class ArticleCaseResolutionJobHandler:
             for result in results
             if result.id in by_id
         ]
+
+    async def _recheck_existing_case_links(
+        self,
+        session: AsyncSession,
+        *,
+        job: ClaimedJob,
+        article: Article,
+        card: ArticleCard,
+        output: CaseResolutionOutput,
+        candidates: list[dict[str, Any]],
+    ) -> CaseResolutionOutput:
+        if not output.existing_case_links:
+            return output
+        candidate_by_id = {candidate["case_id"]: candidate for candidate in candidates}
+        kept_case_ids: set[str] = set()
+        rechecked_links = []
+        for link in output.existing_case_links:
+            case_id = UUID(link.case_id)
+            case = await session.get(Case, case_id)
+            if case is None or case.status != "active":
+                continue
+            linked_cards = await load_case_article_cards(session, case_id)
+            decision = await self._run_case_link_audit(
+                job=job,
+                article=article,
+                card=card,
+                case=case,
+                candidate=candidate_by_id[link.case_id],
+                linked_cards=linked_cards,
+            )
+            if decision.outcome != "connect":
+                continue
+            kept_case_ids.add(link.case_id)
+            rechecked_links.append(link)
+        filtered = output.model_copy(
+            update={
+                "existing_case_links": rechecked_links,
+                "case_relations": _filter_case_relations(output.case_relations, kept_case_ids),
+            }
+        )
+        if filtered.existing_case_links or filtered.new_cases:
+            return filtered
+        return _reject_resolution_after_link_audit(output)
+
+    async def _run_case_link_audit(
+        self,
+        *,
+        job: ClaimedJob,
+        article: Article,
+        card: ArticleCard,
+        case: Case,
+        candidate: dict[str, Any],
+        linked_cards: list[dict[str, Any]],
+    ) -> CaseLinkAuditOutput:
+        case_json = json.dumps(
+            {
+                "article": {
+                    "article_id": str(article.id),
+                    "published_at": article.published_at.isoformat()
+                    if article.published_at
+                    else None,
+                    "card": {
+                        "title_uk": card.title_uk,
+                        "summary_uk": card.summary_uk,
+                        **card.card_json,
+                    },
+                },
+                "case": {
+                    "case_id": str(case.id),
+                    "title_uk": case.title_uk,
+                    "summary_uk": case.summary_uk,
+                    "candidate_score": candidate["score"],
+                    "evidence_titles": candidate["evidence_titles"],
+                    "article_cards": linked_cards,
+                },
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        result = await self._runner.run_with_provenance(
+            run_type="case_link_audit",
+            model_name=self._model_name,
+            variables={
+                "case_json": case_json,
+                "schema_json": prompt_schema_json(CaseLinkAuditOutput),
+            },
+            metadata={
+                "article_id": str(article.id),
+                "case_id": str(case.id),
+                "job_id": str(job.id),
+                "linked_article_count": len(linked_cards),
+            },
+        )
+        return cast(CaseLinkAuditOutput, result.output)
 
     async def _persist_resolution(
         self,
@@ -270,6 +379,47 @@ def _normalize_invalid_case_relations(
         and (relation.case_b_id is None or relation.case_b_id in candidate_ids)
     ]
     return output.model_copy(update={"case_relations": relations})
+
+
+def _filter_case_relations(
+    relations: list[CaseRelationDecision],
+    kept_case_ids: set[str],
+) -> list[CaseRelationDecision]:
+    """Drop relations that mention removed existing Cases."""
+
+    return [
+        relation
+        for relation in relations
+        if (relation.case_a_id is None or relation.case_a_id in kept_case_ids)
+        and (relation.case_b_id is None or relation.case_b_id in kept_case_ids)
+    ]
+
+
+def _reject_resolution_after_link_audit(output: CaseResolutionOutput) -> CaseResolutionOutput:
+    """Rewrite a linkless resolution into an explicit rejection."""
+
+    diagnosis = output.diagnosis.model_copy(
+        update={
+            "matching_existing_case_ids": [],
+            "rejection_signals_uk": [
+                *output.diagnosis.rejection_signals_uk,
+                "Жодна наявна справа не підтвердила прив'язку після повторної перевірки.",
+            ],
+        }
+    )
+    return CaseResolutionOutput.model_validate(
+        {
+            "diagnosis": diagnosis.model_dump(mode="json"),
+            "existing_case_links": [],
+            "new_cases": [],
+            "case_relations": [],
+            "decision_reason_uk": (
+                "Повторна перевірка не підтвердила безпечну прив'язку "
+                "статті до жодної наявної справи."
+            ),
+            "outcome": "rejected",
+        }
+    )
 
 
 async def _enqueue_resolution_followups(

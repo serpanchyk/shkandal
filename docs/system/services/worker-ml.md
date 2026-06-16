@@ -111,13 +111,17 @@ case-candidate gate. A stored non-case card remains available for inspection but
 does not create provisional cases, events, or entities downstream.
 
 Case resolution returns an explicit `resolved` or `rejected` outcome with a
-Ukrainian decision reason. A resolved output must link at least one existing
-Case or create at least one new Case. A rejected output contains no case actions,
-remains auditable through `llm_runs`, and enqueues no Entity or Event jobs. Case
-resolution may create only symmetric `related` and `possible_duplicate`
-relations. After every new article-case link, a unique case-scoped job
-regenerates summary copy and reviews whether the stable title materially needs
-replacement.
+Ukrainian decision reason. A resolved first-pass output must link at least one
+existing Case or create at least one new Case. Before persistence, every
+provisional existing-Case link is rechecked against that chosen Case's linked
+Article Cards. Only links whose second pass returns `connect` are written;
+`drop` and `inconclusive` both remove the provisional link. If no existing
+links survive and no new Case remains, the final result is rewritten to
+`rejected`. Rejected outputs contain no case actions, remain auditable through
+`llm_runs`, and enqueue no Entity or Event jobs. Case resolution may create
+only symmetric `related` and `possible_duplicate` relations. After every new
+article-case link, a unique case-scoped job regenerates summary copy and
+reviews whether the stable title materially needs replacement.
 
 Resolved Case output enqueues separate article-scoped Entity and Event jobs.
 Each stage retrieves candidates independently for every provisional item, then
@@ -254,6 +258,10 @@ article must have one concrete Case nucleus, broad-only overlaps with a court,
 agency, person, topic, or procedure do not justify attaching to an existing
 Case, and institutional umbrellas such as general VAKS activity must become
 separate concrete Cases or be rejected.
+The inline second-pass existing-Case recheck uses the same Article Card
+evidence shape as Case Coherence Audits: title, summary, published date, and
+structured card JSON for the Case's current linked articles. It does not load
+raw article text.
 Event resolution receives the current Europe/Kyiv date in the prompt and
 records a temporal-scope check before accepting, linking, or rejecting a
 provisional Event. Future-dated Events are surfaced as model-visible warnings;

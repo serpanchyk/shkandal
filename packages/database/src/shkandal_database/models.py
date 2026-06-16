@@ -179,7 +179,7 @@ class LlmRun(Base):
     __table_args__ = (
         CheckConstraint(
             "run_type in ('article_card', 'case_resolution', 'entity_resolution', "
-            "'event_resolution', 'case_copy_update', 'case_coherence_audit', "
+            "'event_resolution', 'case_copy_update', 'case_link_audit', 'case_coherence_audit', "
             "'case_public_interest_audit', 'case_duplicate_audit')",
             name="ck_llm_runs_run_type",
         ),

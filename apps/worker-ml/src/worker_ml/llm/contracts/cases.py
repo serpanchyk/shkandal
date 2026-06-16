@@ -250,6 +250,84 @@ class CaseResolutionOutput(StrictOutput):
         return self
 
 
+class CaseLinkAuditDiagnosis(StrictOutput):
+    """Short factual checks before rechecking one article-to-case link."""
+
+    article_story_core_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Коротке фактичне ядро історії в поточній статті.",
+    )
+    case_story_core_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Коротке фактичне ядро наявної справи за її картками статей.",
+    )
+    shared_specific_core_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description="Конкретне спільне ядро, якщо стаття справді належить до цієї справи.",
+    )
+    only_broad_overlap_uk: str | None = Field(
+        default=None,
+        max_length=240,
+        description=(
+            "Короткий факт, якщо збіг є лише темою, актором, установою, процедурою або жанром."
+        ),
+    )
+    disconnect_signals_uk: list[str] = Field(
+        default_factory=list,
+        max_length=8,
+        description="Короткі факти, чому статтю слід не прив'язувати до цієї справи.",
+    )
+    coherence_test_uk: str = Field(
+        min_length=1,
+        max_length=240,
+        description=(
+            "Коротка відповідь, чи можна описати статтю та справу одним конкретним реченням."
+        ),
+    )
+
+
+class CaseLinkAuditOutput(StrictOutput):
+    """Decision to keep or drop one provisional article-to-case link."""
+
+    diagnosis: CaseLinkAuditDiagnosis = Field(
+        description="Коротка структурована діагностика перед рішенням щодо прив'язки."
+    )
+    reason_uk: str = Field(
+        min_length=1,
+        max_length=320,
+        description="Коротке фактичне обґрунтування рішення щодо прив'язки.",
+    )
+    outcome: Literal["connect", "drop", "inconclusive"] = Field(
+        description="Підсумок повторної перевірки прив'язки статті до наявної справи.",
+    )
+
+    @model_validator(mode="after")
+    def validate_outcome(self) -> CaseLinkAuditOutput:
+        """Require concrete shared story evidence for positive link decisions."""
+
+        if self.outcome == "connect":
+            if self.diagnosis.article_story_core_uk is None:
+                raise ValueError("connect link audit requires an article story core")
+            if self.diagnosis.case_story_core_uk is None:
+                raise ValueError("connect link audit requires a case story core")
+            if self.diagnosis.shared_specific_core_uk is None:
+                raise ValueError("connect link audit requires a shared specific core")
+            if self.diagnosis.only_broad_overlap_uk is not None:
+                raise ValueError("connect link audit cannot rely only on broad overlap")
+            if self.diagnosis.disconnect_signals_uk:
+                raise ValueError("connect link audit cannot contain disconnect signals")
+        if self.outcome == "drop" and not (
+            self.diagnosis.only_broad_overlap_uk is not None
+            or self.diagnosis.disconnect_signals_uk
+            or self.diagnosis.shared_specific_core_uk is None
+        ):
+            raise ValueError("drop link audit requires a factual reason to disconnect")
+        return self
+
+
 class CaseCopyTitleDiagnosis(StrictOutput):
     """Short factual checks before deciding whether to replace a Case title."""
 

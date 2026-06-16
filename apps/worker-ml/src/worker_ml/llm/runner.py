@@ -431,6 +431,7 @@ def model_aliases(settings: MlConfig) -> dict[str, str]:
     return {
         "article_card": settings.llm_article_card_model,
         "case_resolution": settings.llm_case_resolution_model,
+        "case_link_audit": settings.llm_case_coherence_audit_model,
         "entity_resolution": settings.llm_entity_resolution_model,
         "event_resolution": settings.llm_event_resolution_model,
         "case_copy_update": settings.llm_case_copy_update_model,

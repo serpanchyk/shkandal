@@ -331,7 +331,7 @@ async def test_invalid_coverage_fallback_is_recorded_without_decisive_mutation(
     record_audit = AsyncMock()
     apply_decisive_audit = AsyncMock()
     monkeypatch.setattr(
-        case_audits, "_audit_cards", AsyncMock(return_value=_cards(article_a, article_b))
+        case_audits, "load_case_article_cards", AsyncMock(return_value=_cards(article_a, article_b))
     )
     monkeypatch.setattr(case_audits, "try_case_mutation_lock", AsyncMock(return_value=True))
     monkeypatch.setattr(case_audits, "try_mutation_lock", AsyncMock(return_value=True))

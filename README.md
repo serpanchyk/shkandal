@@ -45,6 +45,11 @@ Cases can overlap. One article can belong to multiple cases. One event can be re
 
 One relevant article is enough to create a public case. The system optimizes for coverage and speed, with source provenance visible to readers.
 
+Existing-case attachment is conservative: after the initial card-to-case match,
+each provisional existing-case link is rechecked against that Case's linked
+Article Cards before persistence. Links that fail or remain inconclusive in the
+second pass are dropped rather than written.
+
 An automatic ordered Case Audit Pipeline runs after evidence changes and on a
 30-day fallback. Coherence audits split mixed Cases or detach unsupported
 Articles, public-interest audits permanently hide unsuitable dossiers, and

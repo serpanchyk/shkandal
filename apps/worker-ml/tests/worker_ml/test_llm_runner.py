@@ -17,6 +17,7 @@ from worker_ml.llm.contracts import (
     ArticleCardOutput,
     CaseCoherenceAuditOutput,
     CaseDuplicateAuditOutput,
+    CaseLinkAuditOutput,
     CasePublicInterestAuditOutput,
     EntityResolutionOutput,
     EventResolutionOutput,
@@ -363,6 +364,11 @@ async def test_runner_fails_after_invalid_repair() -> None:
     ("run_type", "output_type", "variables"),
     [
         (
+            "case_link_audit",
+            CaseLinkAuditOutput,
+            {"case_json": "{}", "schema_json": "{}"},
+        ),
+        (
             "case_coherence_audit",
             CaseCoherenceAuditOutput,
             {"case_json": "{}", "schema_json": "{}"},
@@ -507,6 +513,7 @@ def test_model_aliases_use_stage_specific_settings() -> None:
 
     assert aliases["article_card"] == "shkandal-article-card"
     assert aliases["case_resolution"] == "shkandal-case-resolution"
+    assert aliases["case_link_audit"] == "shkandal-case-coherence-audit"
     assert aliases["entity_resolution"] == "shkandal-entity-resolution"
     assert aliases["event_resolution"] == "shkandal-event-resolution"
     assert aliases["case_copy_update"] == "shkandal-case-copy-update"

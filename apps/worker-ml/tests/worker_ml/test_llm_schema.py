@@ -7,6 +7,7 @@ from worker_ml.llm.contracts import (
     CaseCoherenceAuditOutput,
     CaseCopyUpdateOutput,
     CaseDuplicateAuditOutput,
+    CaseLinkAuditOutput,
     CasePublicInterestAuditOutput,
     CaseResolutionOutput,
     EntityResolutionOutput,
@@ -17,6 +18,7 @@ from worker_ml.llm.schema import prompt_schema, runtime_schema_json
 LLM_OUTPUT_MODELS = (
     ArticleCardOutput,
     CaseResolutionOutput,
+    CaseLinkAuditOutput,
     EntityResolutionOutput,
     EventResolutionOutput,
     CaseCopyUpdateOutput,
@@ -72,6 +74,10 @@ def test_schema_exposes_diagnosis_objects_and_terminal_choice_fields() -> None:
     duplicate_properties = list(prompt_schema(CaseDuplicateAuditOutput)["properties"])
     assert duplicate_properties[-1] == "outcome"
     assert "diagnosis" in duplicate_properties
+
+    link_properties = list(prompt_schema(CaseLinkAuditOutput)["properties"])
+    assert link_properties[-1] == "outcome"
+    assert "diagnosis" in link_properties
 
     interest_properties = list(prompt_schema(CasePublicInterestAuditOutput)["properties"])
     assert interest_properties[-1] == "outcome"
