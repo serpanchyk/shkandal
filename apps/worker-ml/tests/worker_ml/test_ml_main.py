@@ -1065,6 +1065,7 @@ def test_llm_config_defaults_to_litellm_proxy_aliases() -> None:
     )
     assert fields["llm_case_duplicate_audit_model"].default == "shkandal-case-duplicate-audit"
     assert fields["llm_repair_model"].default == "shkandal-repair"
+    assert fields["llm_structured_output_mode"].default == "disabled"
     assert fields["case_audit_automatic_enabled"].default is True
 
 

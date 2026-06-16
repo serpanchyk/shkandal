@@ -208,6 +208,108 @@ def test_accepted_resolution_without_case_assignment_becomes_reject() -> None:
     assert decision.rejection_reason == "not_case_relevant"
 
 
+def test_entity_resolution_non_candidate_link_becomes_insufficient_identity_reject() -> None:
+    bad_entity_id = "00000000-0000-0000-0000-000000000001"
+    result = normalize_llm_output(
+        run_type="entity_resolution",
+        variables={
+            "resolution_json": json.dumps(
+                {
+                    "items": [
+                        {
+                            "provisional": {"provisional_ref": "entity_one"},
+                            "candidates": [],
+                        }
+                    ]
+                }
+            )
+        },
+        output={
+            "entities": [
+                {
+                    "provisional_ref": "entity_one",
+                    "diagnosis": {
+                        "is_named_stable_actor": True,
+                        "material_case_ids": ["case-a"],
+                        "identity_match_evidence_uk": "Назва схожа.",
+                        "identity_conflict_uk": None,
+                        "rejection_signal_uk": None,
+                    },
+                    "action": "link_existing",
+                    "existing_entity_id": bad_entity_id,
+                    "confidence": 0.8,
+                    "case_assignments": [{"case_id": "case-a", "relevance_reason_uk": "Причина."}],
+                    "reason_uk": "Та сама сутність.",
+                    "rejection_reason": None,
+                }
+            ]
+        },
+    )
+
+    output = EntityResolutionOutput.model_validate(result.output)
+    decision = output.entities[0]
+    assert decision.action == "reject"
+    assert decision.existing_entity_id is None
+    assert decision.case_assignments == []
+    assert decision.rejection_reason == "insufficient_identity"
+    assert decision.diagnosis.rejection_signal_uk
+    assert "entities[0]: reject non-candidate identity" in result.actions
+
+
+def test_event_resolution_non_candidate_link_becomes_insufficient_identity_reject() -> None:
+    bad_event_id = "00000000-0000-0000-0000-000000000001"
+    result = normalize_llm_output(
+        run_type="event_resolution",
+        variables={
+            "resolution_json": json.dumps(
+                {
+                    "items": [
+                        {
+                            "provisional": {"provisional_ref": "event_one"},
+                            "candidates": [],
+                        }
+                    ]
+                }
+            )
+        },
+        output={
+            "events": [
+                {
+                    "provisional_ref": "event_one",
+                    "diagnosis": {
+                        "is_concrete_occurrence": True,
+                        "occurrence_core_uk": "Конкретна подія.",
+                        "anchor_summary_uk": "Дія і дата визначені.",
+                        "candidate_match_evidence_uk": "Назва схожа.",
+                        "anchor_conflict_uk": None,
+                        "temporal_scope_check_uk": "Подія вже відбулася.",
+                        "future_date_warning_uk": None,
+                        "material_case_ids": ["case-a"],
+                        "rejection_signal_uk": None,
+                    },
+                    "action": "link_existing",
+                    "existing_event_id": bad_event_id,
+                    "event_date": None,
+                    "event_date_precision": "unknown",
+                    "confidence": 0.8,
+                    "case_assignments": [{"case_id": "case-a", "relevance_reason_uk": "Причина."}],
+                    "reason_uk": "Та сама подія.",
+                    "rejection_reason": None,
+                }
+            ]
+        },
+    )
+
+    output = EventResolutionOutput.model_validate(result.output)
+    decision = output.events[0]
+    assert decision.action == "reject"
+    assert decision.existing_event_id is None
+    assert decision.case_assignments == []
+    assert decision.rejection_reason == "insufficient_identity"
+    assert decision.diagnosis.rejection_signal_uk
+    assert "events[0]: reject non-candidate identity" in result.actions
+
+
 def test_entity_resolution_removes_only_unsupported_english_canonical_name() -> None:
     output = {
         "entities": [

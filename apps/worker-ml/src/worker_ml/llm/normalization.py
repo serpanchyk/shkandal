@@ -49,6 +49,9 @@ NOISE_REASONS = {
     "foreign_no_ukraine_nexus",
 }
 SAFE_REJECTION_REASON_UK = "Не стосується пов'язаної справи."
+INSUFFICIENT_IDENTITY_REASON_UK = (
+    "Неможливо безпечно підтвердити тотожність із отриманими кандидатами."
+)
 TRAILING_TRUNCATION_CHARS = " \t\r\n,;:.-"
 SHORT_TEXT_LIMITS: dict[LlmRunType, dict[str, int]] = {
     "article_card": {
@@ -148,6 +151,7 @@ def normalize_llm_output(
         if not isinstance(normalized, dict):
             raise ValueError("resolution output must be a JSON object or array")
         _normalize_resolution_refs(normalized, variables, run_type, actions)
+        _normalize_invalid_candidate_links(normalized, variables, run_type, actions)
         decisions = normalized.get(decisions_key)
         if isinstance(decisions, list):
             for index, decision in enumerate(decisions):
@@ -344,6 +348,73 @@ def _normalize_resolution_refs(
             )
 
 
+def _normalize_invalid_candidate_links(
+    output: dict[str, Any],
+    variables: Mapping[str, Any],
+    run_type: LlmRunType,
+    actions: list[str],
+) -> None:
+    decisions_key = "entities" if run_type == "entity_resolution" else "events"
+    id_key = "existing_entity_id" if run_type == "entity_resolution" else "existing_event_id"
+    title_key = "new_canonical_name_uk" if run_type == "entity_resolution" else "new_title_uk"
+    decisions = output.get(decisions_key)
+    if not isinstance(decisions, list):
+        return
+    candidate_ids = _candidate_ids_by_ref(variables, id_key)
+    if not candidate_ids:
+        return
+    for index, decision in enumerate(decisions):
+        if not isinstance(decision, dict):
+            continue
+        action = decision.get("action")
+        if action == "reject" or action == "create_new":
+            continue
+        ref = decision.get("provisional_ref")
+        existing_id = decision.get(id_key)
+        if (
+            not isinstance(ref, str)
+            or not isinstance(existing_id, str)
+            or existing_id in candidate_ids.get(ref, set())
+        ):
+            continue
+        path = f"{decisions_key}[{index}]"
+        _convert_to_insufficient_identity_reject(
+            decision,
+            actions,
+            path,
+            id_key=id_key,
+            title_key=title_key,
+        )
+
+
+def _candidate_ids_by_ref(variables: Mapping[str, Any], id_key: str) -> dict[str, set[str]]:
+    value = variables.get("resolution_json")
+    if not isinstance(value, str):
+        return {}
+    try:
+        payload = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+    items = payload.get("items") if isinstance(payload, dict) else None
+    if not isinstance(items, list):
+        return {}
+    candidate_ids: dict[str, set[str]] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        provisional = item.get("provisional")
+        ref = provisional.get("provisional_ref") if isinstance(provisional, dict) else None
+        candidates = item.get("candidates")
+        if not isinstance(ref, str) or not isinstance(candidates, list):
+            continue
+        candidate_ids[ref] = {
+            candidate[id_key]
+            for candidate in candidates
+            if isinstance(candidate, dict) and isinstance(candidate.get(id_key), str)
+        }
+    return candidate_ids
+
+
 def _expected_resolution_refs(variables: Mapping[str, Any]) -> list[str]:
     value = variables.get("resolution_json")
     if not isinstance(value, str):
@@ -455,6 +526,43 @@ def _convert_to_reject(
         _set(decision, field, None, actions, f"{path}: clear rejected identity")
     _set(decision, "case_assignments", [], actions, f"{path}: clear rejected assignments")
     _default_rejection(decision, actions, path)
+
+
+def _convert_to_insufficient_identity_reject(
+    decision: dict[str, Any],
+    actions: list[str],
+    path: str,
+    *,
+    id_key: str,
+    title_key: str,
+) -> None:
+    _set(decision, "action", "reject", actions, f"{path}: reject non-candidate identity")
+    _set(decision, id_key, None, actions, f"{path}: clear non-candidate identity")
+    _set(decision, title_key, None, actions, f"{path}: clear rejected identity proposal")
+    _set(decision, "case_assignments", [], actions, f"{path}: clear rejected assignments")
+    _set(
+        decision,
+        "rejection_reason",
+        "insufficient_identity",
+        actions,
+        f"{path}: mark insufficient identity",
+    )
+    _set(
+        decision,
+        "reason_uk",
+        INSUFFICIENT_IDENTITY_REASON_UK,
+        actions,
+        f"{path}: explain insufficient identity",
+    )
+    diagnosis = decision.get("diagnosis")
+    if isinstance(diagnosis, dict):
+        _set(
+            diagnosis,
+            "rejection_signal_uk",
+            INSUFFICIENT_IDENTITY_REASON_UK,
+            actions,
+            f"{path}: set identity rejection signal",
+        )
 
 
 def _default_rejection(decision: dict[str, Any], actions: list[str], path: str) -> None:
