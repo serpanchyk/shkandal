@@ -203,6 +203,10 @@ async def test_runner_repairs_only_unescaped_json_control_characters() -> None:
                             "anchor_summary_uk": "Дія і учасники визначені.",
                             "candidate_match_evidence_uk": None,
                             "anchor_conflict_uk": None,
+                            "temporal_scope_check_uk": (
+                                "Подія вже відбулася і не виходить за поточну дату."
+                            ),
+                            "future_date_warning_uk": None,
                             "material_case_ids": ["case-a"],
                             "rejection_signal_uk": None,
                         },

@@ -74,18 +74,20 @@ def _cards(*article_ids: str) -> list[dict[str, str]]:
 
 
 def _inconclusive() -> CaseCoherenceAuditOutput:
-    return CaseCoherenceAuditOutput(
-        diagnosis={
-            "shared_specific_core_uk": None,
-            "shared_only_broad_theme_uk": None,
-            "merge_blockers_uk": [],
-            "split_story_cores_uk": [],
-            "detached_article_signals_uk": [],
-            "coherence_test_uk": "Недостатньо доказів для одного конкретного формулювання.",
-        },
-        outcome="inconclusive",
-        reason_uk="Недостатньо доказів.",
-        stories=[],
+    return CaseCoherenceAuditOutput.model_validate(
+        {
+            "diagnosis": {
+                "shared_specific_core_uk": None,
+                "shared_only_broad_theme_uk": None,
+                "merge_blockers_uk": [],
+                "split_story_cores_uk": [],
+                "detached_article_signals_uk": [],
+                "coherence_test_uk": "Недостатньо доказів для одного конкретного формулювання.",
+            },
+            "outcome": "inconclusive",
+            "reason_uk": "Недостатньо доказів.",
+            "stories": [],
+        }
     )
 
 

@@ -21,15 +21,17 @@ from worker_ml.identities.resolution import (
 from worker_ml.llm.contracts import (
     EntityCaseAssignment,
     EntityResolutionDecision,
+    EntityResolutionDiagnosis,
     EntityResolutionOutput,
     EventCaseAssignment,
     EventResolutionDecision,
+    EventResolutionDiagnosis,
     EventResolutionOutput,
 )
 from worker_ml.retrieval.vector_index import VectorIndexService
 
 
-def _entity_diagnosis(**changes: object) -> dict[str, object]:
+def _entity_diagnosis(**changes: object) -> EntityResolutionDiagnosis:
     diagnosis: dict[str, object] = {
         "is_named_stable_actor": True,
         "material_case_ids": ["case-a"],
@@ -38,21 +40,23 @@ def _entity_diagnosis(**changes: object) -> dict[str, object]:
         "rejection_signal_uk": None,
     }
     diagnosis.update(changes)
-    return diagnosis
+    return EntityResolutionDiagnosis.model_validate(diagnosis)
 
 
-def _event_diagnosis(**changes: object) -> dict[str, object]:
+def _event_diagnosis(**changes: object) -> EventResolutionDiagnosis:
     diagnosis: dict[str, object] = {
         "is_concrete_occurrence": True,
         "occurrence_core_uk": "Конкретна подія у справі.",
         "anchor_summary_uk": "Дія, учасники та дата збігаються.",
         "candidate_match_evidence_uk": "Це та сама occurrence.",
         "anchor_conflict_uk": None,
+        "temporal_scope_check_uk": "Подія вже відбулася і не виходить за поточну дату.",
+        "future_date_warning_uk": None,
         "material_case_ids": ["case-a"],
         "rejection_signal_uk": None,
     }
     diagnosis.update(changes)
-    return diagnosis
+    return EventResolutionDiagnosis.model_validate(diagnosis)
 
 
 def test_rollout_refs_are_deterministic_and_preserve_existing_refs() -> None:

@@ -216,6 +216,8 @@ def _normalize_event_decision(decision: dict[str, Any], actions: list[str], path
                 "anchor_summary_uk": None,
                 "candidate_match_evidence_uk": None,
                 "anchor_conflict_uk": None,
+                "temporal_scope_check_uk": "Не вдалося безпечно перевірити часові межі події.",
+                "future_date_warning_uk": None,
                 "material_case_ids": [],
                 "rejection_signal_uk": None,
             },

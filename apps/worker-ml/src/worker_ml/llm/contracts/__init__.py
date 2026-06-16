@@ -10,15 +10,15 @@ from worker_ml.llm.contracts.cases import (
     CaseAuditDetachedArticle,
     CaseAuditStory,
     CaseCandidate,
-    CaseCoherenceDiagnosis,
     CaseCoherenceAuditOutput,
+    CaseCoherenceDiagnosis,
     CaseCopyTitleDiagnosis,
     CaseCopyUpdateOutput,
-    CaseDuplicateDiagnosis,
     CaseDuplicateAuditOutput,
+    CaseDuplicateDiagnosis,
     CaseLinkDecision,
-    CasePublicInterestDiagnosis,
     CasePublicInterestAuditOutput,
+    CasePublicInterestDiagnosis,
     CaseRelationDecision,
     CaseResolutionDiagnosis,
     CaseResolutionOutput,
@@ -26,12 +26,12 @@ from worker_ml.llm.contracts.cases import (
 )
 from worker_ml.llm.contracts.identities import (
     EntityCaseAssignment,
-    EntityResolutionDiagnosis,
     EntityResolutionDecision,
+    EntityResolutionDiagnosis,
     EntityResolutionOutput,
     EventCaseAssignment,
-    EventResolutionDiagnosis,
     EventResolutionDecision,
+    EventResolutionDiagnosis,
     EventResolutionOutput,
 )
 from worker_ml.llm.contracts.types import (

@@ -240,6 +240,21 @@ class EventResolutionDiagnosis(StrictOutput):
         max_length=240,
         description="Короткий опис суперечливого anchor, якщо link_existing небезпечний.",
     )
+    temporal_scope_check_uk: str = Field(
+        min_length=1,
+        max_length=240,
+        description=(
+            "Коротка перевірка, чи occurrence вже відбулася, чи це future/scheduled дія, "
+            "і чи event_date не виходить за поточну дату."
+        ),
+    )
+    future_date_warning_uk: str | None = Field(
+        max_length=240,
+        description=(
+            "Попередження, якщо event_date пізніше поточної дати або подія виглядає "
+            "запланованою; інакше null."
+        ),
+    )
     material_case_ids: list[str] = Field(
         default_factory=list,
         description="Ідентифікатори пов'язаних справ, для яких подія матеріально важлива.",

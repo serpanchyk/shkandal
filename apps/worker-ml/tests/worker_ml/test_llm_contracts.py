@@ -40,6 +40,11 @@ def case_coherence_diagnosis(**changes: object) -> dict[str, object]:
 def case_resolution_diagnosis(**changes: object) -> dict[str, object]:
     diagnosis: dict[str, object] = {
         "article_story_core_uk": "Стаття описує окрему відстежувану закупівельну історію.",
+        "specific_case_core_uk": "Закупівля міськрадою послуг за завищеною ціною.",
+        "only_broad_overlap_uk": None,
+        "merge_blockers_uk": [],
+        "separate_story_cores_uk": [],
+        "case_coherence_test_uk": "Так, справу можна описати одним конкретним реченням.",
         "matching_existing_case_ids": [],
         "new_case_core_uk": "Закупівля міськрадою послуг за завищеною ціною.",
         "rejection_signals_uk": [],
@@ -68,6 +73,8 @@ def event_diagnosis(**changes: object) -> dict[str, object]:
         "anchor_summary_uk": "Дія, учасник і процесуальний етап збігаються.",
         "candidate_match_evidence_uk": "Candidate описує ту саму підозру тому самому посадовцю.",
         "anchor_conflict_uk": None,
+        "temporal_scope_check_uk": "Подія вже відбулася і не виходить за поточну дату.",
+        "future_date_warning_uk": None,
         "material_case_ids": ["case-a"],
         "rejection_signal_uk": None,
     }
@@ -593,6 +600,28 @@ def test_event_resolution_contract_requires_date_evidence() -> None:
         )
 
 
+def test_event_resolution_contract_allows_future_date_warning() -> None:
+    output = EventResolutionOutput.model_validate(
+        {
+            "events": [
+                event_resolution_decision(
+                    event_date="2026-06-17",
+                    event_date_precision="day",
+                    date_evidence_text="Суд призначив розгляд на 17 червня.",
+                    diagnosis=event_diagnosis(
+                        temporal_scope_check_uk=(
+                            "Дата пізніше поточної, але це попередження для рішення."
+                        ),
+                        future_date_warning_uk="event_date пізніше поточної дати.",
+                    ),
+                )
+            ]
+        }
+    )
+
+    assert output.events[0].diagnosis.future_date_warning_uk is not None
+
+
 def test_event_resolution_contract_rejects_evidence_without_date() -> None:
     with pytest.raises(ValidationError, match="null date evidence"):
         EventResolutionOutput.model_validate(
@@ -794,6 +823,28 @@ def test_case_resolution_contract_rejects_resolved_without_story_core() -> None:
                     new_case_core_uk="Нова справа.",
                 ),
                 "decision_reason_uk": "Немає конкретного ядра статті.",
+                "outcome": "resolved",
+                "existing_case_links": [],
+                "new_cases": [
+                    {
+                        "new_case_ref": "new_case",
+                        "title_uk": "Нова справа",
+                        "summary_uk": "Опис.",
+                        "link_reason_uk": "Причина.",
+                        "confidence": 0.8,
+                    }
+                ],
+                "case_relations": [],
+            }
+        )
+
+
+def test_case_resolution_contract_rejects_resolved_without_specific_case_core() -> None:
+    with pytest.raises(ValidationError, match="specific case core"):
+        CaseResolutionOutput.model_validate(
+            {
+                "diagnosis": case_resolution_diagnosis(specific_case_core_uk=None),
+                "decision_reason_uk": "Немає конкретного ядра справи.",
                 "outcome": "resolved",
                 "existing_case_links": [],
                 "new_cases": [

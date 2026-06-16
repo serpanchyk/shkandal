@@ -120,6 +120,41 @@ class CaseResolutionDiagnosis(StrictOutput):
         max_length=240,
         description="Коротке фактичне ядро історії в основному матеріалі статті.",
     )
+    specific_case_core_uk: str | None = Field(
+        max_length=240,
+        description=(
+            "Найвужче конкретне ядро справи, яке може тримати прив'язку або нову справу; "
+            "null, якщо такого ядра немає."
+        ),
+    )
+    only_broad_overlap_uk: str | None = Field(
+        max_length=240,
+        description=(
+            "Короткий факт, якщо збіг із candidate є лише темою, актором, установою, "
+            "процедурою або категорією; інакше null."
+        ),
+    )
+    merge_blockers_uk: list[str] = Field(
+        max_length=8,
+        description=(
+            "Факти, які заважають прив'язати статтю до наявної справи: інші фігуранти, "
+            "провадження, епізоди, закупівлі, рішення або процеси."
+        ),
+    )
+    separate_story_cores_uk: list[str] = Field(
+        max_length=8,
+        description=(
+            "Короткі ядра окремих історій у статті, якщо матеріал підтримує кілька справ."
+        ),
+    )
+    case_coherence_test_uk: str = Field(
+        min_length=1,
+        max_length=240,
+        description=(
+            "Коротка відповідь, чи можна описати обрану справу одним конкретним реченням "
+            "без тематичних або інституційних парасольок."
+        ),
+    )
     matching_existing_case_ids: list[str] = Field(
         default_factory=list,
         description="Ідентифікатори наявних справ, що збігаються саме з цим ядром.",
@@ -181,10 +216,18 @@ class CaseResolutionOutput(StrictOutput):
             raise ValueError("resolved case resolution must link or create at least one case")
         if self.outcome == "resolved" and self.diagnosis.article_story_core_uk is None:
             raise ValueError("resolved case resolution requires a concrete article story core")
+        if self.outcome == "resolved" and self.diagnosis.specific_case_core_uk is None:
+            raise ValueError("resolved case resolution requires a specific case core")
         if self.outcome == "resolved" and not (
             self.diagnosis.matching_existing_case_ids or self.diagnosis.new_case_core_uk
         ):
             raise ValueError("resolved case resolution requires matching or new-case diagnosis")
+        if (
+            self.existing_case_links
+            and self.diagnosis.only_broad_overlap_uk is not None
+            and not self.diagnosis.matching_existing_case_ids
+        ):
+            raise ValueError("existing case links cannot rely only on broad overlap")
         if self.outcome == "rejected" and (
             self.existing_case_links or self.new_cases or self.case_relations
         ):

@@ -51,6 +51,11 @@ def test_invalid_optional_case_relations_are_discarded() -> None:
         {
             "diagnosis": {
                 "article_story_core_uk": "Стаття описує дві конкретні пов'язані справи.",
+                "specific_case_core_uk": "Окрема нова справа з цього ж матеріалу.",
+                "only_broad_overlap_uk": None,
+                "merge_blockers_uk": [],
+                "separate_story_cores_uk": ["Наявна справа.", "Окрема нова справа."],
+                "case_coherence_test_uk": "Так, кожна справа має конкретне ядро.",
                 "matching_existing_case_ids": [str(candidate_id)],
                 "new_case_core_uk": "Окрема нова справа з цього ж матеріалу.",
                 "rejection_signals_uk": [],
@@ -129,16 +134,23 @@ async def test_handler_stops_after_explicit_case_rejection() -> None:
     session.execute = AsyncMock(return_value=article_result)
     session.commit = AsyncMock()
     session_factory = Mock(return_value=_session_context(session))
-    output = CaseResolutionOutput(
-        diagnosis={
-            "article_story_core_uk": None,
-            "matching_existing_case_ids": [],
-            "new_case_core_uk": None,
-            "rejection_signals_uk": ["Немає конкретної відстежуваної справи."],
-            "broad_theme_warning_uk": None,
-        },
-        decision_reason_uk="Матеріал не містить конкретної відстежуваної справи.",
-        outcome="rejected",
+    output = CaseResolutionOutput.model_validate(
+        {
+            "diagnosis": {
+                "article_story_core_uk": None,
+                "specific_case_core_uk": None,
+                "only_broad_overlap_uk": None,
+                "merge_blockers_uk": [],
+                "separate_story_cores_uk": [],
+                "case_coherence_test_uk": "Ні, немає конкретної відстежуваної справи.",
+                "matching_existing_case_ids": [],
+                "new_case_core_uk": None,
+                "rejection_signals_uk": ["Немає конкретної відстежуваної справи."],
+                "broad_theme_warning_uk": None,
+            },
+            "decision_reason_uk": "Матеріал не містить конкретної відстежуваної справи.",
+            "outcome": "rejected",
+        }
     )
     runner = Mock(spec=LlmTaskRunner)
     runner.run_with_provenance = AsyncMock(

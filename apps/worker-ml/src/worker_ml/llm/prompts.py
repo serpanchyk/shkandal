@@ -29,7 +29,7 @@ PROMPTS: dict[str, PromptDefinition] = {
     ),
     "case_resolution": PromptDefinition(
         name="case_resolution",
-        version="2026-06-15-2",
+        version="2026-06-16-1",
         filename="case_resolution.uk.md",
         input_variables=("resolution_json", "schema_json"),
     ),
@@ -41,9 +41,9 @@ PROMPTS: dict[str, PromptDefinition] = {
     ),
     "event_resolution": PromptDefinition(
         name="event_resolution",
-        version="2026-06-15-2",
+        version="2026-06-16-1",
         filename="event_resolution.uk.md",
-        input_variables=("resolution_json", "schema_json"),
+        input_variables=("resolution_json", "schema_json", "current_date_kyiv"),
     ),
     "case_copy_update": PromptDefinition(
         name="case_copy_update",

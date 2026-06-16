@@ -59,3 +59,19 @@ def test_public_interest_prompt_blacklists_routine_crime_topics() -> None:
         "не є\n`public_interest_anchor_uk`" in prompt
         or "не є `public_interest_anchor_uk`" in prompt
     )
+
+
+def test_case_resolution_prompt_blocks_institutional_umbrellas() -> None:
+    prompt = PromptRegistry().load_text("case_resolution")
+
+    assert "ВАКС — це місце розгляду та інституція, а не ідентичність справи" in prompt
+    assert "`case_coherence_test_uk`" in prompt
+    assert "конкретне фактичне ядро" in prompt
+
+
+def test_event_resolution_prompt_uses_current_date_check() -> None:
+    prompt = PromptRegistry().load_text("event_resolution")
+
+    assert "{current_date_kyiv}" in prompt
+    assert "`future_date_warning_uk`" in prompt
+    assert "`temporal_scope_check_uk`" in prompt

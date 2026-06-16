@@ -309,20 +309,22 @@ def _validate_article_coverage(output: CaseCoherenceAuditOutput, article_ids: se
 
 
 def _inconclusive_coverage_fallback() -> CaseCoherenceAuditOutput:
-    return CaseCoherenceAuditOutput(
-        diagnosis={
-            "shared_specific_core_uk": None,
-            "shared_only_broad_theme_uk": None,
-            "merge_blockers_uk": [],
-            "split_story_cores_uk": [],
-            "detached_article_signals_uk": [],
-            "coherence_test_uk": "Недостатньо доказів для одного конкретного формулювання.",
-        },
-        outcome="inconclusive",
-        reason_uk=(
-            "Неможливо безпечно підтвердити повне покриття статей після повторної перевірки."
-        ),
-        stories=[],
+    return CaseCoherenceAuditOutput.model_validate(
+        {
+            "diagnosis": {
+                "shared_specific_core_uk": None,
+                "shared_only_broad_theme_uk": None,
+                "merge_blockers_uk": [],
+                "split_story_cores_uk": [],
+                "detached_article_signals_uk": [],
+                "coherence_test_uk": "Недостатньо доказів для одного конкретного формулювання.",
+            },
+            "outcome": "inconclusive",
+            "reason_uk": (
+                "Неможливо безпечно підтвердити повне покриття статей після повторної перевірки."
+            ),
+            "stories": [],
+        }
     )
 
 

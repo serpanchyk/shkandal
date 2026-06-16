@@ -75,9 +75,7 @@ class LlmTaskDefinition:
                 "only_broad_overlap_uk": None,
                 "merge_blockers_uk": [],
             }
-        return self.output_model.model_validate(
-            payload
-        )
+        return self.output_model.model_validate(payload)
 
 
 LLM_TASKS: dict[LlmRunType, LlmTaskDefinition] = {

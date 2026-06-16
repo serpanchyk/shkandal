@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import time
+from datetime import datetime
 from decimal import Decimal
 from typing import Any, cast
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 from shkandal_database.jobs import ClaimedJob
 from shkandal_database.models import (
@@ -201,6 +203,7 @@ class ArticleEventResolutionJobHandler:
                 variables={
                     "resolution_json": _resolution_json(provisional, candidates, cases),
                     "schema_json": prompt_schema_json(EventResolutionOutput),
+                    "current_date_kyiv": datetime.now(ZoneInfo("Europe/Kyiv")).date().isoformat(),
                 },
                 metadata={
                     "article_id": str(job.article_id),

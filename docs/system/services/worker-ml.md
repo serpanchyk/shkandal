@@ -249,6 +249,15 @@ Event jobs when article-Case links already exist.
 Optional Case relations that reference existing Cases outside the retrieved
 candidate set are discarded without aborting otherwise valid article-Case
 resolution. Primary links to unretrieved Cases remain invalid.
+Case resolution uses explicit coherence diagnostics before resolving: the
+article must have one concrete Case nucleus, broad-only overlaps with a court,
+agency, person, topic, or procedure do not justify attaching to an existing
+Case, and institutional umbrellas such as general VAKS activity must become
+separate concrete Cases or be rejected.
+Event resolution receives the current Europe/Kyiv date in the prompt and
+records a temporal-scope check before accepting, linking, or rejecting a
+provisional Event. Future-dated Events are surfaced as model-visible warnings;
+planned actions that have not occurred remain rejected as future events.
 
 Case-copy jobs are revisioned. A newly requested revision receives a fresh
 attempt budget once the previous revision is no longer running. If a newer
