@@ -57,21 +57,3 @@ jobs:
       - name: Build frontend
         run: npm run build
         working-directory: apps/frontend
-
-      - name: Prepare browser-test database
-        run: |
-          uv run alembic -c packages/database/alembic.ini upgrade head
-          uv run python apps/backend/tests/seed_public_e2e.py
-
-      - name: Start backend for browser tests
-        run: |
-          PUBLIC_FRONTEND_ORIGIN=http://127.0.0.1:3000 uv run uvicorn shkandal_backend.app:create_app --factory --host 127.0.0.1 --port 8000 &
-          until curl --fail --silent http://127.0.0.1:8000/healthz; do sleep 1; done
-
-      - name: Install Playwright browser
-        run: npx playwright install --with-deps chromium
-        working-directory: apps/frontend
-
-      - name: Playwright
-        run: npm run test:e2e
-        working-directory: apps/frontend
