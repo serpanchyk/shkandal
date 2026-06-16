@@ -49,6 +49,69 @@ NOISE_REASONS = {
     "foreign_no_ukraine_nexus",
 }
 SAFE_REJECTION_REASON_UK = "Не стосується пов'язаної справи."
+TRAILING_TRUNCATION_CHARS = " \t\r\n,;:.-"
+SHORT_TEXT_LIMITS: dict[LlmRunType, dict[str, int]] = {
+    "article_card": {
+        "case_diagnosis.ukraine_nexus_uk": 240,
+        "case_diagnosis.concrete_story_core_uk": 240,
+        "case_diagnosis.public_accountability_anchor_uk": 240,
+        "case_diagnosis.continuation_potential_uk": 240,
+        "case_decision_reason_uk": 320,
+    },
+    "case_resolution": {
+        "diagnosis.article_story_core_uk": 240,
+        "diagnosis.specific_case_core_uk": 240,
+        "diagnosis.only_broad_overlap_uk": 240,
+        "diagnosis.case_coherence_test_uk": 240,
+        "diagnosis.new_case_core_uk": 240,
+        "diagnosis.broad_theme_warning_uk": 240,
+        "decision_reason_uk": 320,
+    },
+    "case_link_audit": {
+        "diagnosis.article_story_core_uk": 240,
+        "diagnosis.case_story_core_uk": 240,
+        "diagnosis.shared_specific_core_uk": 240,
+        "diagnosis.only_broad_overlap_uk": 240,
+        "diagnosis.coherence_test_uk": 240,
+        "reason_uk": 320,
+    },
+    "case_coherence_audit": {
+        "diagnosis.shared_specific_core_uk": 240,
+        "diagnosis.shared_only_broad_theme_uk": 240,
+        "diagnosis.coherence_test_uk": 240,
+        "reason_uk": 320,
+    },
+    "case_public_interest_audit": {
+        "diagnosis.concrete_story_core_uk": 240,
+        "diagnosis.public_interest_anchor_uk": 240,
+        "diagnosis.durability_signal_uk": 240,
+        "reason_uk": 320,
+    },
+    "case_duplicate_audit": {
+        "diagnosis.case_a_core_uk": 240,
+        "diagnosis.case_b_core_uk": 240,
+        "diagnosis.shared_specific_core_uk": 240,
+        "diagnosis.relation_anchor_uk": 240,
+        "diagnosis.only_broad_overlap_uk": 240,
+        "reason_uk": 320,
+    },
+    "entity_resolution": {
+        "entities[].diagnosis.identity_match_evidence_uk": 240,
+        "entities[].diagnosis.identity_conflict_uk": 240,
+        "entities[].diagnosis.rejection_signal_uk": 240,
+        "entities[].reason_uk": 320,
+    },
+    "event_resolution": {
+        "events[].diagnosis.occurrence_core_uk": 240,
+        "events[].diagnosis.anchor_summary_uk": 240,
+        "events[].diagnosis.candidate_match_evidence_uk": 240,
+        "events[].diagnosis.anchor_conflict_uk": 240,
+        "events[].diagnosis.temporal_scope_check_uk": 240,
+        "events[].diagnosis.future_date_warning_uk": 240,
+        "events[].diagnosis.rejection_signal_uk": 240,
+        "events[].reason_uk": 320,
+    },
+}
 
 
 @dataclass(frozen=True)
@@ -101,6 +164,7 @@ def normalize_llm_output(
             _set(normalized, "replacement_title_uk", None, actions, "clear kept replacement title")
     elif not isinstance(normalized, dict):
         raise ValueError("LLM output must be a JSON object")
+    _truncate_short_text_fields(normalized, run_type, actions)
     return NormalizationResult(output=normalized, actions=actions)
 
 
@@ -404,6 +468,64 @@ def _default_rejection(decision: dict[str, Any], actions: list[str], path: str) 
         )
     if not decision.get("reason_uk"):
         _set(decision, "reason_uk", SAFE_REJECTION_REASON_UK, actions, f"{path}: default reason")
+
+
+def _truncate_short_text_fields(
+    output: dict[str, Any],
+    run_type: LlmRunType,
+    actions: list[str],
+) -> None:
+    limits = SHORT_TEXT_LIMITS.get(run_type)
+    if not limits:
+        return
+    for path, limit in limits.items():
+        _truncate_path(output, path.split("."), limit, actions)
+
+
+def _truncate_path(
+    current: Any,
+    segments: list[str],
+    limit: int,
+    actions: list[str],
+    *,
+    path_prefix: str = "",
+) -> None:
+    if not segments:
+        return
+    segment = segments[0]
+    if segment.endswith("[]"):
+        key = segment.removesuffix("[]")
+        values = current.get(key) if isinstance(current, dict) else None
+        if not isinstance(values, list):
+            return
+        for index, value in enumerate(values):
+            next_prefix = f"{path_prefix}{key}[{index}]."
+            _truncate_path(value, segments[1:], limit, actions, path_prefix=next_prefix)
+        return
+    if not isinstance(current, dict) or segment not in current:
+        return
+    if len(segments) == 1:
+        value = current.get(segment)
+        if not isinstance(value, str) or len(value) <= limit:
+            return
+        truncated = value[:limit].rstrip(TRAILING_TRUNCATION_CHARS)
+        if not truncated:
+            truncated = value[:limit].rstrip()
+        _set(
+            current,
+            segment,
+            truncated or value[:limit],
+            actions,
+            f"truncate {path_prefix}{segment} to {limit}",
+        )
+        return
+    _truncate_path(
+        current[segment],
+        segments[1:],
+        limit,
+        actions,
+        path_prefix=f"{path_prefix}{segment}.",
+    )
 
 
 def _trim_list(

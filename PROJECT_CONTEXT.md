@@ -68,7 +68,9 @@ review and correction tooling are later quality layers, not blocking MVP stages.
   signature terms. Prompt-facing schemas omit enum constraints and request a
   concise decision basis before categorical choices; runtime contracts remain
   strict. Conservative deterministic normalization is recorded as repaired LLM
-  provenance without changing raw provider output.
+  provenance without changing raw provider output, and now truncates only
+  whitelisted bounded diagnosis and decision-summary strings to their runtime
+  max lengths when verbose model wording would otherwise fail validation.
 - Article jobs are gated by durable outputs. Each successful step enqueues the next step only after its output row/link exists; downstream jobs are not pre-enqueued.
 - Case resolution is now two-stage for existing Cases: the first LLM pass
   matches against retrieved Case cards, and each provisional existing-Case link

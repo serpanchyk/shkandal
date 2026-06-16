@@ -58,6 +58,9 @@ applies conservative deterministic normalization that does not invent facts.
 Entity and event resolution also accept a top-level decision array, wrap it
 into the expected object shape, and still reject any output that does not
 cover every provisional ref exactly once.
+For bounded internal diagnosis and decision-summary strings, normalization also
+clamps only explicitly whitelisted fields to their runtime `maxLength` and
+records each truncation in `llm_runs` metadata as a repaired action.
 Normalized runs are stored as `repaired`, with normalized JSON and applied
 actions in `llm_runs`; raw provider output remains unchanged. Ambiguous output
 that requires inventing Case links, identities, titles, or facts still fails.
