@@ -8,6 +8,7 @@ from shkandal_database.config import DatabaseConfig
 from shkandal_database.jobs import ArticleJobStore, JobQueueSummary
 from shkandal_database.llm_cooldowns import LlmCooldownStore
 from shkandal_database.session import create_async_engine_from_config, create_async_sessionmaker
+from shkandal_vector_store import VectorStoreUnavailableError
 
 from worker_ml.articles.relevance import RelevanceModel
 from worker_ml.cases.audits import CaseAuditSupersededError
@@ -190,6 +191,23 @@ async def process_next_job(
                 job_id=claimed_job.id,
                 run_after=datetime.now(UTC) + timedelta(seconds=10),
                 reason=str(exc),
+            )
+            return {"status": "deferred", "job_type": claimed_job.job_type}
+        except VectorStoreUnavailableError as exc:
+            await job_store.defer_job(
+                job_id=claimed_job.id,
+                run_after=datetime.now(UTC)
+                + timedelta(seconds=max(10, settings.poll_interval_seconds)),
+                reason=str(exc),
+            )
+            logger.warning(
+                "worker_ml_dependency_unavailable",
+                extra={
+                    "job_id": str(claimed_job.id),
+                    "job_type": claimed_job.job_type,
+                    "article_id": str(claimed_job.article_id),
+                    "dependency": "qdrant",
+                },
             )
             return {"status": "deferred", "job_type": claimed_job.job_type}
         except Exception as exc:

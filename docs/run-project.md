@@ -364,6 +364,21 @@ article-card jobs:
 docker compose --profile jobs run --rm worker-ml
 ```
 
+Run the worker through Docker Compose by default so service hostnames such as
+`postgres`, `qdrant`, and `llm-proxy` resolve on the Compose network. For a
+direct host-side run with `uv run`, override service URLs to the published local
+ports first:
+
+```bash
+POSTGRES_DATABASE_URL=postgresql://shkandal:shkandal_dev_password@localhost:5432/shkandal \
+QDRANT_URL=http://localhost:6333 \
+LLM_API_BASE=http://localhost:4000/v1 \
+uv run python -m worker_ml.main
+```
+
+If Qdrant is temporarily unreachable, the worker defers the current job and
+retries it later instead of consuming a failed attempt.
+
 To drain the full ML backlog before launch, including downstream jobs created
 while processing, run explicit backfill mode:
 
