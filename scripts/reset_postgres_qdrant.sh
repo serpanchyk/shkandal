@@ -3,15 +3,17 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Reset local Shkandal PostgreSQL and Qdrant state, recreate schema and vector
-collections, then enqueue Case-resolution jobs for existing Article Cards.
-This does not start any ML worker.
+Reset only the derived Case/Entity/Event layer, recreate vector collections,
+then enqueue Case-resolution jobs for existing Article Cards.
+
+This preserves Sources, Articles, Article Relevance, Article Cards, and
+ingestion state. It does not start any ML worker.
 
 Usage:
   scripts/reset_postgres_qdrant.sh --yes
 
 Options:
-  --yes       Required. Confirm deletion of postgres-data and qdrant-data.
+  --yes       Required. Confirm deletion of derived Case/Entity/Event state.
   --help      Show this help.
 
 Environment:
@@ -66,8 +68,6 @@ load_env_file ".env"
 load_env_file "infra/postgres/.env"
 
 project_name="${COMPOSE_PROJECT_NAME:-$(basename "$repo_root")}"
-postgres_volume="${project_name}_postgres-data"
-qdrant_volume="${project_name}_qdrant-data"
 
 postgres_user="${POSTGRES_USER:-shkandal}"
 postgres_password="${POSTGRES_PASSWORD:-shkandal_dev_password}"
@@ -87,27 +87,102 @@ stop_worker_containers() {
   fi
 }
 
-echo "This will delete Docker volumes:"
-echo "  ${postgres_volume}"
-echo "  ${qdrant_volume}"
+database_url="postgresql+asyncpg://${postgres_user}:${postgres_password}@localhost:${postgres_port}/${postgres_db}"
+
+echo "This will delete derived data only:"
+echo "  cases, events, entities, their links/audits, related jobs, and related LLM runs"
+echo "It will preserve articles, article_relevance, article_cards, sources, and ingestion state."
 
 stop_worker_containers
 
-echo "Stopping PostgreSQL and Qdrant..."
-docker compose stop postgres qdrant >/dev/null
-docker compose rm -f -s -v postgres qdrant >/dev/null
-
-echo "Removing data volumes..."
-docker volume rm "$postgres_volume" "$qdrant_volume" >/dev/null 2>&1 || true
-
-echo "Starting fresh PostgreSQL and Qdrant..."
+echo "Starting PostgreSQL and Qdrant..."
 docker compose up -d --wait postgres qdrant
 
 echo "Running database migrations..."
-POSTGRES_DATABASE_URL="postgresql+asyncpg://${postgres_user}:${postgres_password}@localhost:${postgres_port}/${postgres_db}" \
-  uv run alembic -c packages/database/alembic.ini upgrade head
+POSTGRES_DATABASE_URL="${database_url}" uv run alembic -c packages/database/alembic.ini upgrade head
 
-echo "Bootstrapping Qdrant collections..."
+echo "Clearing derived Case/Entity/Event data..."
+POSTGRES_DATABASE_URL="${database_url}" uv run python - <<'PY'
+import asyncio
+
+from shkandal_database.config import DatabaseConfig
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
+
+DERIVED_JOB_TYPES = (
+    "resolve_article_cases",
+    "resolve_article_entities",
+    "resolve_article_events",
+    "update_case_copy",
+    "audit_case_coherence",
+    "audit_case_public_interest",
+    "audit_case_duplicates",
+)
+
+DERIVED_LLM_RUN_TYPES = (
+    "case_resolution",
+    "entity_resolution",
+    "event_resolution",
+    "case_copy_update",
+    "case_link_audit",
+    "case_coherence_audit",
+    "case_public_interest_audit",
+    "case_duplicate_audit",
+)
+
+
+async def main() -> None:
+    engine = create_async_engine(DatabaseConfig().async_database_url)
+    try:
+        async with engine.begin() as connection:
+            await connection.execute(
+                text("DELETE FROM jobs WHERE job_type = ANY(:job_types)"),
+                {"job_types": list(DERIVED_JOB_TYPES)},
+            )
+            await connection.execute(text("DELETE FROM llm_cooldowns"))
+            await connection.execute(
+                text(
+                    """
+                    TRUNCATE TABLE
+                        case_duplicate_audits,
+                        case_public_interest_audits,
+                        case_coherence_audits,
+                        case_events,
+                        case_entities,
+                        article_event_cases,
+                        article_entity_cases,
+                        article_events,
+                        article_entities,
+                        case_relations,
+                        case_articles,
+                        events,
+                        entities
+                    RESTART IDENTITY CASCADE
+                    """
+                )
+            )
+            await connection.execute(
+                text(
+                    """
+                    UPDATE cases
+                    SET merged_into_case_id = NULL
+                    WHERE merged_into_case_id IS NOT NULL
+                    """
+                )
+            )
+            await connection.execute(text("TRUNCATE TABLE cases RESTART IDENTITY CASCADE"))
+            await connection.execute(
+                text("DELETE FROM llm_runs WHERE run_type = ANY(:run_types)"),
+                {"run_types": list(DERIVED_LLM_RUN_TYPES)},
+            )
+    finally:
+        await engine.dispose()
+
+
+asyncio.run(main())
+PY
+
+echo "Recreating Qdrant collections..."
 QDRANT_URL="http://localhost:${qdrant_port}" uv run python - <<'PY'
 import asyncio
 
@@ -120,6 +195,13 @@ async def main() -> None:
     config = VectorStoreConfig()
     client = create_qdrant_client(config)
     try:
+        for collection_name in (
+            config.case_collection_name,
+            config.entity_collection_name,
+            config.event_collection_name,
+        ):
+            if await client.collection_exists(collection_name):
+                await client.delete_collection(collection_name)
         await bootstrap_qdrant_collections(client, config)
     finally:
         await client.close()
@@ -129,8 +211,7 @@ asyncio.run(main())
 PY
 
 echo "Enqueueing Case-resolution jobs for case-candidate Article Cards..."
-POSTGRES_DATABASE_URL="postgresql+asyncpg://${postgres_user}:${postgres_password}@localhost:${postgres_port}/${postgres_db}" \
-  uv run python -m worker_ml.enqueue_case_resolution_jobs --apply
+POSTGRES_DATABASE_URL="${database_url}" uv run python -m worker_ml.enqueue_case_resolution_jobs --apply
 
 cat <<'EOF'
 Reset complete.
