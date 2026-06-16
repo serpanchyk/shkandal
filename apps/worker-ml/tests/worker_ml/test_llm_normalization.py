@@ -4,7 +4,12 @@ import json
 
 import pytest
 from pydantic import ValidationError
-from worker_ml.llm.contracts import ArticleCardOutput, EntityResolutionOutput, EventResolutionOutput
+from worker_ml.llm.contracts import (
+    ArticleCardOutput,
+    CaseResolutionOutput,
+    EntityResolutionOutput,
+    EventResolutionOutput,
+)
 from worker_ml.llm.normalization import normalize_llm_output
 
 
@@ -203,6 +208,108 @@ def test_accepted_resolution_without_case_assignment_becomes_reject() -> None:
     assert decision.rejection_reason == "not_case_relevant"
 
 
+def test_entity_resolution_non_candidate_link_becomes_insufficient_identity_reject() -> None:
+    bad_entity_id = "00000000-0000-0000-0000-000000000001"
+    result = normalize_llm_output(
+        run_type="entity_resolution",
+        variables={
+            "resolution_json": json.dumps(
+                {
+                    "items": [
+                        {
+                            "provisional": {"provisional_ref": "entity_one"},
+                            "candidates": [],
+                        }
+                    ]
+                }
+            )
+        },
+        output={
+            "entities": [
+                {
+                    "provisional_ref": "entity_one",
+                    "diagnosis": {
+                        "is_named_stable_actor": True,
+                        "material_case_ids": ["case-a"],
+                        "identity_match_evidence_uk": "Назва схожа.",
+                        "identity_conflict_uk": None,
+                        "rejection_signal_uk": None,
+                    },
+                    "action": "link_existing",
+                    "existing_entity_id": bad_entity_id,
+                    "confidence": 0.8,
+                    "case_assignments": [{"case_id": "case-a", "relevance_reason_uk": "Причина."}],
+                    "reason_uk": "Та сама сутність.",
+                    "rejection_reason": None,
+                }
+            ]
+        },
+    )
+
+    output = EntityResolutionOutput.model_validate(result.output)
+    decision = output.entities[0]
+    assert decision.action == "reject"
+    assert decision.existing_entity_id is None
+    assert decision.case_assignments == []
+    assert decision.rejection_reason == "insufficient_identity"
+    assert decision.diagnosis.rejection_signal_uk
+    assert "entities[0]: reject non-candidate identity" in result.actions
+
+
+def test_event_resolution_non_candidate_link_becomes_insufficient_identity_reject() -> None:
+    bad_event_id = "00000000-0000-0000-0000-000000000001"
+    result = normalize_llm_output(
+        run_type="event_resolution",
+        variables={
+            "resolution_json": json.dumps(
+                {
+                    "items": [
+                        {
+                            "provisional": {"provisional_ref": "event_one"},
+                            "candidates": [],
+                        }
+                    ]
+                }
+            )
+        },
+        output={
+            "events": [
+                {
+                    "provisional_ref": "event_one",
+                    "diagnosis": {
+                        "is_concrete_occurrence": True,
+                        "occurrence_core_uk": "Конкретна подія.",
+                        "anchor_summary_uk": "Дія і дата визначені.",
+                        "candidate_match_evidence_uk": "Назва схожа.",
+                        "anchor_conflict_uk": None,
+                        "temporal_scope_check_uk": "Подія вже відбулася.",
+                        "future_date_warning_uk": None,
+                        "material_case_ids": ["case-a"],
+                        "rejection_signal_uk": None,
+                    },
+                    "action": "link_existing",
+                    "existing_event_id": bad_event_id,
+                    "event_date": None,
+                    "event_date_precision": "unknown",
+                    "confidence": 0.8,
+                    "case_assignments": [{"case_id": "case-a", "relevance_reason_uk": "Причина."}],
+                    "reason_uk": "Та сама подія.",
+                    "rejection_reason": None,
+                }
+            ]
+        },
+    )
+
+    output = EventResolutionOutput.model_validate(result.output)
+    decision = output.events[0]
+    assert decision.action == "reject"
+    assert decision.existing_event_id is None
+    assert decision.case_assignments == []
+    assert decision.rejection_reason == "insufficient_identity"
+    assert decision.diagnosis.rejection_signal_uk
+    assert "events[0]: reject non-candidate identity" in result.actions
+
+
 def test_entity_resolution_removes_only_unsupported_english_canonical_name() -> None:
     output = {
         "entities": [
@@ -246,6 +353,82 @@ def test_entity_resolution_keeps_other_unknown_fields_strictly_invalid() -> None
         EntityResolutionOutput.model_validate(result.output)
 
 
+def test_case_resolution_truncates_whitelisted_diagnostic_fields() -> None:
+    long_text = "Дуже довгий конкретний фактичний опис " * 12
+    result = normalize_llm_output(
+        run_type="case_resolution",
+        variables={},
+        output={
+            "diagnosis": {
+                "article_story_core_uk": long_text,
+                "specific_case_core_uk": "Конкретна історія закупівлі.",
+                "only_broad_overlap_uk": None,
+                "merge_blockers_uk": [],
+                "separate_story_cores_uk": [],
+                "case_coherence_test_uk": long_text,
+                "matching_existing_case_ids": [],
+                "new_case_core_uk": "Конкретна історія закупівлі.",
+                "rejection_signals_uk": [],
+                "broad_theme_warning_uk": None,
+            },
+            "existing_case_links": [],
+            "new_cases": [
+                {
+                    "new_case_ref": "new_case",
+                    "title_uk": "Нова справа",
+                    "summary_uk": "Опис.",
+                    "link_reason_uk": "Причина.",
+                    "confidence": 0.8,
+                }
+            ],
+            "case_relations": [],
+            "decision_reason_uk": long_text,
+            "outcome": "resolved",
+        },
+    )
+
+    output = CaseResolutionOutput.model_validate(result.output)
+    assert len(output.diagnosis.article_story_core_uk or "") <= 240
+    assert len(output.diagnosis.case_coherence_test_uk) <= 240
+    assert len(output.decision_reason_uk) <= 320
+    assert "truncate diagnosis.article_story_core_uk to 240" in result.actions
+    assert "truncate decision_reason_uk to 320" in result.actions
+
+
+def test_entity_resolution_truncates_whitelisted_nested_reason_fields() -> None:
+    long_text = "Дуже довгий доказ тотожності " * 20
+    result = normalize_llm_output(
+        run_type="entity_resolution",
+        variables={},
+        output={
+            "entities": [
+                {
+                    "provisional_ref": "entity_one",
+                    "diagnosis": {
+                        "is_named_stable_actor": False,
+                        "material_case_ids": [],
+                        "identity_match_evidence_uk": long_text,
+                        "identity_conflict_uk": None,
+                        "rejection_signal_uk": long_text,
+                    },
+                    "action": "reject",
+                    "confidence": 0.5,
+                    "case_assignments": [],
+                    "reason_uk": long_text,
+                    "rejection_reason": "not_an_entity",
+                }
+            ]
+        },
+    )
+
+    output = EntityResolutionOutput.model_validate(result.output)
+    assert len(output.entities[0].diagnosis.identity_match_evidence_uk or "") == 240
+    assert len(output.entities[0].diagnosis.rejection_signal_uk or "") == 240
+    assert len(output.entities[0].reason_uk) == 320
+    assert "truncate entities[0].diagnosis.identity_match_evidence_uk to 240" in result.actions
+    assert "truncate entities[0].reason_uk to 320" in result.actions
+
+
 def test_does_not_invent_missing_case_candidate_facts() -> None:
     result = normalize_llm_output(
         run_type="article_card",
@@ -268,3 +451,40 @@ def test_does_not_invent_missing_case_candidate_facts() -> None:
         pass
     else:
         raise AssertionError("normalization must not invent missing case facts")
+
+
+def test_case_resolution_keeps_non_whitelisted_fields_strictly_invalid() -> None:
+    result = normalize_llm_output(
+        run_type="case_resolution",
+        variables={},
+        output={
+            "diagnosis": {
+                "article_story_core_uk": "Конкретне ядро історії.",
+                "specific_case_core_uk": "Конкретна історія закупівлі.",
+                "only_broad_overlap_uk": None,
+                "merge_blockers_uk": [],
+                "separate_story_cores_uk": [],
+                "case_coherence_test_uk": "Так, це одне конкретне речення.",
+                "matching_existing_case_ids": [],
+                "new_case_core_uk": "Конкретна історія закупівлі.",
+                "rejection_signals_uk": [],
+                "broad_theme_warning_uk": None,
+            },
+            "existing_case_links": [],
+            "new_cases": [
+                {
+                    "new_case_ref": "bad-ref",
+                    "title_uk": "Нова справа " * 80,
+                    "summary_uk": "Опис.",
+                    "link_reason_uk": "Причина.",
+                    "confidence": 0.8,
+                }
+            ],
+            "case_relations": [],
+            "decision_reason_uk": "Створюємо нову конкретну справу.",
+            "outcome": "resolved",
+        },
+    )
+
+    with pytest.raises(ValidationError):
+        CaseResolutionOutput.model_validate(result.output)

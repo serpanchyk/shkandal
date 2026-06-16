@@ -20,6 +20,7 @@ from worker_ml.llm.contracts import (
     CaseDuplicateAuditOutput,
     CaseLinkAuditOutput,
     CasePublicInterestAuditOutput,
+    CaseResolutionOutput,
     EntityResolutionOutput,
     EventResolutionOutput,
     LlmRunType,
@@ -154,7 +155,138 @@ async def test_runner_repairs_only_unescaped_json_control_characters() -> None:
     assert call["status"] == "repaired"
     assert call["raw_output"] == {"text": raw_output}
     assert call["repaired_output"]["summary_uk"] == "Перший рядок\nДругий рядок"
-    assert call["metadata"]["parse_repair"] == "unescaped_control_characters"
+    assert call["metadata"]["parse_repair"] == "escaped_control_characters"
+
+
+def test_parse_json_response_escapes_only_control_characters_inside_strings() -> None:
+    payload = parse_json_response(
+        '{\n"summary_uk": "Перший\tрядок\u0001\nДругий рядок",\n"ok": true\n}',
+        allow_array=False,
+    )
+
+    assert payload == {"summary_uk": "Перший\tрядок\u0001\nДругий рядок", "ok": True}
+
+
+@pytest.mark.asyncio
+async def test_runner_accepts_repair_output_with_raw_string_newline() -> None:
+    repair_output = (
+        '{"title_uk":"Виправлено","summary_uk":"Перший рядок\nДругий рядок",'
+        '"is_case_candidate":false,"noise_reason":"generic_news",'
+        '"main_event_title_uk":null,"entities":[],"events":[],"case_signature_terms":[]}'
+    )
+    runner = LlmTaskRunner(
+        prompt_registry=PromptRegistry(),
+        task_chains={"article_card": FakeChain("not json")},
+        repair_chain=FakeChain(repair_output),
+    )
+
+    result = await runner.run(
+        run_type="article_card",
+        model_name="shkandal-article-card",
+        variables={"article_json": "{}", "schema_json": "{}"},
+    )
+
+    assert isinstance(result, ArticleCardOutput)
+    assert result.summary_uk == "Перший рядок\nДругий рядок"
+
+
+@pytest.mark.asyncio
+async def test_runner_persists_non_candidate_entity_link_as_repaired_reject() -> None:
+    run_id = uuid4()
+    run_store = Mock(spec=LlmRunStore)
+    run_store.create_run = AsyncMock(return_value=run_id)
+    run_store.finish_run = AsyncMock()
+    bad_entity_id = str(uuid4())
+    case_id = str(uuid4())
+    raw_output = json.dumps(
+        {
+            "entities": [
+                {
+                    "provisional_ref": "entity_a",
+                    "diagnosis": {
+                        "is_named_stable_actor": True,
+                        "material_case_ids": [case_id],
+                        "identity_match_evidence_uk": "Назва схожа.",
+                        "identity_conflict_uk": None,
+                        "rejection_signal_uk": None,
+                    },
+                    "action": "link_existing",
+                    "existing_entity_id": bad_entity_id,
+                    "new_canonical_name_uk": None,
+                    "entity_type": None,
+                    "aliases": [],
+                    "description_uk": "Опис.",
+                    "confidence": 0.7,
+                    "case_assignments": [{"case_id": case_id, "relevance_reason_uk": "Причина."}],
+                    "reason_uk": "Та сама сутність.",
+                    "rejection_reason": None,
+                }
+            ]
+        }
+    )
+    runner = LlmTaskRunner(
+        prompt_registry=PromptRegistry(),
+        run_store=run_store,
+        task_chains={"entity_resolution": FakeChain(raw_output)},
+    )
+
+    result = await runner.run_with_provenance(
+        run_type="entity_resolution",
+        model_name="shkandal-entity-resolution",
+        variables={
+            "resolution_json": json.dumps(
+                {
+                    "items": [
+                        {
+                            "provisional": {"provisional_ref": "entity_a"},
+                            "candidates": [],
+                        }
+                    ]
+                }
+            ),
+            "schema_json": "{}",
+        },
+    )
+
+    output = cast(EntityResolutionOutput, result.output)
+    assert output.entities[0].action == "reject"
+    assert output.entities[0].rejection_reason == "insufficient_identity"
+    call = run_store.finish_run.await_args.kwargs
+    assert call["status"] == "repaired"
+    assert call["raw_output"]["entities"][0]["existing_entity_id"] == bad_entity_id
+    assert call["repaired_output"]["entities"][0]["existing_entity_id"] is None
+    assert call["repaired_output"]["entities"][0]["case_assignments"] == []
+    assert "reject non-candidate identity" in " ".join(call["metadata"]["normalization_actions"])
+
+
+@pytest.mark.asyncio
+async def test_runner_accepts_structured_dict_output_without_text_parsing() -> None:
+    runner = LlmTaskRunner(
+        prompt_registry=PromptRegistry(),
+        task_chains={
+            "article_card": FakeObjectChain(
+                {
+                    "title_uk": "Заголовок",
+                    "summary_uk": "Опис",
+                    "is_case_candidate": False,
+                    "noise_reason": "generic_news",
+                    "main_event_title_uk": None,
+                    "entities": [],
+                    "events": [],
+                    "case_signature_terms": [],
+                }
+            )
+        },
+    )
+
+    result = await runner.run(
+        run_type="article_card",
+        model_name="shkandal-article-card",
+        variables={"article_json": "{}", "schema_json": "{}"},
+    )
+
+    assert isinstance(result, ArticleCardOutput)
+    assert result.title_uk == "Заголовок"
 
 
 @pytest.mark.asyncio
@@ -342,6 +474,127 @@ async def test_runner_repairs_invalid_output_once() -> None:
     assert repair_chain.calls[0]["invalid_output"] == '{"title_uk":"Без обовязкових полів"}'
     assert "article_json" not in repair_chain.calls[0]
     assert '"enum"' in repair_chain.calls[0]["schema_json"]
+
+
+@pytest.mark.asyncio
+async def test_runner_truncates_overlong_case_resolution_fields_without_repair() -> None:
+    run_id = uuid4()
+    run_store = Mock(spec=LlmRunStore)
+    run_store.create_run = AsyncMock(return_value=run_id)
+    run_store.finish_run = AsyncMock()
+    long_text = "Дуже довгий конкретний фактичний опис " * 12
+    runner = LlmTaskRunner(
+        prompt_registry=PromptRegistry(),
+        run_store=run_store,
+        task_chains={
+            "case_resolution": FakeChain(
+                json.dumps(
+                    {
+                        "diagnosis": {
+                            "article_story_core_uk": long_text,
+                            "specific_case_core_uk": "Конкретна історія закупівлі.",
+                            "only_broad_overlap_uk": None,
+                            "merge_blockers_uk": [],
+                            "separate_story_cores_uk": [],
+                            "case_coherence_test_uk": "Так, це одне конкретне речення.",
+                            "matching_existing_case_ids": [],
+                            "new_case_core_uk": "Конкретна історія закупівлі.",
+                            "rejection_signals_uk": [],
+                            "broad_theme_warning_uk": None,
+                        },
+                        "existing_case_links": [],
+                        "new_cases": [
+                            {
+                                "new_case_ref": "new_case",
+                                "title_uk": "Нова справа",
+                                "summary_uk": "Опис.",
+                                "link_reason_uk": "Причина.",
+                                "confidence": 0.8,
+                            }
+                        ],
+                        "case_relations": [],
+                        "decision_reason_uk": long_text,
+                        "outcome": "resolved",
+                    },
+                    ensure_ascii=False,
+                )
+            )
+        },
+    )
+
+    result = await runner.run_with_provenance(
+        run_type="case_resolution",
+        model_name="shkandal-case-resolution",
+        variables={"resolution_json": "{}", "schema_json": "{}"},
+    )
+
+    output = cast(CaseResolutionOutput, result.output)
+    assert len(output.diagnosis.article_story_core_uk or "") <= 240
+    assert len(output.decision_reason_uk) <= 320
+    call = run_store.finish_run.await_args.kwargs
+    assert call["status"] == "repaired"
+    assert (
+        "truncate diagnosis.article_story_core_uk to 240"
+        in call["metadata"]["normalization_actions"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_runner_truncates_overlong_case_resolution_fields_after_repair() -> None:
+    run_id = uuid4()
+    run_store = Mock(spec=LlmRunStore)
+    run_store.create_run = AsyncMock(return_value=run_id)
+    run_store.finish_run = AsyncMock()
+    long_text = "Дуже довгий конкретний фактичний опис " * 12
+    repair_output = json.dumps(
+        {
+            "diagnosis": {
+                "article_story_core_uk": long_text,
+                "specific_case_core_uk": "Конкретна історія закупівлі.",
+                "only_broad_overlap_uk": None,
+                "merge_blockers_uk": [],
+                "separate_story_cores_uk": [],
+                "case_coherence_test_uk": "Так, це одне конкретне речення.",
+                "matching_existing_case_ids": [],
+                "new_case_core_uk": "Конкретна історія закупівлі.",
+                "rejection_signals_uk": [],
+                "broad_theme_warning_uk": None,
+            },
+            "existing_case_links": [],
+            "new_cases": [
+                {
+                    "new_case_ref": "new_case",
+                    "title_uk": "Нова справа",
+                    "summary_uk": "Опис.",
+                    "link_reason_uk": "Причина.",
+                    "confidence": 0.8,
+                }
+            ],
+            "case_relations": [],
+            "decision_reason_uk": long_text,
+            "outcome": "resolved",
+        },
+        ensure_ascii=False,
+    )
+    runner = LlmTaskRunner(
+        prompt_registry=PromptRegistry(),
+        run_store=run_store,
+        task_chains={"case_resolution": FakeChain("not json")},
+        repair_chain=FakeChain(repair_output),
+    )
+
+    result = await runner.run_with_provenance(
+        run_type="case_resolution",
+        model_name="shkandal-case-resolution",
+        variables={"resolution_json": "{}", "schema_json": "{}"},
+    )
+
+    output = cast(CaseResolutionOutput, result.output)
+    assert len(output.diagnosis.article_story_core_uk or "") <= 240
+    assert len(output.decision_reason_uk) <= 320
+    call = run_store.finish_run.await_args.kwargs
+    assert call["status"] == "repaired"
+    assert len(call["repaired_output"]["decision_reason_uk"]) <= 320
 
 
 @pytest.mark.asyncio
@@ -640,6 +893,16 @@ class FakeChain:
         self.calls: list[Mapping[str, Any]] = []
 
     async def ainvoke(self, input: Mapping[str, Any]) -> str:
+        self.calls.append(input)
+        return self.response
+
+
+class FakeObjectChain:
+    def __init__(self, response: Any) -> None:
+        self.response = response
+        self.calls: list[Mapping[str, Any]] = []
+
+    async def ainvoke(self, input: Mapping[str, Any]) -> Any:
         self.calls.append(input)
         return self.response
 

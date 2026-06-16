@@ -1,6 +1,7 @@
 """ML worker configuration."""
 
 from datetime import timedelta
+from typing import Literal
 
 from pydantic import Field
 from shkandal_common.config import BaseServiceConfig
@@ -37,6 +38,7 @@ class MlConfig(BaseServiceConfig):
     llm_case_public_interest_audit_model: str = "shkandal-case-public-interest-audit"
     llm_case_duplicate_audit_model: str = "shkandal-case-duplicate-audit"
     llm_repair_model: str = "shkandal-repair"
+    llm_structured_output_mode: Literal["disabled", "tool_calling", "json_schema"] = "disabled"
     case_audit_interval_days: int = 30
     case_audit_enqueue_batch_size: int = 20
     case_audit_card_batch_size: int = 20

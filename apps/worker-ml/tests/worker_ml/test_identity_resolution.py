@@ -166,20 +166,26 @@ def test_invalid_entity_link_is_rejected() -> None:
         ]
     )
 
-    with pytest.raises(ValueError, match="non-candidate identity"):
-        normalize_invalid_entity_links(
-            [
-                {
-                    "provisional_ref": "entity_a",
-                    "name_uk": "Нова сутність",
-                    "entity_type": "institution",
-                    "aliases": ["НС"],
-                    "description_uk": "Опис.",
-                }
-            ],
-            output,
-            {"entity_a": set()},
-        )
+    normalized = normalize_invalid_entity_links(
+        [
+            {
+                "provisional_ref": "entity_a",
+                "name_uk": "Нова сутність",
+                "entity_type": "institution",
+                "aliases": ["НС"],
+                "description_uk": "Опис.",
+            }
+        ],
+        output,
+        {"entity_a": set()},
+    )
+
+    decision = normalized.entities[0]
+    assert decision.action == "reject"
+    assert decision.existing_entity_id is None
+    assert decision.case_assignments == []
+    assert decision.rejection_reason == "insufficient_identity"
+    assert decision.diagnosis.rejection_signal_uk is not None
 
 
 def test_invalid_event_link_is_rejected() -> None:
@@ -200,21 +206,27 @@ def test_invalid_event_link_is_rejected() -> None:
         ]
     )
 
-    with pytest.raises(ValueError, match="non-candidate identity"):
-        normalize_invalid_event_links(
-            [
-                {
-                    "provisional_ref": "event_a",
-                    "title_uk": "Нова подія",
-                    "description_uk": "Опис.",
-                    "event_date": "2026-06",
-                    "event_date_precision": "month",
-                    "location_uk": "Київ",
-                }
-            ],
-            output,
-            {"event_a": set()},
-        )
+    normalized = normalize_invalid_event_links(
+        [
+            {
+                "provisional_ref": "event_a",
+                "title_uk": "Нова подія",
+                "description_uk": "Опис.",
+                "event_date": "2026-06",
+                "event_date_precision": "month",
+                "location_uk": "Київ",
+            }
+        ],
+        output,
+        {"event_a": set()},
+    )
+
+    decision = normalized.events[0]
+    assert decision.action == "reject"
+    assert decision.existing_event_id is None
+    assert decision.case_assignments == []
+    assert decision.rejection_reason == "insufficient_identity"
+    assert decision.diagnosis.rejection_signal_uk is not None
 
 
 def test_conflicting_event_date_link_becomes_source_grounded_create() -> None:

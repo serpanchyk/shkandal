@@ -23,6 +23,13 @@ tracked examples: root `.env` for shared application settings,
 `infra/postgres/.env` for database bootstrap credentials, and
 `infra/litellm/.env` for provider API keys. See `docs/run-project.md` for setup.
 
+A separate production Compose entrypoint now exists at
+`docker-compose.prod.yaml` for the minimal public web deployment. It includes
+only `caddy`, `frontend`, `backend`, `postgres`, and a one-shot `migrate`
+service, publishes only ports `80` and `443` through Caddy, and reads
+deployment settings from `.env.production` plus
+`infra/postgres/.env.production`. See `docs/deploy-digitalocean.md`.
+
 An optional local `observability` Compose profile provides Grafana on port
 `3001`, Prometheus, Loki, Docker log collection, and a provisioned Shkandal
 overview dashboard.

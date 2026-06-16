@@ -49,6 +49,72 @@ NOISE_REASONS = {
     "foreign_no_ukraine_nexus",
 }
 SAFE_REJECTION_REASON_UK = "Не стосується пов'язаної справи."
+INSUFFICIENT_IDENTITY_REASON_UK = (
+    "Неможливо безпечно підтвердити тотожність із отриманими кандидатами."
+)
+TRAILING_TRUNCATION_CHARS = " \t\r\n,;:.-"
+SHORT_TEXT_LIMITS: dict[LlmRunType, dict[str, int]] = {
+    "article_card": {
+        "case_diagnosis.ukraine_nexus_uk": 240,
+        "case_diagnosis.concrete_story_core_uk": 240,
+        "case_diagnosis.public_accountability_anchor_uk": 240,
+        "case_diagnosis.continuation_potential_uk": 240,
+        "case_decision_reason_uk": 320,
+    },
+    "case_resolution": {
+        "diagnosis.article_story_core_uk": 240,
+        "diagnosis.specific_case_core_uk": 240,
+        "diagnosis.only_broad_overlap_uk": 240,
+        "diagnosis.case_coherence_test_uk": 240,
+        "diagnosis.new_case_core_uk": 240,
+        "diagnosis.broad_theme_warning_uk": 240,
+        "decision_reason_uk": 320,
+    },
+    "case_link_audit": {
+        "diagnosis.article_story_core_uk": 240,
+        "diagnosis.case_story_core_uk": 240,
+        "diagnosis.shared_specific_core_uk": 240,
+        "diagnosis.only_broad_overlap_uk": 240,
+        "diagnosis.coherence_test_uk": 240,
+        "reason_uk": 320,
+    },
+    "case_coherence_audit": {
+        "diagnosis.shared_specific_core_uk": 240,
+        "diagnosis.shared_only_broad_theme_uk": 240,
+        "diagnosis.coherence_test_uk": 240,
+        "reason_uk": 320,
+    },
+    "case_public_interest_audit": {
+        "diagnosis.concrete_story_core_uk": 240,
+        "diagnosis.public_interest_anchor_uk": 240,
+        "diagnosis.durability_signal_uk": 240,
+        "reason_uk": 320,
+    },
+    "case_duplicate_audit": {
+        "diagnosis.case_a_core_uk": 240,
+        "diagnosis.case_b_core_uk": 240,
+        "diagnosis.shared_specific_core_uk": 240,
+        "diagnosis.relation_anchor_uk": 240,
+        "diagnosis.only_broad_overlap_uk": 240,
+        "reason_uk": 320,
+    },
+    "entity_resolution": {
+        "entities[].diagnosis.identity_match_evidence_uk": 240,
+        "entities[].diagnosis.identity_conflict_uk": 240,
+        "entities[].diagnosis.rejection_signal_uk": 240,
+        "entities[].reason_uk": 320,
+    },
+    "event_resolution": {
+        "events[].diagnosis.occurrence_core_uk": 240,
+        "events[].diagnosis.anchor_summary_uk": 240,
+        "events[].diagnosis.candidate_match_evidence_uk": 240,
+        "events[].diagnosis.anchor_conflict_uk": 240,
+        "events[].diagnosis.temporal_scope_check_uk": 240,
+        "events[].diagnosis.future_date_warning_uk": 240,
+        "events[].diagnosis.rejection_signal_uk": 240,
+        "events[].reason_uk": 320,
+    },
+}
 
 
 @dataclass(frozen=True)
@@ -85,6 +151,7 @@ def normalize_llm_output(
         if not isinstance(normalized, dict):
             raise ValueError("resolution output must be a JSON object or array")
         _normalize_resolution_refs(normalized, variables, run_type, actions)
+        _normalize_invalid_candidate_links(normalized, variables, run_type, actions)
         decisions = normalized.get(decisions_key)
         if isinstance(decisions, list):
             for index, decision in enumerate(decisions):
@@ -101,6 +168,7 @@ def normalize_llm_output(
             _set(normalized, "replacement_title_uk", None, actions, "clear kept replacement title")
     elif not isinstance(normalized, dict):
         raise ValueError("LLM output must be a JSON object")
+    _truncate_short_text_fields(normalized, run_type, actions)
     return NormalizationResult(output=normalized, actions=actions)
 
 
@@ -280,6 +348,73 @@ def _normalize_resolution_refs(
             )
 
 
+def _normalize_invalid_candidate_links(
+    output: dict[str, Any],
+    variables: Mapping[str, Any],
+    run_type: LlmRunType,
+    actions: list[str],
+) -> None:
+    decisions_key = "entities" if run_type == "entity_resolution" else "events"
+    id_key = "existing_entity_id" if run_type == "entity_resolution" else "existing_event_id"
+    title_key = "new_canonical_name_uk" if run_type == "entity_resolution" else "new_title_uk"
+    decisions = output.get(decisions_key)
+    if not isinstance(decisions, list):
+        return
+    candidate_ids = _candidate_ids_by_ref(variables, id_key)
+    if not candidate_ids:
+        return
+    for index, decision in enumerate(decisions):
+        if not isinstance(decision, dict):
+            continue
+        action = decision.get("action")
+        if action == "reject" or action == "create_new":
+            continue
+        ref = decision.get("provisional_ref")
+        existing_id = decision.get(id_key)
+        if (
+            not isinstance(ref, str)
+            or not isinstance(existing_id, str)
+            or existing_id in candidate_ids.get(ref, set())
+        ):
+            continue
+        path = f"{decisions_key}[{index}]"
+        _convert_to_insufficient_identity_reject(
+            decision,
+            actions,
+            path,
+            id_key=id_key,
+            title_key=title_key,
+        )
+
+
+def _candidate_ids_by_ref(variables: Mapping[str, Any], id_key: str) -> dict[str, set[str]]:
+    value = variables.get("resolution_json")
+    if not isinstance(value, str):
+        return {}
+    try:
+        payload = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+    items = payload.get("items") if isinstance(payload, dict) else None
+    if not isinstance(items, list):
+        return {}
+    candidate_ids: dict[str, set[str]] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        provisional = item.get("provisional")
+        ref = provisional.get("provisional_ref") if isinstance(provisional, dict) else None
+        candidates = item.get("candidates")
+        if not isinstance(ref, str) or not isinstance(candidates, list):
+            continue
+        candidate_ids[ref] = {
+            candidate[id_key]
+            for candidate in candidates
+            if isinstance(candidate, dict) and isinstance(candidate.get(id_key), str)
+        }
+    return candidate_ids
+
+
 def _expected_resolution_refs(variables: Mapping[str, Any]) -> list[str]:
     value = variables.get("resolution_json")
     if not isinstance(value, str):
@@ -393,6 +528,43 @@ def _convert_to_reject(
     _default_rejection(decision, actions, path)
 
 
+def _convert_to_insufficient_identity_reject(
+    decision: dict[str, Any],
+    actions: list[str],
+    path: str,
+    *,
+    id_key: str,
+    title_key: str,
+) -> None:
+    _set(decision, "action", "reject", actions, f"{path}: reject non-candidate identity")
+    _set(decision, id_key, None, actions, f"{path}: clear non-candidate identity")
+    _set(decision, title_key, None, actions, f"{path}: clear rejected identity proposal")
+    _set(decision, "case_assignments", [], actions, f"{path}: clear rejected assignments")
+    _set(
+        decision,
+        "rejection_reason",
+        "insufficient_identity",
+        actions,
+        f"{path}: mark insufficient identity",
+    )
+    _set(
+        decision,
+        "reason_uk",
+        INSUFFICIENT_IDENTITY_REASON_UK,
+        actions,
+        f"{path}: explain insufficient identity",
+    )
+    diagnosis = decision.get("diagnosis")
+    if isinstance(diagnosis, dict):
+        _set(
+            diagnosis,
+            "rejection_signal_uk",
+            INSUFFICIENT_IDENTITY_REASON_UK,
+            actions,
+            f"{path}: set identity rejection signal",
+        )
+
+
 def _default_rejection(decision: dict[str, Any], actions: list[str], path: str) -> None:
     if not decision.get("rejection_reason"):
         _set(
@@ -404,6 +576,64 @@ def _default_rejection(decision: dict[str, Any], actions: list[str], path: str) 
         )
     if not decision.get("reason_uk"):
         _set(decision, "reason_uk", SAFE_REJECTION_REASON_UK, actions, f"{path}: default reason")
+
+
+def _truncate_short_text_fields(
+    output: dict[str, Any],
+    run_type: LlmRunType,
+    actions: list[str],
+) -> None:
+    limits = SHORT_TEXT_LIMITS.get(run_type)
+    if not limits:
+        return
+    for path, limit in limits.items():
+        _truncate_path(output, path.split("."), limit, actions)
+
+
+def _truncate_path(
+    current: Any,
+    segments: list[str],
+    limit: int,
+    actions: list[str],
+    *,
+    path_prefix: str = "",
+) -> None:
+    if not segments:
+        return
+    segment = segments[0]
+    if segment.endswith("[]"):
+        key = segment.removesuffix("[]")
+        values = current.get(key) if isinstance(current, dict) else None
+        if not isinstance(values, list):
+            return
+        for index, value in enumerate(values):
+            next_prefix = f"{path_prefix}{key}[{index}]."
+            _truncate_path(value, segments[1:], limit, actions, path_prefix=next_prefix)
+        return
+    if not isinstance(current, dict) or segment not in current:
+        return
+    if len(segments) == 1:
+        value = current.get(segment)
+        if not isinstance(value, str) or len(value) <= limit:
+            return
+        truncated = value[:limit].rstrip(TRAILING_TRUNCATION_CHARS)
+        if not truncated:
+            truncated = value[:limit].rstrip()
+        _set(
+            current,
+            segment,
+            truncated or value[:limit],
+            actions,
+            f"truncate {path_prefix}{segment} to {limit}",
+        )
+        return
+    _truncate_path(
+        current[segment],
+        segments[1:],
+        limit,
+        actions,
+        path_prefix=f"{path_prefix}{segment}.",
+    )
 
 
 def _trim_list(

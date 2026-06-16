@@ -58,9 +58,23 @@ applies conservative deterministic normalization that does not invent facts.
 Entity and event resolution also accept a top-level decision array, wrap it
 into the expected object shape, and still reject any output that does not
 cover every provisional ref exactly once.
+If JSON parsing fails only because a model emitted raw control characters
+inside a string, the runner escapes those characters lexically, retries strict
+JSON parsing, stores the exact provider text as raw output, and records
+`parse_repair: escaped_control_characters`. Broader malformed JSON still goes
+through the normal one-shot repair path and fails if repair cannot produce a
+valid contract output.
+For bounded internal diagnosis and decision-summary strings, normalization also
+clamps only explicitly whitelisted fields to their runtime `maxLength` and
+records each truncation in `llm_runs` metadata as a repaired action.
 Normalized runs are stored as `repaired`, with normalized JSON and applied
 actions in `llm_runs`; raw provider output remains unchanged. Ambiguous output
 that requires inventing Case links, identities, titles, or facts still fails.
+For Entity and Event resolution, an accepted decision that references an
+existing identity outside that provisional item's retrieved candidates is
+normalized to `reject` with `insufficient_identity`, cleared identity fields,
+cleared Case assignments, and a Ukrainian rejection signal. Persistence keeps
+the same candidate guards as a defensive boundary.
 
 All runtime LLM traffic goes through the LiteLLM proxy. `worker-ml` requests
 logical model aliases (`shkandal-article-card`, `shkandal-case-resolution`,
@@ -68,6 +82,13 @@ logical model aliases (`shkandal-article-card`, `shkandal-case-resolution`,
 `shkandal-repair`) through the proxy's OpenAI-compatible endpoint. Provider
 routing, provider credentials, throttling, and fallback policy belong to the
 proxy configuration, not to `worker-ml`.
+`llm_structured_output_mode` is available as a guarded rollout switch with
+`disabled`, `tool_calling`, and `json_schema` values. The tracked default is
+`disabled`, so production remains on the text JSON path unless LiteLLM and the
+selected model alias are verified to support the requested structured-output
+method. When enabled, task chains ask LangChain/OpenAI for the task Pydantic
+contract directly and the runner still applies deterministic normalization and
+provenance handling to the returned object.
 
 When HTTP `429` still reaches the worker after LiteLLM routing, the
 worker persists a shared LLM cooldown, defers the rejected job without consuming
@@ -245,8 +266,9 @@ Entity and Event mutations are serialized independently. Classification jobs
 are enqueued in bulk, and Entity/Event candidate embeddings and Qdrant searches
 are batched per article.
 When an identity-resolution response selects an existing ID outside the
-retrieved candidates for that provisional item, the worker creates a new
-source-grounded identity instead of merging incorrectly or repeatedly failing.
+retrieved candidates for that provisional item, the worker rejects that
+decision as `insufficient_identity` instead of merging incorrectly, creating a
+duplicate global identity, or repeatedly failing.
 Event links also persist date and location anchors from the source article card,
 not resolver-generated replacements. If those source anchors conflict with a
 retrieved Event candidate, the worker creates a new source-grounded Event

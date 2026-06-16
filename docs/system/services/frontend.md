@@ -37,3 +37,8 @@ stable routes but are not shown as reader-facing labels.
 Frontend source lives under `apps/frontend`. See
 [Public Reader Experience](../public-reader-experience.md) for routes, runtime
 URLs, reader behavior, API integration, and verification.
+
+The production Compose deployment builds the frontend with
+`NEXT_PUBLIC_SITE_URL` as the browser-visible origin and mirrors that value
+into `NEXT_PUBLIC_BACKEND_URL` so browser-side API calls continue to flow
+through Caddy instead of bypassing the public edge.

@@ -15,6 +15,10 @@ from worker_ml.llm.contracts import (
     EventResolutionOutput,
 )
 
+INSUFFICIENT_IDENTITY_REASON_UK = (
+    "Неможливо безпечно підтвердити тотожність із отриманими кандидатами."
+)
+
 
 def validate_coverage(
     provisional: list[dict[str, Any]],
@@ -40,12 +44,30 @@ def normalize_invalid_entity_links(
 ) -> EntityResolutionOutput:
     """Reject links to identities outside the provisional Entity candidates."""
 
+    decisions = []
     for decision in output.entities:
         if decision.action not in {"create_new", "reject"} and (
             decision.existing_entity_id not in candidate_ids[decision.provisional_ref]
         ):
-            raise ValueError("entity decision references non-candidate identity")
-    return output
+            diagnosis = decision.diagnosis.model_copy(
+                update={"rejection_signal_uk": INSUFFICIENT_IDENTITY_REASON_UK}
+            )
+            decisions.append(
+                decision.model_copy(
+                    update={
+                        "diagnosis": diagnosis,
+                        "action": "reject",
+                        "existing_entity_id": None,
+                        "new_canonical_name_uk": None,
+                        "case_assignments": [],
+                        "rejection_reason": "insufficient_identity",
+                        "reason_uk": INSUFFICIENT_IDENTITY_REASON_UK,
+                    }
+                )
+            )
+            continue
+        decisions.append(decision)
+    return EntityResolutionOutput(entities=decisions)
 
 
 def normalize_invalid_event_links(
@@ -55,12 +77,30 @@ def normalize_invalid_event_links(
 ) -> EventResolutionOutput:
     """Reject links to identities outside the provisional Event candidates."""
 
+    decisions = []
     for decision in output.events:
         if decision.action not in {"create_new", "reject"} and (
             decision.existing_event_id not in candidate_ids[decision.provisional_ref]
         ):
-            raise ValueError("event decision references non-candidate identity")
-    return output
+            diagnosis = decision.diagnosis.model_copy(
+                update={"rejection_signal_uk": INSUFFICIENT_IDENTITY_REASON_UK}
+            )
+            decisions.append(
+                decision.model_copy(
+                    update={
+                        "diagnosis": diagnosis,
+                        "action": "reject",
+                        "existing_event_id": None,
+                        "new_title_uk": None,
+                        "case_assignments": [],
+                        "rejection_reason": "insufficient_identity",
+                        "reason_uk": INSUFFICIENT_IDENTITY_REASON_UK,
+                    }
+                )
+            )
+            continue
+        decisions.append(decision)
+    return EventResolutionOutput(events=decisions)
 
 
 def normalize_event_link_anchors(

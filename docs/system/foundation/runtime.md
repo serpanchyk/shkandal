@@ -3,6 +3,12 @@
 Docker Compose is the default runtime boundary. On servers, systemd timers
 schedule the one-shot ingestion and ML worker containers.
 
+For the public web, the repo also ships a separate
+`docker-compose.prod.yaml` deployment that runs only `caddy`, `frontend`,
+`backend`, `postgres`, and a one-shot `migrate` job. Only Caddy publishes
+network ports, exposing `80` and `443`; backend, frontend, and PostgreSQL stay
+on the internal Compose network.
+
 Runtime dependencies:
 
 - PostgreSQL 16 for durable application data.

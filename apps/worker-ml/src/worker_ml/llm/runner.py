@@ -9,7 +9,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
-from typing import Any, Protocol, TypeVar, cast
+from typing import Any, Literal, Protocol, TypeVar, cast
 from uuid import UUID
 
 from langchain_core.output_parsers import StrOutputParser
@@ -50,7 +50,7 @@ class JsonParseResult:
     """Parsed JSON plus any narrowly applied syntax recovery."""
 
     value: Any
-    repaired_unescaped_control_characters: bool = False
+    escaped_control_characters: bool = False
 
 
 @dataclass(frozen=True)
@@ -124,9 +124,12 @@ class LlmTaskRunner:
         task_chains = cast(
             dict[str, AsyncTextChain],
             {
-                run_type: registry.chat_prompt(run_type)
-                | create_litellm_chat_model(settings=settings, model_name=model_name)
-                | StrOutputParser()
+                run_type: _task_chain(
+                    registry=registry,
+                    run_type=cast(LlmRunType, run_type),
+                    settings=settings,
+                    model_name=model_name,
+                )
                 for run_type, model_name in aliases.items()
                 if run_type != "repair"
             },
@@ -195,12 +198,15 @@ class LlmTaskRunner:
         repair_duration_seconds: float | None = None
         try:
             request_started_at = time.monotonic()
-            raw_text = str(await invoke_chain(self._chain_for(run_type), dict(variables)))
+            provider_output = await invoke_chain(self._chain_for(run_type), dict(variables))
             request_duration_seconds = time.monotonic() - request_started_at
             await self._record_successful_request()
-            parse_result = _parse_json_response(raw_text, allow_array=task.allow_top_level_array)
+            raw_text, parse_result = _coerce_provider_output(
+                provider_output,
+                allow_array=task.allow_top_level_array,
+            )
             raw_json = parse_result.value
-            parse_repaired = parse_result.repaired_unescaped_control_characters
+            parse_repaired = parse_result.escaped_control_characters
             normalized = task.normalize(
                 run_type=run_type,
                 output=raw_json,
@@ -327,7 +333,7 @@ class LlmTaskRunner:
             if parse_repaired:
                 success_metadata = {
                     **success_metadata,
-                    "parse_repair": "unescaped_control_characters",
+                    "parse_repair": "escaped_control_characters",
                 }
             await self._run_store.finish_run(
                 run_id=run_id,
@@ -442,6 +448,29 @@ def model_aliases(settings: MlConfig) -> dict[str, str]:
     }
 
 
+def _task_chain(
+    *,
+    registry: PromptRegistry,
+    run_type: LlmRunType,
+    settings: MlConfig,
+    model_name: str,
+) -> AsyncTextChain:
+    """Create a text or guarded structured-output task chain."""
+
+    model = create_litellm_chat_model(settings=settings, model_name=model_name)
+    if settings.llm_structured_output_mode == "disabled":
+        return cast(AsyncTextChain, registry.chat_prompt(run_type) | model | StrOutputParser())
+
+    task = LLM_TASKS[run_type]
+    method: Literal["function_calling", "json_schema"] = (
+        "function_calling"
+        if settings.llm_structured_output_mode == "tool_calling"
+        else "json_schema"
+    )
+    structured_model = model.with_structured_output(task.output_model, method=method)
+    return cast(AsyncTextChain, registry.chat_prompt(run_type) | structured_model)
+
+
 def parse_json_object(text: str) -> dict[str, Any]:
     """Parse an LLM response that must contain one JSON object."""
 
@@ -464,19 +493,67 @@ def _parse_json_response(text: str, *, allow_array: bool) -> JsonParseResult:
     if stripped.startswith("```"):
         stripped = stripped.removeprefix("```json").removeprefix("```").strip()
         stripped = stripped.removesuffix("```").strip()
-    repaired_control_characters = False
+    escaped_control_characters = False
     try:
         value = json.loads(stripped)
     except json.JSONDecodeError as exc:
         if not exc.msg.startswith("Invalid control character"):
             raise
-        value = json.loads(stripped, strict=False)
-        repaired_control_characters = True
+        repaired = _escape_control_characters_inside_json_strings(stripped)
+        value = json.loads(repaired)
+        escaped_control_characters = True
     if not allow_array and not isinstance(value, dict):
         raise ValueError("LLM output must be a JSON object")
     if allow_array and not isinstance(value, (dict, list)):
         raise ValueError("LLM output must be a JSON object or array")
-    return JsonParseResult(value, repaired_control_characters)
+    return JsonParseResult(value, escaped_control_characters)
+
+
+def _coerce_provider_output(output: Any, *, allow_array: bool) -> tuple[str, JsonParseResult]:
+    """Accept text-mode JSON or already-validated structured model output."""
+
+    if isinstance(output, BaseModel):
+        value = output.model_dump(mode="json")
+        return json.dumps(value, ensure_ascii=False), JsonParseResult(value)
+    if isinstance(output, dict):
+        return json.dumps(output, ensure_ascii=False), JsonParseResult(output)
+    if allow_array and isinstance(output, list):
+        return json.dumps(output, ensure_ascii=False), JsonParseResult(output)
+    text = str(output)
+    return text, _parse_json_response(text, allow_array=allow_array)
+
+
+def _escape_control_characters_inside_json_strings(text: str) -> str:
+    """Escape raw U+0000-U+001F characters only while inside JSON strings."""
+
+    chars: list[str] = []
+    in_string = False
+    escaped = False
+    for char in text:
+        if in_string and ord(char) < 0x20:
+            chars.append(_json_control_character_escape(char))
+            escaped = False
+            continue
+        chars.append(char)
+        if escaped:
+            escaped = False
+            continue
+        if char == "\\" and in_string:
+            escaped = True
+            continue
+        if char == '"':
+            in_string = not in_string
+    return "".join(chars)
+
+
+def _json_control_character_escape(char: str) -> str:
+    return {
+        "\b": "\\b",
+        "\f": "\\f",
+        "\n": "\\n",
+        "\r": "\\r",
+        "\t": "\\t",
+    }.get(char, f"\\u{ord(char):04x}")
 
 
 def _is_schema_echo(value: Any) -> bool:

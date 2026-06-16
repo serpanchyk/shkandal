@@ -68,7 +68,9 @@ review and correction tooling are later quality layers, not blocking MVP stages.
   signature terms. Prompt-facing schemas omit enum constraints and request a
   concise decision basis before categorical choices; runtime contracts remain
   strict. Conservative deterministic normalization is recorded as repaired LLM
-  provenance without changing raw provider output.
+  provenance without changing raw provider output, and now truncates only
+  whitelisted bounded diagnosis and decision-summary strings to their runtime
+  max lengths when verbose model wording would otherwise fail validation.
 - Article jobs are gated by durable outputs. Each successful step enqueues the next step only after its output row/link exists; downstream jobs are not pre-enqueued.
 - Case resolution is now two-stage for existing Cases: the first LLM pass
   matches against retrieved Case cards, and each provisional existing-Case link
@@ -99,6 +101,13 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - Runtime configuration uses three ignored env files: root `.env` for shared
   application settings and proxy access, `infra/postgres/.env` for PostgreSQL
   bootstrap credentials, and `infra/litellm/.env` for provider API keys.
+- A separate `docker-compose.prod.yaml` provides the minimal public-web server
+  deployment. It runs only `caddy`, `frontend`, `backend`, `postgres`, and a
+  one-shot `migrate` job; only Caddy publishes ports `80` and `443`.
+- Production runtime configuration uses root `.env.production` for public-web
+  settings and `infra/postgres/.env.production` for PostgreSQL bootstrap
+  credentials. Caddy serves `:80` when `PUBLIC_HOSTNAME` is empty and switches
+  to hostname-based managed HTTPS when it is set.
 - DVC tracks large local model binaries under `artifacts/models/`; Git tracks
   manifests and `.dvc` pointer files. No shared DVC remote is configured yet.
 
