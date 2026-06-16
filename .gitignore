@@ -3,6 +3,7 @@
 !.env.example
 !.env.*.example
 
+.dumps/
 .venv/
 .idea/
 .pytest_cache/
