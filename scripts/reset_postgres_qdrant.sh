@@ -3,8 +3,9 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Reset local Shkandal PostgreSQL and Qdrant state, then recreate schema and
-vector collections. This does not start any ML worker.
+Reset local Shkandal PostgreSQL and Qdrant state, recreate schema and vector
+collections, then enqueue Case-resolution jobs for existing Article Cards.
+This does not start any ML worker.
 
 Usage:
   scripts/reset_postgres_qdrant.sh --yes
@@ -126,6 +127,10 @@ async def main() -> None:
 
 asyncio.run(main())
 PY
+
+echo "Enqueueing Case-resolution jobs for case-candidate Article Cards..."
+POSTGRES_DATABASE_URL="postgresql+asyncpg://${postgres_user}:${postgres_password}@localhost:${postgres_port}/${postgres_db}" \
+  uv run python -m worker_ml.enqueue_case_resolution_jobs --apply
 
 cat <<'EOF'
 Reset complete.
