@@ -1,7 +1,7 @@
-from datetime import date
 from typing import Any
 from uuid import UUID, uuid4
 
+import pytest
 from qdrant_client.http import models
 from shkandal_vector_store.repositories import (
     CaseVectorRepository,
@@ -70,6 +70,27 @@ class FakeRepositoryClient:
         return type("FakeQueryResponse", (), {"points": self.search_results})()
 
 
+class FailingRepositoryClient(FakeRepositoryClient):
+    async def upsert(
+        self,
+        *,
+        collection_name: str,
+        points: list[models.PointStruct],
+    ) -> None:
+        raise TimeoutError
+
+    async def query_points(
+        self,
+        *,
+        collection_name: str,
+        query: list[float],
+        limit: int,
+        score_threshold: float | None,
+        with_payload: bool,
+    ) -> Any:
+        raise ConnectionError
+
+
 async def test_case_repository_upserts_typed_payload() -> None:
     client = FakeRepositoryClient()
     repository = CaseVectorRepository(client, collection_name="cases_v1")  # type: ignore[arg-type]
@@ -130,7 +151,9 @@ async def test_event_repository_search_maps_payloads() -> None:
                 "slug": "event-a",
                 "title_uk": "Подія",
                 "description_uk": "Опис",
-                "event_date": "2026-06-04",
+                "event_year": 2026,
+                "event_month": 6,
+                "event_day": 4,
                 "event_date_precision": "day",
                 "location_uk": "Київ",
                 "metadata": {},
@@ -157,7 +180,9 @@ async def test_event_repository_search_maps_payloads() -> None:
         slug="event-a",
         title_uk="Подія",
         description_uk="Опис",
-        event_date=date(2026, 6, 4),
+        event_year=2026,
+        event_month=6,
+        event_day=4,
         event_date_precision="day",
         location_uk="Київ",
     )
@@ -185,3 +210,33 @@ async def test_entity_repository_upsert_serializes_aliases() -> None:
     point = client.upserts[0]["points"][0]
     assert client.upserts[0]["collection_name"] == "entities_v1"
     assert point.payload["aliases"] == ["І. Прізвище"]
+
+
+async def test_repository_upsert_failure_includes_collection_and_point_context() -> None:
+    repository = CaseVectorRepository(
+        FailingRepositoryClient(),  # type: ignore[arg-type]
+        collection_name="cases_v2",
+    )
+    point_id = uuid4()
+
+    with pytest.raises(
+        RuntimeError,
+        match=rf"Qdrant upsert failed: collection=cases_v2, point_id={point_id}",
+    ):
+        await repository.upsert(
+            CaseVectorRecord(
+                id=point_id,
+                vector=[0.1],
+                payload=CaseVectorPayload(slug="case", title_uk="Назва", status="active"),
+            )
+        )
+
+
+async def test_repository_search_failure_includes_operation_and_collection() -> None:
+    repository = EventVectorRepository(
+        FailingRepositoryClient(),  # type: ignore[arg-type]
+        collection_name="events_v2",
+    )
+
+    with pytest.raises(RuntimeError, match="Qdrant search failed: collection=events_v2, limit=4"):
+        await repository.search([0.1], limit=4)

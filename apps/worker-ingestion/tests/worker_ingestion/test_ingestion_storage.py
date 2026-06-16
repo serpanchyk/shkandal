@@ -21,6 +21,7 @@ def test_source_input_preserves_source_contract_fields() -> None:
 
     assert source.slug == "pravda"
     assert source.source_type == "media"
+    assert source.logo_path is None
     assert source.metadata == {"kind": "news"}
 
 

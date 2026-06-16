@@ -79,7 +79,7 @@ current database rows.
 - One relevant article is enough to create a public case.
 - Case-linked articles may exist without extracted events.
 - Articles can link to multiple cases. Events can link to multiple cases. Entities can link to multiple cases.
-- Explicit case relations support `parent_child`, `related`, and `possible_duplicate`.
+- Explicit symmetric case relations support `related` and `possible_duplicate`.
 - `Entity` is one global typed model with canonical name, aliases, type, and Ukrainian description.
 - `Event` is one global strict real-world occurrence. Related developments are separate events.
 - One supporting article is enough for a public event if provenance is preserved.
@@ -93,8 +93,27 @@ current database rows.
 - The first likely classifier shape is logistic regression over title, lead, and the first fixed-size text window with TF-IDF word and character ngrams.
 - DVC tracks large model binaries under `artifacts/models/`. Real artifacts stay outside Git; manifests and `.dvc` pointers are tracked.
 - LLM article cards are provisional structured understanding, not final global identity.
+- Article cards separate classifier relevance from case candidacy. Non-case
+  cards retain a summary but have no provisional events, entities, or case
+  signature terms.
+- Article-card extraction is limited to the main article and excludes related
+  articles, recommendations, boilerplate, and unrelated background.
 - Article-case resolution happens before entity and event resolution.
+- Case resolution explicitly resolves or rejects each case candidate. Resolved
+  candidates must link to or create at least one case; rejected candidates have
+  no case actions or downstream identity-resolution jobs.
+- Existing-case links are not persisted directly from the first match. Each
+  provisional existing-case link is rechecked against the chosen Case's linked
+  Article Cards, and inconclusive rechecks are treated as drops.
+- Case copy updates are unique case-scoped jobs triggered after every new
+  article-case link.
 - Entity and event resolvers receive all linked cases and assign each resolved item only to relevant cases.
+- Every provisional Entity/Event item receives an explicit link, create, or
+  reject decision; accepted items must be assigned to at least one linked Case.
+- Entity and Event mutations are serialized independently within their global
+  identity namespaces.
+- Event occurrence dates preserve partial precision with separate
+  year/month/day components. Unknown occurrence dates remain unknown.
 - Direct `case_entities` and `case_events` are materialized from article-level scoped links.
 - Qdrant has rebuildable collections for case cards, entity cards, and event cards.
 - LLM prompts live as plain files in the ML worker area.
@@ -105,6 +124,16 @@ current database rows.
 - LLM stages should be separate jobs to make retries and inspection easier.
 - The public API reads current rows directly; there are no published snapshots in MVP.
 - Case view counting is anonymous aggregate counting.
+- The homepage defaults to `trending`; trending is seven-day linked-article
+  velocity, latest is newest linked-article publication time, popular is
+  all-time views, biggest is linked-article count, and newest is Case creation.
+- Undated articles remain evidence but do not affect latest or trending.
+- Public Case-title search is typo-tolerant and similarity-ranked.
+- Public Cases require a title, summary, and linked article. Public Entity pages
+  require a name, description, public Case link, and supporting article.
+- Case pages label linked Entities as mentioned people and organizations, not
+  participants, and show all supporting publisher types under `Джерела справи`.
+- Curated Source logos are frontend-owned assets referenced by nullable database paths.
 
 ## Testing Decisions
 
@@ -134,10 +163,10 @@ current database rows.
 
 ## Further Notes
 
-The repo currently has foundation scaffolding only: service shells, common
-config/logging, Docker Compose, and smoke tests. The next implementation step is
-the PostgreSQL schema and migration layer, because the article/evidence graph is
-the central contract shared by ingestion, ML workers, backend, and frontend.
+The repository now implements the PostgreSQL evidence graph, ingestion and ML
+workflows, public FastAPI query boundary, and server-rendered public reader
+experience. The detailed frontend/backend contract is documented in
+`docs/system/public-reader-experience.md`.
 
 This PRD has been broken into GitHub issues #1 through #12 in
 `serpanchyk/shkandal`.

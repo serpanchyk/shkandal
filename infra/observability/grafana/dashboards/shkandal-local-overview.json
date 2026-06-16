@@ -1,0 +1,175 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "id": 1,
+      "title": "Backend Up",
+      "type": "stat",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "up{job=\"backend\"}", "refId": "A"}],
+      "fieldConfig": {"defaults": {"mappings": [{"type": "value", "options": {"0": {"text": "DOWN"}, "1": {"text": "UP"}}}], "thresholds": {"mode": "absolute", "steps": [{"color": "red"}, {"color": "green", "value": 1}]}}, "overrides": []},
+      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0}
+    },
+    {
+      "id": 2,
+      "title": "PostgreSQL Up",
+      "type": "stat",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "probe_success{instance=\"postgres:5432\"}", "refId": "A"}],
+      "fieldConfig": {"defaults": {"mappings": [{"type": "value", "options": {"0": {"text": "DOWN"}, "1": {"text": "UP"}}}], "thresholds": {"mode": "absolute", "steps": [{"color": "red"}, {"color": "green", "value": 1}]}}, "overrides": []},
+      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 0}
+    },
+    {
+      "id": 3,
+      "title": "Qdrant Up",
+      "type": "stat",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "probe_success{instance=\"http://qdrant:6333/\"}", "refId": "A"}],
+      "fieldConfig": {"defaults": {"mappings": [{"type": "value", "options": {"0": {"text": "DOWN"}, "1": {"text": "UP"}}}], "thresholds": {"mode": "absolute", "steps": [{"color": "red"}, {"color": "green", "value": 1}]}}, "overrides": []},
+      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 0}
+    },
+    {
+      "id": 4,
+      "title": "LiteLLM Proxy Up",
+      "type": "stat",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "probe_success{instance=\"llm-proxy:4000\"}", "refId": "A"}],
+      "fieldConfig": {"defaults": {"mappings": [{"type": "value", "options": {"0": {"text": "DOWN"}, "1": {"text": "UP"}}}], "thresholds": {"mode": "absolute", "steps": [{"color": "red"}, {"color": "green", "value": 1}]}}, "overrides": []},
+      "gridPos": {"h": 4, "w": 4, "x": 12, "y": 0}
+    },
+    {
+      "id": 5,
+      "title": "Frontend Up",
+      "type": "stat",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "probe_success{instance=\"http://frontend:3000/\"}", "refId": "A"}],
+      "fieldConfig": {"defaults": {"mappings": [{"type": "value", "options": {"0": {"text": "DOWN"}, "1": {"text": "UP"}}}], "thresholds": {"mode": "absolute", "steps": [{"color": "red"}, {"color": "green", "value": 1}]}}, "overrides": []},
+      "gridPos": {"h": 4, "w": 4, "x": 16, "y": 0}
+    },
+    {
+      "id": 6,
+      "title": "LLM Cooldown Active",
+      "type": "stat",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "max(shkandal_llm_cooldown_active) or vector(0)", "refId": "A"}],
+      "fieldConfig": {"defaults": {"mappings": [{"type": "value", "options": {"0": {"text": "NO"}, "1": {"text": "YES"}}}], "thresholds": {"mode": "absolute", "steps": [{"color": "green"}, {"color": "red", "value": 1}]}}, "overrides": []},
+      "gridPos": {"h": 4, "w": 4, "x": 20, "y": 0}
+    },
+    {
+      "id": 7,
+      "title": "Backend Request Rate",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "sum by (method, route) (rate(shkandal_backend_http_requests_total[5m]))", "legendFormat": "{{method}} {{route}}", "refId": "A"}],
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 4}
+    },
+    {
+      "id": 8,
+      "title": "Backend p95 Latency",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "histogram_quantile(0.95, sum by (le, route) (rate(shkandal_backend_http_request_duration_seconds_bucket[5m])))", "legendFormat": "{{route}}", "refId": "A"}],
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 4}
+    },
+    {
+      "id": 9,
+      "title": "Backend Error Rate",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "sum by (route) (rate(shkandal_backend_http_errors_total[5m]))", "legendFormat": "{{route}}", "refId": "A"}],
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 4}
+    },
+    {
+      "id": 10,
+      "title": "Jobs by Status",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "sum by (status) (shkandal_jobs)", "legendFormat": "{{status}}", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 12}
+    },
+    {
+      "id": 11,
+      "title": "Failed Jobs by Type",
+      "type": "barchart",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "shkandal_jobs{status=\"failed\"}", "legendFormat": "{{job_type}}", "refId": "A"}],
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 12}
+    },
+    {
+      "id": 12,
+      "title": "Oldest Queued Job Age",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "shkandal_job_oldest_queued_age_seconds", "legendFormat": "{{job_type}}", "refId": "A"}],
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 12}
+    },
+    {
+      "id": 13,
+      "title": "Recent LLM Failures (24h)",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "shkandal_llm_runs_recent{status=\"failed\"}", "legendFormat": "{{run_type}}", "refId": "A"}],
+      "gridPos": {"h": 7, "w": 12, "x": 0, "y": 20}
+    },
+    {
+      "id": 14,
+      "title": "LLM Cooldown Expiry",
+      "type": "stat",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [{"expr": "max(shkandal_llm_cooldown_resume_timestamp_seconds)", "refId": "A"}],
+      "fieldConfig": {"defaults": {"unit": "dateTimeAsIso"}, "overrides": []},
+      "gridPos": {"h": 7, "w": 12, "x": 12, "y": 20}
+    },
+    {
+      "id": 15,
+      "title": "Backend Logs",
+      "type": "logs",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "targets": [{"expr": "{compose_service=\"backend\"} | json", "refId": "A"}],
+      "options": {"showTime": true, "wrapLogMessage": true},
+      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 27}
+    },
+    {
+      "id": 16,
+      "title": "Worker ML Logs",
+      "type": "logs",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "targets": [{"expr": "{compose_service=\"worker-ml\"} | json", "refId": "A"}],
+      "options": {"showTime": true, "wrapLogMessage": true},
+      "gridPos": {"h": 9, "w": 12, "x": 0, "y": 36}
+    },
+    {
+      "id": 17,
+      "title": "Worker Ingestion Logs",
+      "type": "logs",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "targets": [{"expr": "{compose_service=\"worker-ingestion\"} | json", "refId": "A"}],
+      "options": {"showTime": true, "wrapLogMessage": true},
+      "gridPos": {"h": 9, "w": 12, "x": 12, "y": 36}
+    },
+    {
+      "id": 18,
+      "title": "LLM Provider and Pipeline Errors",
+      "type": "logs",
+      "datasource": {"type": "loki", "uid": "loki"},
+      "targets": [{"expr": "{compose_service=~\"worker-ml|llm-proxy\"} |~ \"(?i)(error|failed|rate.limit|cooldown)\"", "refId": "A"}],
+      "options": {"showTime": true, "wrapLogMessage": true},
+      "gridPos": {"h": 9, "w": 24, "x": 0, "y": 45}
+    }
+  ],
+  "refresh": "15s",
+  "schemaVersion": 40,
+  "tags": ["shkandal", "local"],
+  "templating": {"list": []},
+  "time": {"from": "now-6h", "to": "now"},
+  "timezone": "browser",
+  "title": "Shkandal Local Overview",
+  "uid": "shkandal-local-overview",
+  "version": 1
+}

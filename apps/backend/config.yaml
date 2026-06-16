@@ -1,3 +1,6 @@
 service_name: backend
 host: 0.0.0.0
 port: 8000
+image_check_timeout_seconds: 2
+image_check_max_candidates: 5
+image_check_cache_ttl_seconds: 300

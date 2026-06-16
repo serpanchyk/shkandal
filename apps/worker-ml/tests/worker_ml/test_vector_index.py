@@ -8,7 +8,7 @@ from shkandal_vector_store.schemas import (
     EntityVectorPayload,
     EventVectorPayload,
 )
-from worker_ml.vector_index import VectorIndexService
+from worker_ml.retrieval.vector_index import VectorIndexService
 
 
 class FakeEmbedder:
@@ -19,6 +19,10 @@ class FakeEmbedder:
     def embed_query(self, text: str) -> list[float]:
         self.queries.append(text)
         return [0.1, 0.2]
+
+    def embed_queries(self, texts: list[str]) -> list[list[float]]:
+        self.queries.extend(texts)
+        return [[0.1, 0.2] for _ in texts]
 
     def embed_document(self, text: str) -> list[float]:
         self.documents.append(text)
@@ -131,7 +135,7 @@ async def test_upsert_event_includes_date_and_location() -> None:
         slug="event-a",
         title_uk="Подія",
         description_uk=None,
-        event_date=None,
+        event_year=None,
         location_uk="Київ",
     )
 
@@ -139,3 +143,13 @@ async def test_upsert_event_includes_date_and_location() -> None:
 
     assert embedder.documents == ["Подія\nКиїв"]
     assert event_repository.upserts[0].id == point_id
+
+
+async def test_search_entities_batch_embeds_once_and_searches_every_vector() -> None:
+    service, embedder, _case_repository, entity_repository, _event_repository = _service()
+
+    results = await service.search_entities_batch(["a", "b"], limit=8)
+
+    assert results == [[], []]
+    assert embedder.queries == ["a", "b"]
+    assert len(entity_repository.searches) == 2

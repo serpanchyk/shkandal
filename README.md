@@ -18,6 +18,15 @@ Shkandal should show readers a living case page that answers:
 
 The first public version is automatic. The system should ingest articles, classify relevance, resolve cases, entities, and events, then update public pages without a mandatory human review queue. Later review and correction tools can be added, but they are not part of the MVP control flow.
 
+Local Docker Compose configuration uses three ignored env files copied from
+tracked examples: root `.env` for shared application settings,
+`infra/postgres/.env` for database bootstrap credentials, and
+`infra/litellm/.env` for provider API keys. See `docs/run-project.md` for setup.
+
+An optional local `observability` Compose profile provides Grafana on port
+`3001`, Prometheus, Loki, Docker log collection, and a provisioned Shkandal
+overview dashboard.
+
 ## Core Concepts
 
 ### Case
@@ -32,15 +41,25 @@ Examples:
 - Denys Komarnytskyi / Clean City;
 - Bill No. 14057 and risks for investigative journalism.
 
-Cases can overlap. One article can belong to multiple cases. One event can be relevant to multiple cases. A specific case can have multiple broader parent cases.
+Cases can overlap. One article can belong to multiple cases. One event can be relevant to multiple cases.
 
 One relevant article is enough to create a public case. The system optimizes for coverage and speed, with source provenance visible to readers.
 
+Existing-case attachment is conservative: after the initial card-to-case match,
+each provisional existing-case link is rechecked against that Case's linked
+Article Cards before persistence. Links that fail or remain inconclusive in the
+second pass are dropped rather than written.
+
+An automatic ordered Case Audit Pipeline runs after evidence changes and on a
+30-day fallback. Coherence audits split mixed Cases or detach unsupported
+Articles, public-interest audits permanently hide unsuitable dossiers, and
+duplicate audits merge or resolve internal candidate pairs. Inconclusive audits
+leave public data unchanged.
+
 Case relationships are explicit:
 
-- `parent_child` for broad/specific relationships;
-- `related` for meaningful overlap without containment;
-- `possible_duplicate` for later automatic or manual merge handling.
+- `related` for shared central actors or specific accountability themes;
+- `possible_duplicate` for automatic duplicate audit handling.
 
 ### Article
 
@@ -83,7 +102,14 @@ The homepage should feel modern and live, not like an old archive. The MVP shoul
 - `newest`: recently created cases;
 - `popular`: most viewed cases by anonymous aggregate counters;
 - `biggest`: cases with the most linked articles;
-- `trending`: cases with the highest recent article/event velocity.
+- `trending`: cases with the highest recent linked-article velocity.
+
+The implemented ranking contract defines `latest` as newest linked-article
+publication time, `trending` as linked articles published in the previous seven
+days, `popular` as all-time aggregate views, `biggest` as linked-article count,
+and `newest` as Case creation time. The homepage defaults to `trending`.
+Undated articles remain evidence but do not affect `latest` or `trending`.
+Typo-tolerant Case-title search uses PostgreSQL trigram similarity.
 
 Future homepage ideas include live event streams, infographics, and real-time update blocks.
 
@@ -98,6 +124,11 @@ A case page should contain:
 - event source popup with linked articles;
 - compact linked-articles/source section near the bottom;
 - short automatic-generation disclaimer.
+- compact `Джерела справи` logo strip for all supporting Source types, backed
+  by `/sources/{source-slug}.png` assets with initials as a missing-file fallback;
+- local dry-run-first website icon synchronization that normalizes raster icons
+  into frontend-owned Source PNG assets and updates PostgreSQL paths on apply;
+- header-based Case search and a rolling known-date Event feed on the homepage.
 
 Case titles and summaries should be durable identity fields, not rewritten after every new article. Most change should appear through the event timeline. Regenerate title/summary only when the meaning of the case changes.
 
@@ -106,7 +137,7 @@ Generated tone must be neutral and factual. The system should distinguish allega
 Suggested disclaimer:
 
 ```text
-Сторінка автоматично зібрана з відкритих джерел. Події та учасники мають посилання на матеріали, на основі яких їх додано.
+Сторінка автоматично зібрана з відкритих джерел. Події та згадані особи й організації мають посилання на матеріали, на основі яких їх додано.
 ```
 
 ### Entity Page
@@ -133,7 +164,7 @@ Initial discovery methods:
 - manually configured source sections;
 - include/exclude URL patterns.
 
-The MVP runs a controlled one-year backfill before first public launch, then continues forward ingestion with an hourly full-source pass. Date-bounded backfills use a higher source discovery cap than daily runs so archive traversal is not truncated too early. Fetching can happen in any order, but LLM resolution during backfill should process relevant articles oldest-to-newest by `published_at`.
+The MVP runs a controlled one-year backfill before first public launch, then continues forward ingestion with a full-source pass every two hours. Date-bounded backfills use a higher source discovery cap than daily runs so archive traversal is not truncated too early. Fetching can happen in any order, but LLM resolution during backfill should process relevant articles oldest-to-newest by `published_at`.
 
 ### 2. Extract and Store
 
@@ -162,18 +193,29 @@ Irrelevant articles remain stored with `is_relevant=false` for debugging, evalua
 
 ### 4. Create Provisional Article Card
 
-For relevant articles, the LLM creates a compact Ukrainian article card with structured JSON validated by Pydantic.
+For classifier-positive articles, the LLM creates a compact Ukrainian article
+card with structured JSON validated by Pydantic. The LLM applies a stricter
+`is_case_candidate` gate. It accepts concrete, trackable accountability,
+criminal, procurement, institutional, government, parliamentary, international
+Ukraine, and public-conflict processes. Rankings, explainers, statistics, PR,
+human-interest stories, routine legislation, routine war chronology, generic
+news, and similar material remain available as summaries without producing case
+events or entities. Assessments, interviews, columns, and expert discussions
+may remain case material when they add substantial context to a named trackable
+process or conflict.
 
 The card contains:
 
 - Ukrainian title or cleaned title;
 - short Ukrainian summary;
-- provisional normalized entities;
-- provisional normalized events;
-- key terms;
-- source metadata.
+- case-candidate decision and fixed noise reason;
+- main event title for case candidates;
+- up to eight case-relevant normalized entities;
+- one to three provisional normalized events;
+- up to eight case-signature terms.
 
 The provisional entities and events are not final global identities yet.
+Non-case cards have empty event, entity, and case-signature lists.
 
 ### 5. Resolve Cases
 
@@ -181,9 +223,20 @@ The article card is embedded and used to retrieve candidate cases from Qdrant. T
 
 - link the article to one or more existing cases;
 - create one or more new durable reader-facing cases;
+- explicitly reject the candidate when it has no concrete trackable case;
 - create explicit case relations when useful.
 
+Every resolution includes a Ukrainian decision reason and an explicit
+`resolved` or `rejected` outcome. A resolved candidate must link to or create at
+least one case. A rejected candidate has no case actions, remains auditable
+through its LLM run, and does not continue to Entity or Event resolution. Case
+mutation is serialized, and new or changed case vectors must be written before
+the PostgreSQL mutation commits.
+
 Case titles should be broader durable dossier names, not one-off event headlines.
+Existing case copy is refreshed by a unique case-scoped job after each new
+article link. The job always refreshes the summary and replaces the title only
+when the current title is materially inadequate.
 
 ### 6. Resolve Entities
 
@@ -199,7 +252,9 @@ After article-case links exist, provisional events are embedded and compared aga
 
 The resolver receives all linked cases and assigns each resolved event only to the cases where it is relevant. The system then materializes direct `case_events` links.
 
-Event dates use best-effort extracted event date, with fallback to article publication date.
+Event dates use the best-effort extracted occurrence date. Unknown occurrence
+dates remain unknown; article publication time is provenance and an explicit
+timeline-ordering fallback, never the Event date.
 
 One supporting article is enough for a public event, as long as the event keeps article provenance.
 
@@ -258,7 +313,29 @@ task failed and keep it eligible for later reprocessing.
 
 All runtime LLM calls go through the LiteLLM proxy. `worker-ml` requests logical
 per-stage aliases such as `shkandal-article-card` and `shkandal-repair`; the
-proxy owns provider credentials, throttling, routing, and fallback policy.
+proxy owns provider credentials, throttling, and routing policy. The tracked
+proxy configuration maps all aliases to one shared MamayLM deployment through
+Lapatonia with a combined 60 RPM limit. The Amazon Bedrock Gemma 3 27B model
+entry is retained but is not configured as a fallback. Timeout and
+internal-server failures are retried once; request errors and rate limits are
+not retried. Four Lapatonia failures within one hour start a shared one-hour
+in-memory cooldown; restarting `llm-proxy` clears it.
+Provider HTTP `429` responses that still reach `worker-ml` after proxy routing
+create a durable shared LLM cooldown: the rejected job is deferred without
+consuming an attempt and the current ML pass exits.
+Explicit `Retry-After` values are honored; otherwise two ambiguous `429`
+responses within 15 minutes infer a one-hour cooldown. Other provider errors
+remain per-job failures. LLM requests time out after five minutes.
+
+For the initial historical run, `worker-ml --backfill` drains all supported ML
+jobs and waits through deferred retries or provider cooldowns. It preserves
+exhausted failed jobs for inspection and exits nonzero when any remain.
+Repeatable `--job-type` flags restrict one-shot, loop, or backfill execution to
+selected stages. Enabled article-card runs discover relevant articles missing
+cards; downstream jobs they create remain queued unless also selected.
+The worker uses four concurrent execution slots and weighted fair scheduling by
+default, while Case, Entity, and Event mutation namespaces remain independently
+serialized.
 
 ## Architecture
 
@@ -267,7 +344,9 @@ The project is split into these services:
 - `frontend`: Next.js public UI for case pages, entity pages, and feed;
 - `backend`: FastAPI public API and application business boundary;
 - `worker-ingestion`: curated source discovery, fetching, extraction, URL identity normalization, image URL extraction;
-- `worker-ml`: relevance classifier, E5-small embeddings, Qdrant vector integration, LLM task contracts/prompt execution, future article cards, LLM resolution, deduplication;
+- `worker-ml`: relevance classifier, article cards, E5-small embeddings, Qdrant
+  vector integration, LLM Case/Entity/Event resolution, and recurring Case
+  Coherence Audits;
 - `postgres`: source-of-truth relational database and MVP job store;
 - `qdrant`: rebuildable 384-dimensional vector index for cases, entities, and events.
 - `llm-proxy`: LiteLLM proxy for provider routing, throttling, and fallback policy.
@@ -291,7 +370,6 @@ Planned later layers:
 
 - simple "Повідомити про помилку" feedback link or form;
 - human review/correction tooling;
-- automatic merge handling for duplicate cases with redirects/aliases;
 - event relations such as appeal/reaction/correction;
 - image proxying or caching if needed;
 - richer analytics beyond anonymous aggregate counters.

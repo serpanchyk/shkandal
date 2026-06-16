@@ -7,5 +7,5 @@ Requires=docker.service
 [Service]
 Type=oneshot
 WorkingDirectory=/opt/shkandal
-ExecStart=/usr/bin/docker compose --profile jobs run --rm worker-ml
+ExecStart=/usr/bin/env bash ops/run-scheduled-worker worker-ml
 TimeoutStartSec=30min

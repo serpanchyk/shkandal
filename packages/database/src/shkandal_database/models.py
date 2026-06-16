@@ -75,6 +75,7 @@ class Source(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     source_type: Mapped[str] = mapped_column(Text, nullable=False)
     base_url: Mapped[str] = mapped_column(Text, nullable=False)
+    logo_path: Mapped[str | None] = mapped_column(Text)
     language: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
     metadata_: Mapped[dict[str, Any]] = mapped_column(
@@ -178,7 +179,8 @@ class LlmRun(Base):
     __table_args__ = (
         CheckConstraint(
             "run_type in ('article_card', 'case_resolution', 'entity_resolution', "
-            "'event_resolution')",
+            "'event_resolution', 'case_copy_update', 'case_link_audit', 'case_coherence_audit', "
+            "'case_public_interest_audit', 'case_duplicate_audit')",
             name="ck_llm_runs_run_type",
         ),
         CheckConstraint(
@@ -209,10 +211,30 @@ class LlmRun(Base):
     created_at: Mapped[datetime] = created_at_column()
 
 
+class LlmCooldown(Base):
+    """Shared pause state for LLM-backed jobs."""
+
+    __tablename__ = "llm_cooldowns"
+
+    scope: Mapped[str] = mapped_column(Text, primary_key=True)
+    resume_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    cooldown_kind: Mapped[str] = mapped_column(Text, nullable=False)
+    ambiguous_observation_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default=text("0"),
+    )
+    last_ambiguous_observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+
+
 class ArticleCard(Base):
     """Provisional structured article card."""
 
     __tablename__ = "article_cards"
+    __table_args__ = (Index("ix_article_cards_is_case_candidate", "is_case_candidate"),)
 
     id: Mapped[UUID] = uuid_pk_column()
     article_id: Mapped[UUID] = mapped_column(
@@ -223,6 +245,7 @@ class ArticleCard(Base):
     llm_run_id: Mapped[UUID | None] = mapped_column(ForeignKey("llm_runs.id"))
     title_uk: Mapped[str] = mapped_column(Text, nullable=False)
     summary_uk: Mapped[str] = mapped_column(Text, nullable=False)
+    is_case_candidate: Mapped[bool] = mapped_column(Boolean, nullable=False)
     card_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()
@@ -237,6 +260,13 @@ class Case(Base):
         Index("ix_cases_status_last_updated_at", "status", "last_updated_at"),
         Index("ix_cases_created_at", "created_at"),
         Index("ix_cases_article_count", "article_count"),
+        Index(
+            "ix_cases_active_title_uk_trgm",
+            "title_uk",
+            postgresql_using="gin",
+            postgresql_ops={"title_uk": "gin_trgm_ops"},
+            postgresql_where=text("status = 'active'"),
+        ),
     )
 
     id: Mapped[UUID] = uuid_pk_column()
@@ -248,6 +278,28 @@ class Case(Base):
     last_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     article_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     event_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    evidence_revision: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default=text("1"),
+    )
+    last_audited_revision: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default=text("0"),
+    )
+    last_audited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_interest_audited_revision: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    last_interest_audited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_duplicate_audited_revision: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    last_duplicate_audited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    merged_into_case_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("cases.id", ondelete="RESTRICT")
+    )
     metadata_: Mapped[dict[str, Any]] = mapped_column(
         "metadata",
         JSONB,
@@ -258,12 +310,96 @@ class Case(Base):
     updated_at: Mapped[datetime] = updated_at_column()
 
 
+class CaseCoherenceAudit(Base):
+    """Immutable result of one Case coherence audit."""
+
+    __tablename__ = "case_coherence_audits"
+    __table_args__ = (
+        CheckConstraint(
+            "outcome in ('coherent', 'split', 'inconclusive', 'superseded')",
+            name="ck_case_coherence_audits_outcome",
+        ),
+        Index("ix_case_coherence_audits_case_id_created_at", "case_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = uuid_pk_column()
+    case_id: Mapped[UUID] = mapped_column(
+        ForeignKey("cases.id", ondelete="CASCADE"), nullable=False
+    )
+    evidence_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    outcome: Mapped[str] = mapped_column(Text, nullable=False)
+    llm_run_id: Mapped[UUID | None] = mapped_column(ForeignKey("llm_runs.id"))
+    result_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default=json_object_default,
+    )
+    created_at: Mapped[datetime] = created_at_column()
+
+
+class CasePublicInterestAudit(Base):
+    """Immutable result of one Case public-interest audit."""
+
+    __tablename__ = "case_public_interest_audits"
+    __table_args__ = (
+        CheckConstraint(
+            "outcome in ('keep', 'hide', 'inconclusive', 'superseded')",
+            name="ck_case_public_interest_audits_outcome",
+        ),
+        Index("ix_case_public_interest_audits_case_id_created_at", "case_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = uuid_pk_column()
+    case_id: Mapped[UUID] = mapped_column(
+        ForeignKey("cases.id", ondelete="CASCADE"), nullable=False
+    )
+    evidence_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    outcome: Mapped[str] = mapped_column(Text, nullable=False)
+    llm_run_id: Mapped[UUID | None] = mapped_column(ForeignKey("llm_runs.id"))
+    result_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=json_object_default
+    )
+    created_at: Mapped[datetime] = created_at_column()
+
+
+class CaseDuplicateAudit(Base):
+    """Immutable result of one Case duplicate-pair audit."""
+
+    __tablename__ = "case_duplicate_audits"
+    __table_args__ = (
+        CheckConstraint("case_a_id < case_b_id", name="ck_case_duplicate_audits_canonical_pair"),
+        CheckConstraint(
+            "outcome in ('merge', 'related', 'distinct', 'inconclusive', 'superseded')",
+            name="ck_case_duplicate_audits_outcome",
+        ),
+        Index("ix_case_duplicate_audits_case_a_id_created_at", "case_a_id", "created_at"),
+        Index("ix_case_duplicate_audits_case_b_id_created_at", "case_b_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = uuid_pk_column()
+    case_a_id: Mapped[UUID] = mapped_column(
+        ForeignKey("cases.id", ondelete="CASCADE"), nullable=False
+    )
+    case_b_id: Mapped[UUID] = mapped_column(
+        ForeignKey("cases.id", ondelete="CASCADE"), nullable=False
+    )
+    case_a_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    case_b_revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    outcome: Mapped[str] = mapped_column(Text, nullable=False)
+    llm_run_id: Mapped[UUID | None] = mapped_column(ForeignKey("llm_runs.id"))
+    result_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=json_object_default
+    )
+    created_at: Mapped[datetime] = created_at_column()
+
+
 class CaseArticle(Base):
     """Many-to-many article to case link."""
 
     __tablename__ = "case_articles"
     __table_args__ = (
         UniqueConstraint("case_id", "article_id", name="uq_case_articles_case_id_article_id"),
+        Index("ix_case_articles_case_id_article_id", "case_id", "article_id"),
         Index("ix_case_articles_article_id_case_id", "article_id", "case_id"),
         Index("ix_case_articles_case_id_created_at", "case_id", "created_at"),
     )
@@ -287,30 +423,30 @@ class CaseRelation(Base):
 
     __tablename__ = "case_relations"
     __table_args__ = (
-        CheckConstraint("source_case_id <> target_case_id", name="ck_case_relations_not_self"),
+        CheckConstraint("case_a_id < case_b_id", name="ck_case_relations_canonical_pair"),
         CheckConstraint(
-            "relation_type in ('parent_child', 'related', 'possible_duplicate')",
+            "relation_type in ('related', 'possible_duplicate')",
             name="ck_case_relations_relation_type",
         ),
         UniqueConstraint(
-            "source_case_id",
-            "target_case_id",
+            "case_a_id",
+            "case_b_id",
             "relation_type",
-            name="uq_case_relations_source_target_type",
+            name="uq_case_relations_pair_type",
         ),
         Index(
-            "ix_case_relations_target_case_id_relation_type",
-            "target_case_id",
+            "ix_case_relations_case_b_id_relation_type",
+            "case_b_id",
             "relation_type",
         ),
     )
 
     id: Mapped[UUID] = uuid_pk_column()
-    source_case_id: Mapped[UUID] = mapped_column(
+    case_a_id: Mapped[UUID] = mapped_column(
         ForeignKey("cases.id", ondelete="CASCADE"),
         nullable=False,
     )
-    target_case_id: Mapped[UUID] = mapped_column(
+    case_b_id: Mapped[UUID] = mapped_column(
         ForeignKey("cases.id", ondelete="CASCADE"),
         nullable=False,
     )
@@ -372,7 +508,6 @@ class ArticleEntity(Base):
         nullable=False,
     )
     llm_run_id: Mapped[UUID | None] = mapped_column(ForeignKey("llm_runs.id"))
-    mention_text: Mapped[str | None] = mapped_column(Text)
     role_uk: Mapped[str | None] = mapped_column(Text)
     confidence: Mapped[Decimal | None] = mapped_column(Numeric)
     created_at: Mapped[datetime] = created_at_column()
@@ -444,16 +579,36 @@ class Event(Base):
             "event_date_precision in ('day', 'month', 'year', 'unknown')",
             name="ck_events_event_date_precision",
         ),
-        Index("ix_events_event_date", "event_date"),
+        Index("ix_events_event_date_parts", "event_year", "event_month", "event_day"),
         Index("ix_events_created_at", "created_at"),
+        CheckConstraint(
+            "(event_date_precision = 'unknown' AND event_year IS NULL "
+            "AND event_month IS NULL AND event_day IS NULL) OR "
+            "(event_date_precision = 'year' AND event_year IS NOT NULL "
+            "AND event_month IS NULL AND event_day IS NULL) OR "
+            "(event_date_precision = 'month' AND event_year IS NOT NULL "
+            "AND event_month IS NOT NULL AND event_day IS NULL) OR "
+            "(event_date_precision = 'day' AND event_year IS NOT NULL "
+            "AND event_month IS NOT NULL AND event_day IS NOT NULL)",
+            name="ck_events_date_parts_precision",
+        ),
+        CheckConstraint(
+            "(event_month IS NULL OR event_month BETWEEN 1 AND 12) AND "
+            "(event_day IS NULL OR event_day BETWEEN 1 AND 31)",
+            name="ck_events_date_parts_range",
+        ),
     )
 
     id: Mapped[UUID] = uuid_pk_column()
     slug: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     title_uk: Mapped[str] = mapped_column(Text, nullable=False)
     description_uk: Mapped[str | None] = mapped_column(Text)
-    event_date: Mapped[date | None] = mapped_column(Date)
-    event_date_precision: Mapped[str | None] = mapped_column(Text)
+    event_year: Mapped[int | None] = mapped_column(Integer)
+    event_month: Mapped[int | None] = mapped_column(Integer)
+    event_day: Mapped[int | None] = mapped_column(Integer)
+    event_date_precision: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'unknown'")
+    )
     location_uk: Mapped[str | None] = mapped_column(Text)
     metadata_: Mapped[dict[str, Any]] = mapped_column(
         "metadata",
@@ -484,7 +639,6 @@ class ArticleEvent(Base):
         nullable=False,
     )
     llm_run_id: Mapped[UUID | None] = mapped_column(ForeignKey("llm_runs.id"))
-    evidence_text: Mapped[str | None] = mapped_column(Text)
     confidence: Mapped[Decimal | None] = mapped_column(Numeric)
     created_at: Mapped[datetime] = created_at_column()
 
@@ -525,7 +679,13 @@ class CaseEvent(Base):
     __tablename__ = "case_events"
     __table_args__ = (
         UniqueConstraint("case_id", "event_id", name="uq_case_events_case_id_event_id"),
-        Index("ix_case_events_case_id_event_date", "case_id", "event_date"),
+        Index(
+            "ix_case_events_case_id_event_date_parts",
+            "case_id",
+            "event_year",
+            "event_month",
+            "event_day",
+        ),
         Index("ix_case_events_event_id_case_id", "event_id", "case_id"),
     )
 
@@ -537,7 +697,9 @@ class CaseEvent(Base):
         ForeignKey("events.id", ondelete="CASCADE"), nullable=False
     )
     first_article_id: Mapped[UUID | None] = mapped_column(ForeignKey("articles.id"))
-    event_date: Mapped[date | None] = mapped_column(Date)
+    event_year: Mapped[int | None] = mapped_column(Integer)
+    event_month: Mapped[int | None] = mapped_column(Integer)
+    event_day: Mapped[int | None] = mapped_column(Integer)
     supporting_article_count: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
@@ -556,7 +718,25 @@ class Job(Base):
             "status in ('queued', 'running', 'succeeded', 'failed', 'cancelled')",
             name="ck_jobs_status",
         ),
-        UniqueConstraint("job_type", "article_id", name="uq_jobs_job_type_article_id"),
+        CheckConstraint(
+            "(article_id IS NOT NULL AND case_id IS NULL) OR "
+            "(article_id IS NULL AND case_id IS NOT NULL)",
+            name="ck_jobs_exactly_one_subject",
+        ),
+        Index(
+            "uq_jobs_job_type_article_id",
+            "job_type",
+            "article_id",
+            unique=True,
+            postgresql_where=text("article_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_jobs_job_type_case_id",
+            "job_type",
+            "case_id",
+            unique=True,
+            postgresql_where=text("case_id IS NOT NULL"),
+        ),
         Index(
             "ix_jobs_status_priority_run_after_created_at",
             "status",
@@ -569,9 +749,11 @@ class Job(Base):
 
     id: Mapped[UUID] = uuid_pk_column()
     job_type: Mapped[str] = mapped_column(Text, nullable=False)
-    article_id: Mapped[UUID] = mapped_column(
+    article_id: Mapped[UUID | None] = mapped_column(
         ForeignKey("articles.id", ondelete="CASCADE"),
-        nullable=False,
+    )
+    case_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("cases.id", ondelete="CASCADE"),
     )
     status: Mapped[str] = mapped_column(Text, nullable=False)
     priority: Mapped[int] = mapped_column(
@@ -593,6 +775,16 @@ class Job(Base):
         Integer,
         nullable=False,
         server_default=text("3"),
+    )
+    requested_revision: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default=text("1"),
+    )
+    completed_revision: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default=text("0"),
     )
     run_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -10,18 +10,21 @@ dependencies = [
     "joblib>=1.5.2",
     "langchain-core>=1.1.0",
     "langchain-openai>=1.1.0",
+    "openai>=2.15.0",
     "pydantic>=2.12.5",
     "scikit-learn==1.8.0",
     "sentence-transformers>=5.1.2",
     "shkandal-common",
     "shkandal-database",
     "shkandal-vector-store",
+    "torch>=2.2.0",
 ]
 
 [tool.uv.sources]
 shkandal-common = { workspace = true }
 shkandal-database = { workspace = true }
 shkandal-vector-store = { workspace = true }
+torch = { index = "pytorch-cpu" }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/worker_ml"]

@@ -9,4 +9,5 @@ The Python workspace uses:
 - local pre-commit hooks run through `uv`.
 
 GitHub Actions runs lockfile validation, dependency install, pre-commit, pytest,
-and frontend lint/build checks.
+frontend lint/build checks, migrations against an isolated PostgreSQL service,
+and Playwright public-reader journeys against a deterministic seeded graph.

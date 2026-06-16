@@ -1,6 +1,5 @@
 """Typed vector-store records and search results."""
 
-from datetime import date
 from typing import Any
 from uuid import UUID
 
@@ -36,7 +35,9 @@ class EventVectorPayload(BaseModel):
     slug: str
     title_uk: str
     description_uk: str | None = None
-    event_date: date | None = None
+    event_year: int | None = None
+    event_month: int | None = None
+    event_day: int | None = None
     event_date_precision: str | None = None
     location_uk: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)

@@ -7,7 +7,7 @@ Current implemented scope is curated media and institutional source ingestion.
 Institutional sources use conservative URL patterns to avoid registry,
 document, search, and archive crawling.
 
-The Compose worker is a one-shot job scheduled hourly by systemd on servers.
+The Compose worker is a one-shot job scheduled every two hours by systemd on servers.
 Unexpected source failures are logged without preventing later sources from
 running.
 
@@ -52,7 +52,7 @@ Configured source groups:
 
 - media: `pravda`, `hromadske`, `radiosvoboda`, `suspilne`, `bihus`,
   `antac`, `nashigroshi`, `babel`, `texty`, `espreso`, `slovoidilo`,
-  `tyzhden`, `chesno`;
+  `tyzhden`, `chesno`, `rbc`, `censor`, `tsn`, `24tv`, `unian`;
 - law enforcement: `nabu`, `dbr`, `gp`, `ssu`, `npu`;
 - courts: `hcac`, `court-gov`, `supreme-court`, `ccu`;
 - institutions: `nazk`, `arma`;
@@ -106,7 +106,7 @@ docker compose --profile jobs run --rm worker-ingestion
 ```
 
 On servers, the `shkandal-ingestion.timer` systemd unit starts one pass every
-hour.
+even-numbered hour.
 
 Run one explicit pass or one source for debugging:
 
@@ -179,3 +179,17 @@ another retry sequence:
 uv run python apps/worker-ingestion/scripts/reset_failed_fetches.py --source pravda
 uv run python apps/worker-ingestion/scripts/reset_failed_fetches.py --source pravda --apply
 ```
+
+Discover website icons for every stored Source and preview the PNG assets that
+would be written. Applying the command overwrites
+`apps/frontend/public/sources/{slug}.png` and updates the corresponding
+`sources.logo_path`; individual source failures do not stop later sources:
+
+```bash
+uv run python apps/worker-ingestion/scripts/sync_source_logos.py
+uv run python apps/worker-ingestion/scripts/sync_source_logos.py --source pravda --apply
+uv run python apps/worker-ingestion/scripts/sync_source_logos.py --apply
+```
+
+This remains local scripts-only tooling because the production ingestion image
+does not contain the frontend source tree.

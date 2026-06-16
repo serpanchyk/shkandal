@@ -36,16 +36,21 @@ class BaseVectorRepository[PayloadT: BaseModel, RecordT: VectorRecord[Any]]:
     async def upsert(self, record: RecordT) -> None:
         """Upsert one vector point."""
 
-        await self.client.upsert(
-            collection_name=self.collection_name,
-            points=[
-                models.PointStruct(
-                    id=str(record.id),
-                    vector=record.vector,
-                    payload=record.payload.model_dump(mode="json"),
-                )
-            ],
-        )
+        try:
+            await self.client.upsert(
+                collection_name=self.collection_name,
+                points=[
+                    models.PointStruct(
+                        id=str(record.id),
+                        vector=record.vector,
+                        payload=record.payload.model_dump(mode="json"),
+                    )
+                ],
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                f"Qdrant upsert failed: collection={self.collection_name}, point_id={record.id}"
+            ) from exc
 
     async def delete(self, point_id: UUID) -> None:
         """Delete one vector point by ID."""
@@ -64,13 +69,18 @@ class BaseVectorRepository[PayloadT: BaseModel, RecordT: VectorRecord[Any]]:
     ) -> list[VectorSearchResult[PayloadT]]:
         """Search for nearest candidate points."""
 
-        response = await self.client.query_points(
-            collection_name=self.collection_name,
-            query=list(vector),
-            limit=limit,
-            score_threshold=score_threshold,
-            with_payload=True,
-        )
+        try:
+            response = await self.client.query_points(
+                collection_name=self.collection_name,
+                query=list(vector),
+                limit=limit,
+                score_threshold=score_threshold,
+                with_payload=True,
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                f"Qdrant search failed: collection={self.collection_name}, limit={limit}"
+            ) from exc
 
         candidates: list[VectorSearchResult[PayloadT]] = []
         for result in response.points:

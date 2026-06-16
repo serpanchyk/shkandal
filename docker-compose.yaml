@@ -4,14 +4,14 @@ services:
       context: .
       dockerfile: apps/backend/Dockerfile
     env_file:
-      - ./.env.example
+      - ./.env
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     depends_on:
       postgres:
         condition: service_healthy
       qdrant:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/healthz\", timeout=2)'"]
       interval: 10s
@@ -25,7 +25,7 @@ services:
       context: .
       dockerfile: apps/worker-ingestion/Dockerfile
     env_file:
-      - ./.env.example
+      - ./.env
     depends_on:
       postgres:
         condition: service_healthy
@@ -38,12 +38,12 @@ services:
       context: .
       dockerfile: apps/worker-ml/Dockerfile
     env_file:
-      - ./.env.example
+      - ./.env
     depends_on:
       postgres:
         condition: service_healthy
       qdrant:
-        condition: service_started
+        condition: service_healthy
       llm-proxy:
         condition: service_started
     command: ["python", "-m", "worker_ml.main"]
@@ -55,6 +55,8 @@ services:
       dockerfile: Dockerfile
     environment:
       NEXT_PUBLIC_BACKEND_URL: "http://localhost:${BACKEND_PORT:-8000}"
+      BACKEND_INTERNAL_URL: "http://backend:8000"
+      NEXT_PUBLIC_SITE_URL: "http://localhost:${FRONTEND_PORT:-3000}"
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     depends_on:
@@ -65,7 +67,7 @@ services:
   postgres:
     image: postgres:16-alpine
     env_file:
-      - ./infra/postgres/.env.example
+      - ./infra/postgres/.env
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
@@ -84,19 +86,123 @@ services:
       - "${QDRANT_PORT:-6333}:6333"
     volumes:
       - qdrant-data:/qdrant/storage
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 524288
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/127.0.0.1/6333'"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     restart: unless-stopped
 
   llm-proxy:
-    image: docker.litellm.ai/berriai/litellm:main-latest
+    image: docker.litellm.ai/berriai/litellm@sha256:7c311546c25e7bb6e8cafede9fcd3d0d622ac636b5c9418befaa32e85dfb0186
     command: ["--config", "/app/config.yaml"]
     env_file:
-      - ./.env.example
+      - ./infra/litellm/.env
+    environment:
+      LITELLM_MASTER_KEY: "${LLM_API_KEY:?Set LLM_API_KEY in .env}"
     ports:
       - "${LITELLM_PROXY_PORT:-4000}:4000"
     volumes:
       - ./infra/litellm/config.yaml.example:/app/config.yaml:ro
     restart: unless-stopped
 
+  grafana:
+    profiles: ["observability"]
+    image: grafana/grafana:11.6.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./infra/observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./infra/observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./infra/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  prometheus:
+    profiles: ["observability"]
+    image: prom/prometheus:v3.2.1
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - prometheus-data:/prometheus
+      - ./infra/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+      blackbox-exporter:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  loki:
+    profiles: ["observability"]
+    image: grafana/loki:3.4.2
+    command: ["-config.file=/etc/loki/config.yaml"]
+    ports:
+      - "${LOKI_PORT:-3100}:3100"
+    volumes:
+      - loki-data:/loki
+      - ./infra/observability/loki/config.yaml:/etc/loki/config.yaml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3100/ready >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  grafana-alloy:
+    profiles: ["observability"]
+    image: grafana/alloy:v1.8.2
+    command:
+      - "run"
+      - "--server.http.listen-addr=0.0.0.0:12345"
+      - "--storage.path=/var/lib/alloy/data"
+      - "/etc/alloy/config.alloy"
+    volumes:
+      - alloy-data:/var/lib/alloy/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./infra/observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+    depends_on:
+      loki:
+        condition: service_healthy
+    restart: unless-stopped
+
+  blackbox-exporter:
+    profiles: ["observability"]
+    image: prom/blackbox-exporter:v0.26.0
+    command: ["--config.file=/etc/blackbox_exporter/config.yml"]
+    volumes:
+      - ./infra/observability/blackbox/config.yml:/etc/blackbox_exporter/config.yml:ro
+    restart: unless-stopped
+
 volumes:
+  alloy-data:
+  grafana-data:
+  loki-data:
+  prometheus-data:
   postgres-data:
   qdrant-data:

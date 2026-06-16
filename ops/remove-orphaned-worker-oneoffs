@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+containers=()
+for worker in worker-ingestion worker-ml; do
+    mapfile -t matches < <(
+        docker ps -aq \
+            --filter "label=com.docker.compose.oneoff=True" \
+            --filter "name=${worker}-run-"
+    )
+    containers+=("${matches[@]}")
+done
+
+if ((${#containers[@]} > 0)); then
+    docker rm -f "${containers[@]}"
+fi

@@ -1,9 +1,36 @@
 import type { Metadata } from "next";
+import { IBM_Plex_Mono, IBM_Plex_Sans, Unbounded } from "next/font/google";
+
+import { Header } from "@/components/header";
+import { Footer } from "@/components/footer";
 import "./styles.css";
 
+const sans = IBM_Plex_Sans({
+  display: "swap",
+  subsets: ["cyrillic", "latin"],
+  variable: "--font-ibm-plex-sans",
+  weight: "variable",
+});
+
+const mono = IBM_Plex_Mono({
+  display: "swap",
+  subsets: ["cyrillic", "latin"],
+  variable: "--font-ibm-plex-mono",
+  weight: ["400", "700"],
+});
+
+const display = Unbounded({
+  display: "swap",
+  subsets: ["cyrillic", "latin"],
+  variable: "--font-unbounded",
+  weight: "variable",
+});
+
 export const metadata: Metadata = {
-  title: "Shkandal",
-  description: "Structured public case tracking for Ukrainian media stories.",
+  title: { default: "Шкандаль", template: "%s | Шкандаль" },
+  description: "Українські суспільно важливі справи з хронологією та відкритими джерелами.",
+  icons: { icon: "/logo.ico" },
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
 };
 
 export default function RootLayout({
@@ -12,8 +39,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html className={`${sans.variable} ${mono.variable} ${display.variable}`} lang="uk">
+      <body><div className="ambient" /><Header />{children}<Footer /></body>
     </html>
   );
 }

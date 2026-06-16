@@ -1,29 +1,43 @@
 model_list:
-  - model_name: shkandal-article-card
+  - model_name: shkandal-lapatonia-primary
     litellm_params:
-      model: openai/gpt-4.1-mini
-      api_key: os.environ/OPENAI_API_KEY
+      model: openai/MamayLM-Gemma-3-27B-IT-v2.0
+      api_base: https://api.lapathoniia.top/v1
+      api_key: os.environ/LAPATONIA_API_KEY
     rpm: 60
-  - model_name: shkandal-case-resolution
+  - model_name: shkandal-bedrock-fallback
     litellm_params:
-      model: openai/gpt-4.1
-      api_key: os.environ/OPENAI_API_KEY
-    rpm: 30
-  - model_name: shkandal-entity-resolution
-    litellm_params:
-      model: openai/gpt-4.1-mini
-      api_key: os.environ/OPENAI_API_KEY
-    rpm: 60
-  - model_name: shkandal-event-resolution
-    litellm_params:
-      model: openai/gpt-4.1-mini
-      api_key: os.environ/OPENAI_API_KEY
-    rpm: 60
-  - model_name: shkandal-repair
-    litellm_params:
-      model: openai/gpt-4.1-mini
-      api_key: os.environ/OPENAI_API_KEY
-    rpm: 60
+      model: bedrock/converse/google.gemma-3-27b-it
+      aws_region_name: os.environ/AWS_REGION
 
 litellm_settings:
   drop_params: true
+
+router_settings:
+  num_retries: 1
+  retry_policy:
+    BadRequestErrorRetries: 0
+    AuthenticationErrorRetries: 0
+    TimeoutErrorRetries: 1
+    RateLimitErrorRetries: 0
+    ContentPolicyViolationErrorRetries: 0
+    InternalServerErrorRetries: 1
+  allowed_fails: 3
+  allowed_fails_policy:
+    BadRequestErrorAllowedFails: 3
+    AuthenticationErrorAllowedFails: 3
+    TimeoutErrorAllowedFails: 3
+    RateLimitErrorAllowedFails: 3
+    ContentPolicyViolationErrorAllowedFails: 3
+    InternalServerErrorAllowedFails: 3
+  cooldown_time: 3600
+  model_group_alias:
+    shkandal-article-card: shkandal-lapatonia-primary
+    shkandal-case-resolution: shkandal-lapatonia-primary
+    shkandal-entity-resolution: shkandal-lapatonia-primary
+    shkandal-event-resolution: shkandal-lapatonia-primary
+    shkandal-case-copy-update: shkandal-lapatonia-primary
+    shkandal-case-coherence-audit: shkandal-lapatonia-primary
+    shkandal-case-public-interest-audit: shkandal-lapatonia-primary
+    shkandal-case-duplicate-audit: shkandal-lapatonia-primary
+    shkandal-repair: shkandal-lapatonia-primary

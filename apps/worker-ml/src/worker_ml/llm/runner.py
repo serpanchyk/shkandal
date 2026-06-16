@@ -3,32 +3,64 @@
 from __future__ import annotations
 
 import json
+import logging
+import time
 from collections.abc import Mapping
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from typing import Any, Protocol, TypeVar, cast
+from uuid import UUID
 
 from langchain_core.output_parsers import StrOutputParser
 from langchain_openai import ChatOpenAI
+from openai import RateLimitError
 from pydantic import BaseModel, SecretStr, ValidationError
 
 from worker_ml.config import MlConfig
-from worker_ml.llm.contracts import (
-    ArticleCardOutput,
-    CaseResolutionOutput,
-    EntityResolutionOutput,
-    EventResolutionOutput,
-    LlmRunType,
-)
+from worker_ml.llm.contracts import LlmRunType
+from worker_ml.llm.normalization import NormalizationResult
 from worker_ml.llm.prompts import PromptRegistry
 from worker_ml.llm.runs import LlmRunStore
+from worker_ml.llm.schema import runtime_schema_json
+from worker_ml.llm.tasks import LLM_TASKS
 
 OutputT = TypeVar("OutputT", bound=BaseModel)
+logger = logging.getLogger(__name__)
 
-RUN_TYPE_MODELS: dict[LlmRunType, type[BaseModel]] = {
-    "article_card": ArticleCardOutput,
-    "case_resolution": CaseResolutionOutput,
-    "entity_resolution": EntityResolutionOutput,
-    "event_resolution": EventResolutionOutput,
-}
+
+class LlmRateLimitError(RuntimeError):
+    """Provider rate limit with the requested retry time."""
+
+    def __init__(self, message: str, *, retry_after_seconds: int | None) -> None:
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
+
+
+@dataclass(frozen=True)
+class LlmTaskResult:
+    """Validated LLM output and its persisted run provenance."""
+
+    output: BaseModel
+    run_id: UUID | None
+
+
+@dataclass(frozen=True)
+class JsonParseResult:
+    """Parsed JSON plus any narrowly applied syntax recovery."""
+
+    value: Any
+    repaired_unescaped_control_characters: bool = False
+
+
+@dataclass(frozen=True)
+class RepairAttempt:
+    """One repair response and its validation diagnostics."""
+
+    output: Any | None
+    raw_text: str | None
+    error: str | None
+    schema_echo: bool = False
 
 
 class AsyncTextChain(Protocol):
@@ -36,6 +68,13 @@ class AsyncTextChain(Protocol):
 
     async def ainvoke(self, input: Mapping[str, Any]) -> Any:
         """Invoke the chain asynchronously."""
+
+
+class LlmCooldownObserver(Protocol):
+    """Cooldown operation triggered by a successful provider request."""
+
+    async def clear_expired_ambiguous_observation(self) -> None:
+        """Clear expired ambiguous rate-limit evidence."""
 
 
 def create_litellm_chat_model(*, settings: MlConfig, model_name: str) -> ChatOpenAI:
@@ -46,6 +85,8 @@ def create_litellm_chat_model(*, settings: MlConfig, model_name: str) -> ChatOpe
         api_key=SecretStr(settings.llm_api_key),
         base_url=settings.llm_api_base,
         temperature=0,
+        max_retries=0,
+        timeout=settings.llm_request_timeout_seconds,
     )
 
 
@@ -59,11 +100,13 @@ class LlmTaskRunner:
         run_store: LlmRunStore | None = None,
         task_chains: Mapping[str, AsyncTextChain] | None = None,
         repair_chain: AsyncTextChain | None = None,
+        cooldown_observer: LlmCooldownObserver | None = None,
     ) -> None:
         self._prompt_registry = prompt_registry
         self._run_store = run_store
         self._task_chains = dict(task_chains or {})
         self._repair_chain = repair_chain
+        self._cooldown_observer = cooldown_observer
 
     @classmethod
     def from_config(
@@ -72,6 +115,7 @@ class LlmTaskRunner:
         settings: MlConfig,
         run_store: LlmRunStore | None = None,
         prompt_registry: PromptRegistry | None = None,
+        cooldown_observer: LlmCooldownObserver | None = None,
     ) -> LlmTaskRunner:
         """Create a production runner using LangChain and LiteLLM proxy."""
 
@@ -98,6 +142,7 @@ class LlmTaskRunner:
             run_store=run_store,
             task_chains=task_chains,
             repair_chain=repair_chain,
+            cooldown_observer=cooldown_observer,
         )
 
     async def run(
@@ -110,7 +155,27 @@ class LlmTaskRunner:
     ) -> BaseModel:
         """Run an LLM task, validate output, and repair invalid output once."""
 
-        output_model = RUN_TYPE_MODELS[run_type]
+        return (
+            await self.run_with_provenance(
+                run_type=run_type,
+                model_name=model_name,
+                variables=variables,
+                metadata=metadata,
+            )
+        ).output
+
+    async def run_with_provenance(
+        self,
+        *,
+        run_type: LlmRunType,
+        model_name: str,
+        variables: Mapping[str, Any],
+        metadata: dict[str, Any] | None = None,
+    ) -> LlmTaskResult:
+        """Run an LLM task and return validated output with run provenance."""
+
+        task = LLM_TASKS[run_type]
+        output_model = task.output_model
         prompt = self._prompt_registry.get(run_type)
         run_id = None
         if self._run_store is not None:
@@ -123,47 +188,159 @@ class LlmTaskRunner:
             )
 
         raw_text = ""
-        raw_json: dict[str, Any] | None = None
+        raw_json: Any = None
+        normalized: NormalizationResult | None = None
+        parse_repaired = False
+        request_duration_seconds: float | None = None
+        repair_duration_seconds: float | None = None
         try:
-            raw_text = str(await self._chain_for(run_type).ainvoke(dict(variables)))
-            raw_json = parse_json_object(raw_text)
-            parsed = output_model.model_validate(raw_json)
-        except (ValueError, ValidationError) as exc:
-            repaired_json, repair_error = await self._repair(
-                output_model=output_model,
-                validation_error=str(exc),
-                invalid_output=raw_text,
+            request_started_at = time.monotonic()
+            raw_text = str(await invoke_chain(self._chain_for(run_type), dict(variables)))
+            request_duration_seconds = time.monotonic() - request_started_at
+            await self._record_successful_request()
+            parse_result = _parse_json_response(raw_text, allow_array=task.allow_top_level_array)
+            raw_json = parse_result.value
+            parse_repaired = parse_result.repaired_unescaped_control_characters
+            normalized = task.normalize(
+                run_type=run_type,
+                output=raw_json,
+                variables=variables,
             )
-            if repaired_json is None:
+            parsed = output_model.model_validate(normalized.output)
+            _validate_resolution_coverage(
+                run_type=run_type, output=normalized.output, variables=variables
+            )
+        except (ValueError, ValidationError) as exc:
+            try:
+                repair_started_at = time.monotonic()
+                repair_attempt = await self._repair(
+                    run_type=run_type,
+                    output_model=output_model,
+                    validation_error=str(exc),
+                    invalid_output=raw_text,
+                    variables=variables,
+                )
+                repair_duration_seconds = time.monotonic() - repair_started_at
+            except LlmRateLimitError as rate_limit_exc:
+                await self._finish_rate_limited_run(
+                    run_id=run_id,
+                    raw_text=raw_text,
+                    raw_json=raw_json,
+                    error=rate_limit_exc,
+                    metadata=_timing_metadata(
+                        metadata,
+                        request_duration_seconds=request_duration_seconds,
+                        repair_duration_seconds=repair_duration_seconds,
+                    ),
+                )
+                raise
+            if repair_attempt.output is None:
+                fallback = task.invalid_output_fallback(repair_attempt.error or str(exc))
+                failure_metadata = _repair_failure_metadata(
+                    metadata,
+                    repair_attempt,
+                    request_duration_seconds=request_duration_seconds,
+                    repair_duration_seconds=repair_duration_seconds,
+                )
+                if fallback is not None:
+                    fallback_reason = repair_attempt.error or str(exc)
+                    fallback_metadata = {
+                        **failure_metadata,
+                        "audit_fallback_reason": fallback_reason,
+                    }
+                    logger.warning(
+                        "worker_ml_llm_audit_inconclusive_fallback",
+                        extra={
+                            "run_type": run_type,
+                            "run_id": str(run_id) if run_id else None,
+                            "reason": fallback_reason,
+                        },
+                    )
+                    if self._run_store is not None and run_id is not None:
+                        await self._run_store.finish_run(
+                            run_id=run_id,
+                            status="repaired",
+                            raw_output=_raw_provenance(raw_text, raw_json, parse_repaired),
+                            repaired_output=fallback.model_dump(mode="json"),
+                            metadata=fallback_metadata,
+                        )
+                    return LlmTaskResult(output=fallback, run_id=run_id)
                 if self._run_store is not None and run_id is not None:
                     await self._run_store.finish_run(
                         run_id=run_id,
                         status="failed",
-                        raw_output=raw_json or {"text": raw_text},
-                        error_message=repair_error or str(exc),
-                        metadata=metadata,
+                        raw_output=_raw_provenance(raw_text, raw_json, parse_repaired),
+                        error_message=repair_attempt.error or str(exc),
+                        metadata=failure_metadata,
                     )
-                raise ValueError(repair_error or str(exc)) from exc
+                raise ValueError(repair_attempt.error or str(exc)) from exc
 
-            parsed = output_model.model_validate(repaired_json)
+            normalized = task.normalize(
+                run_type=run_type,
+                output=repair_attempt.output,
+                variables=variables,
+            )
+            parsed = output_model.model_validate(normalized.output)
             if self._run_store is not None and run_id is not None:
                 await self._run_store.finish_run(
                     run_id=run_id,
                     status="repaired",
-                    raw_output=raw_json or {"text": raw_text},
-                    repaired_output=repaired_json,
-                    metadata=metadata,
+                    raw_output=_raw_provenance(raw_text, raw_json, parse_repaired),
+                    repaired_output=normalized.output,
+                    metadata=_timing_metadata(
+                        _normalization_metadata(metadata, normalized.actions),
+                        request_duration_seconds=request_duration_seconds,
+                        repair_duration_seconds=repair_duration_seconds,
+                    ),
                 )
-            return parsed
+            return LlmTaskResult(output=parsed, run_id=run_id)
+        except Exception as exc:
+            if self._run_store is not None and run_id is not None:
+                if request_duration_seconds is None:
+                    request_duration_seconds = time.monotonic() - request_started_at
+                failed_metadata = _timing_metadata(
+                    metadata,
+                    request_duration_seconds=request_duration_seconds,
+                    repair_duration_seconds=repair_duration_seconds,
+                )
+                if isinstance(exc, LlmRateLimitError):
+                    failed_metadata = {
+                        **failed_metadata,
+                        "rate_limited": True,
+                        "retry_after_seconds": exc.retry_after_seconds,
+                    }
+                await self._run_store.finish_run(
+                    run_id=run_id,
+                    status="failed",
+                    raw_output=_raw_provenance(raw_text, raw_json, parse_repaired),
+                    error_message=str(exc),
+                    metadata=failed_metadata,
+                )
+            raise
 
         if self._run_store is not None and run_id is not None:
+            was_normalized = normalized is not None and bool(normalized.actions)
+            was_repaired = parse_repaired or was_normalized
+            success_metadata = _normalization_metadata(
+                metadata, normalized.actions if normalized else []
+            )
+            if parse_repaired:
+                success_metadata = {
+                    **success_metadata,
+                    "parse_repair": "unescaped_control_characters",
+                }
             await self._run_store.finish_run(
                 run_id=run_id,
-                status="succeeded",
-                raw_output=raw_json,
-                metadata=metadata,
+                status="repaired" if was_repaired else "succeeded",
+                raw_output=_raw_provenance(raw_text, raw_json, parse_repaired),
+                repaired_output=normalized.output if was_repaired else None,
+                metadata=_timing_metadata(
+                    success_metadata,
+                    request_duration_seconds=request_duration_seconds,
+                    repair_duration_seconds=repair_duration_seconds,
+                ),
             )
-        return parsed
+        return LlmTaskResult(output=parsed, run_id=run_id)
 
     def _chain_for(self, run_type: LlmRunType) -> AsyncTextChain:
         try:
@@ -174,31 +351,78 @@ class LlmTaskRunner:
     async def _repair(
         self,
         *,
+        run_type: LlmRunType,
         output_model: type[BaseModel],
         validation_error: str,
         invalid_output: str,
-    ) -> tuple[dict[str, Any] | None, str | None]:
+        variables: Mapping[str, Any],
+    ) -> RepairAttempt:
         if self._repair_chain is None:
-            return None, validation_error
+            return RepairAttempt(None, None, validation_error)
 
+        repaired_text = ""
         try:
             repaired_text = str(
-                await self._repair_chain.ainvoke(
+                await invoke_chain(
+                    self._repair_chain,
                     {
-                        "schema_json": json.dumps(
-                            output_model.model_json_schema(),
-                            ensure_ascii=False,
-                        ),
+                        "schema_json": runtime_schema_json(output_model),
                         "validation_error": validation_error,
                         "invalid_output": invalid_output,
-                    }
+                    },
                 )
             )
-            repaired_json = parse_json_object(repaired_text)
-            output_model.model_validate(repaired_json)
-            return repaired_json, None
+            await self._record_successful_request()
+            task = LLM_TASKS[run_type]
+            repaired_json = parse_json_response(
+                repaired_text, allow_array=task.allow_top_level_array
+            )
+            if _is_schema_echo(repaired_json):
+                return RepairAttempt(
+                    None,
+                    repaired_text,
+                    "repair response echoed JSON schema",
+                    schema_echo=True,
+                )
+            normalized = task.normalize(
+                run_type=run_type,
+                output=repaired_json,
+                variables=variables,
+            )
+            output_model.model_validate(normalized.output)
+            _validate_resolution_coverage(
+                run_type=run_type, output=normalized.output, variables=variables
+            )
+            return RepairAttempt(repaired_json, repaired_text, None)
         except (ValueError, ValidationError) as exc:
-            return None, str(exc)
+            return RepairAttempt(None, repaired_text, str(exc))
+
+    async def _record_successful_request(self) -> None:
+        if self._cooldown_observer is not None:
+            await self._cooldown_observer.clear_expired_ambiguous_observation()
+
+    async def _finish_rate_limited_run(
+        self,
+        *,
+        run_id: UUID | None,
+        raw_text: str,
+        raw_json: dict[str, Any] | None,
+        error: LlmRateLimitError,
+        metadata: dict[str, Any] | None,
+    ) -> None:
+        if self._run_store is None or run_id is None:
+            return
+        await self._run_store.finish_run(
+            run_id=run_id,
+            status="failed",
+            raw_output=raw_json or {"text": raw_text},
+            error_message=str(error),
+            metadata={
+                **(metadata or {}),
+                "rate_limited": True,
+                "retry_after_seconds": error.retry_after_seconds,
+            },
+        )
 
 
 def model_aliases(settings: MlConfig) -> dict[str, str]:
@@ -207,8 +431,13 @@ def model_aliases(settings: MlConfig) -> dict[str, str]:
     return {
         "article_card": settings.llm_article_card_model,
         "case_resolution": settings.llm_case_resolution_model,
+        "case_link_audit": settings.llm_case_coherence_audit_model,
         "entity_resolution": settings.llm_entity_resolution_model,
         "event_resolution": settings.llm_event_resolution_model,
+        "case_copy_update": settings.llm_case_copy_update_model,
+        "case_coherence_audit": settings.llm_case_coherence_audit_model,
+        "case_public_interest_audit": settings.llm_case_public_interest_audit_model,
+        "case_duplicate_audit": settings.llm_case_duplicate_audit_model,
         "repair": settings.llm_repair_model,
     }
 
@@ -216,11 +445,187 @@ def model_aliases(settings: MlConfig) -> dict[str, str]:
 def parse_json_object(text: str) -> dict[str, Any]:
     """Parse an LLM response that must contain one JSON object."""
 
+    value = parse_json_response(text, allow_array=False)
+    if not isinstance(value, dict):
+        raise ValueError("LLM output must be a JSON object")
+    return value
+
+
+def parse_json_response(text: str, *, allow_array: bool) -> Any:
+    """Parse an LLM response as JSON, optionally allowing a top-level array."""
+
+    return _parse_json_response(text, allow_array=allow_array).value
+
+
+def _parse_json_response(text: str, *, allow_array: bool) -> JsonParseResult:
+    """Parse JSON with a fallback only for unescaped control characters."""
+
     stripped = text.strip()
     if stripped.startswith("```"):
         stripped = stripped.removeprefix("```json").removeprefix("```").strip()
         stripped = stripped.removesuffix("```").strip()
-    value = json.loads(stripped)
-    if not isinstance(value, dict):
+    repaired_control_characters = False
+    try:
+        value = json.loads(stripped)
+    except json.JSONDecodeError as exc:
+        if not exc.msg.startswith("Invalid control character"):
+            raise
+        value = json.loads(stripped, strict=False)
+        repaired_control_characters = True
+    if not allow_array and not isinstance(value, dict):
         raise ValueError("LLM output must be a JSON object")
-    return value
+    if allow_array and not isinstance(value, (dict, list)):
+        raise ValueError("LLM output must be a JSON object or array")
+    return JsonParseResult(value, repaired_control_characters)
+
+
+def _is_schema_echo(value: Any) -> bool:
+    """Detect repair responses that return a JSON Schema instead of task output."""
+
+    return isinstance(value, dict) and (
+        "$schema" in value
+        or "$defs" in value
+        or (value.get("type") in {"object", "array"} and isinstance(value.get("properties"), dict))
+    )
+
+
+def _repair_failure_metadata(
+    metadata: dict[str, Any] | None,
+    attempt: RepairAttempt,
+    *,
+    request_duration_seconds: float | None,
+    repair_duration_seconds: float | None,
+) -> dict[str, Any]:
+    result = _timing_metadata(
+        metadata,
+        request_duration_seconds=request_duration_seconds,
+        repair_duration_seconds=repair_duration_seconds,
+    )
+    if attempt.raw_text is not None:
+        result["repair_attempt_output"] = attempt.raw_text
+    if attempt.schema_echo:
+        result["schema_echo"] = True
+    if attempt.error:
+        result["repair_failure_reason"] = attempt.error
+    return result
+
+
+def _raw_provenance(raw_text: str, raw_json: Any, preserve_text: bool) -> Any:
+    """Return exact provider text when parsing required syntax recovery."""
+
+    return {"text": raw_text} if preserve_text or raw_json is None else raw_json
+
+
+def _validate_resolution_coverage(
+    *,
+    run_type: LlmRunType,
+    output: Mapping[str, Any],
+    variables: Mapping[str, Any],
+) -> None:
+    if run_type not in {"entity_resolution", "event_resolution"}:
+        return
+
+    decisions_key = "entities" if run_type == "entity_resolution" else "events"
+    expected_refs = _expected_resolution_refs(variables)
+    decisions = output.get(decisions_key)
+    actual_refs: list[str] = []
+    if isinstance(decisions, list):
+        for decision in decisions:
+            if isinstance(decision, dict):
+                ref = decision.get("provisional_ref")
+                if isinstance(ref, str):
+                    actual_refs.append(ref)
+
+    expected_set = set(expected_refs)
+    actual_set = set(actual_refs)
+    if actual_set == expected_set and len(actual_refs) == len(expected_refs):
+        return
+
+    missing = [ref for ref in expected_refs if ref not in actual_set]
+    unexpected = [ref for ref in actual_refs if ref not in expected_set]
+    details = []
+    if missing:
+        details.append(f"missing={missing}")
+    if unexpected:
+        details.append(f"unexpected={unexpected}")
+    if len(actual_refs) != len(expected_refs) and not details:
+        details.append(f"expected={len(expected_refs)} actual={len(actual_refs)}")
+    raise ValueError(
+        "resolution decisions must exactly cover provisional refs"
+        + (f" ({'; '.join(details)})" if details else "")
+    )
+
+
+def _expected_resolution_refs(variables: Mapping[str, Any]) -> list[str]:
+    value = variables.get("resolution_json")
+    if not isinstance(value, str):
+        return []
+    try:
+        payload = json.loads(value)
+    except json.JSONDecodeError:
+        return []
+    items = payload.get("items") if isinstance(payload, dict) else None
+    if not isinstance(items, list):
+        return []
+    refs: list[str] = []
+    for item in items:
+        provisional = item.get("provisional") if isinstance(item, dict) else None
+        ref = provisional.get("provisional_ref") if isinstance(provisional, dict) else None
+        if not isinstance(ref, str):
+            return []
+        refs.append(ref)
+    return refs
+
+
+def _timing_metadata(
+    metadata: dict[str, Any] | None,
+    *,
+    request_duration_seconds: float | None,
+    repair_duration_seconds: float | None,
+) -> dict[str, Any]:
+    values = dict(metadata or {})
+    if request_duration_seconds is not None:
+        values["request_duration_seconds"] = round(request_duration_seconds, 6)
+    if repair_duration_seconds is not None:
+        values["repair_duration_seconds"] = round(repair_duration_seconds, 6)
+    return values
+
+
+def _normalization_metadata(
+    metadata: dict[str, Any] | None,
+    actions: list[str],
+) -> dict[str, Any]:
+    values = dict(metadata or {})
+    if actions:
+        values["normalization_actions"] = actions
+    return values
+
+
+async def invoke_chain(chain: AsyncTextChain, variables: Mapping[str, Any]) -> Any:
+    """Invoke an LLM chain and normalize provider rate-limit failures."""
+
+    try:
+        return await chain.ainvoke(variables)
+    except RateLimitError as exc:
+        raise LlmRateLimitError(
+            str(exc),
+            retry_after_seconds=parse_retry_after_seconds(exc),
+        ) from exc
+
+
+def parse_retry_after_seconds(error: RateLimitError) -> int | None:
+    """Return a usable provider Retry-After duration, if supplied."""
+
+    value = error.response.headers.get("retry-after")
+    if value is None:
+        return None
+    try:
+        return max(1, int(float(value)))
+    except ValueError:
+        try:
+            retry_at = parsedate_to_datetime(value)
+        except (TypeError, ValueError):
+            return None
+        if retry_at.tzinfo is None:
+            retry_at = retry_at.replace(tzinfo=UTC)
+        return max(1, int((retry_at - datetime.now(UTC)).total_seconds()))
