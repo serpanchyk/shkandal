@@ -336,12 +336,10 @@ class CaseCopyTitleDiagnosis(StrictOutput):
     )
     replacement_needed_reason_uk: str | None = Field(
         default=None,
-        max_length=240,
         description="Короткий факт, чому поточну назву потрібно замінити, якщо це потрібно.",
     )
     proposed_title_core_uk: str | None = Field(
         default=None,
-        max_length=240,
         description="Коротке ядро стабільної замінної назви, якщо її пропонують.",
     )
 
@@ -362,7 +360,6 @@ class CaseCopyUpdateOutput(StrictOutput):
     )
     title_reason_uk: str = Field(
         min_length=1,
-        max_length=320,
         description="Фактична підстава зберегти або замінити поточний заголовок справи.",
     )
     title_action: Literal["keep", "replace"] = Field(

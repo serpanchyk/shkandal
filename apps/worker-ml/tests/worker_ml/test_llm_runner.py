@@ -16,6 +16,7 @@ from worker_ml.config import MlConfig
 from worker_ml.llm.contracts import (
     ArticleCardOutput,
     CaseCoherenceAuditOutput,
+    CaseCopyUpdateOutput,
     CaseDuplicateAuditOutput,
     CaseLinkAuditOutput,
     CasePublicInterestAuditOutput,
@@ -357,6 +358,44 @@ async def test_runner_fails_after_invalid_repair() -> None:
             model_name="shkandal-article-card",
             variables={"article_json": "{}", "schema_json": "{}"},
         )
+
+
+@pytest.mark.asyncio
+async def test_case_copy_update_accepts_long_rationale_fields() -> None:
+    long_reason = "Поточна назва надто вузько описує один епізод. " * 20
+    long_core = "Стійке ядро назви зберігає центральний сюжет справи. " * 12
+    runner = LlmTaskRunner(
+        prompt_registry=PromptRegistry(),
+        task_chains={
+            "case_copy_update": FakeChain(
+                json.dumps(
+                    {
+                        "title_diagnosis": {
+                            "current_title_specific_enough": False,
+                            "replacement_needed_reason_uk": long_reason,
+                            "proposed_title_core_uk": long_core,
+                        },
+                        "replacement_title_uk": "Справа про центральний сюжет",
+                        "summary_uk": "Нейтральний підсумок справи.",
+                        "title_reason_uk": long_reason,
+                        "title_action": "replace",
+                    },
+                    ensure_ascii=False,
+                )
+            )
+        },
+    )
+
+    result = await runner.run(
+        run_type="case_copy_update",
+        model_name="shkandal-case-copy-update",
+        variables={"case_json": "{}", "schema_json": "{}"},
+    )
+
+    output = cast(CaseCopyUpdateOutput, result)
+    assert output.title_reason_uk == long_reason
+    assert output.title_diagnosis.replacement_needed_reason_uk == long_reason
+    assert output.title_diagnosis.proposed_title_core_uk == long_core
 
 
 @pytest.mark.asyncio

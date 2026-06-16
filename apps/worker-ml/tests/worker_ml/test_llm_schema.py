@@ -88,6 +88,18 @@ def test_schema_exposes_diagnosis_objects_and_terminal_choice_fields() -> None:
     assert "title_diagnosis" in copy_properties
 
 
+def test_case_copy_prompt_schema_does_not_cap_internal_rationale_lengths() -> None:
+    schema = prompt_schema(CaseCopyUpdateOutput)
+    diagnosis_properties = schema["$defs"]["CaseCopyTitleDiagnosis"]["properties"]
+
+    replacement_reason = diagnosis_properties["replacement_needed_reason_uk"]["anyOf"][0]
+    proposed_title_core = diagnosis_properties["proposed_title_core_uk"]["anyOf"][0]
+
+    assert "maxLength" not in replacement_reason
+    assert "maxLength" not in proposed_title_core
+    assert "maxLength" not in schema["properties"]["title_reason_uk"]
+
+
 def test_prompt_schemas_describe_every_property() -> None:
     for model in LLM_OUTPUT_MODELS:
         missing_descriptions = _properties_without_descriptions(prompt_schema(model))

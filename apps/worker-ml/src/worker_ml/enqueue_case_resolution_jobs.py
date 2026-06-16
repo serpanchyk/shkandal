@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
+from itertools import islice
 
 from shkandal_database.config import DatabaseConfig
 from shkandal_database.jobs import ArticleJobStore
@@ -14,6 +16,20 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from worker_ml.runtime.planning import RESOLVE_ARTICLE_CASES_JOB
+
+DEFAULT_ENQUEUE_BATCH_SIZE = 5_000
+
+
+def batched[T](items: Iterable[T], size: int) -> Iterator[list[T]]:
+    """Yield items in fixed-size batches."""
+
+    if size < 1:
+        raise ValueError("batch size must be greater than zero")
+
+    iterator = iter(items)
+
+    while batch := list(islice(iterator, size)):
+        yield batch
 
 
 @dataclass(frozen=True)
@@ -39,11 +55,15 @@ async def enqueue_case_resolution_jobs(
     apply: bool,
     max_attempts: int = 3,
     limit: int | None = None,
+    batch_size: int = DEFAULT_ENQUEUE_BATCH_SIZE,
 ) -> CaseResolutionEnqueueStats:
     """Queue one Case-resolution job for each case-candidate Article Card."""
 
     if limit is not None and limit < 1:
         raise ValueError("limit must be greater than zero")
+
+    if batch_size < 1:
+        raise ValueError("batch_size must be greater than zero")
 
     async with session_factory() as session:
         query = (
@@ -51,22 +71,37 @@ async def enqueue_case_resolution_jobs(
             .where(ArticleCard.is_case_candidate.is_(True))
             .order_by(ArticleCard.created_at.asc(), ArticleCard.article_id.asc())
         )
+
         if limit is not None:
             query = query.limit(limit)
+
         article_ids = tuple((await session.scalars(query)).all())
 
-        if not apply:
-            existing_jobs = int(
-                await session.scalar(
-                    select(func.count())
-                    .select_from(Job)
-                    .where(
-                        Job.job_type == RESOLVE_ARTICLE_CASES_JOB,
-                        Job.article_id.in_(article_ids),
-                    )
-                )
-                or 0
+        if not article_ids:
+            return CaseResolutionEnqueueStats(
+                selected_cards=0,
+                inserted_jobs=0,
+                requeued_jobs=0,
+                existing_jobs=0,
+                applied=apply,
             )
+
+        if not apply:
+            existing_jobs = 0
+
+            for article_id_batch in batched(article_ids, batch_size):
+                existing_jobs += int(
+                    await session.scalar(
+                        select(func.count())
+                        .select_from(Job)
+                        .where(
+                            Job.job_type == RESOLVE_ARTICLE_CASES_JOB,
+                            Job.article_id.in_(article_id_batch),
+                        )
+                    )
+                    or 0
+                )
+
             return CaseResolutionEnqueueStats(
                 selected_cards=len(article_ids),
                 inserted_jobs=0,
@@ -76,16 +111,27 @@ async def enqueue_case_resolution_jobs(
             )
 
     job_store = ArticleJobStore(session_factory)
-    result = await job_store.enqueue_article_jobs(
-        job_type=RESOLVE_ARTICLE_CASES_JOB,
-        article_ids=list(article_ids),
-        max_attempts=max_attempts,
-    )
+
+    inserted_jobs = 0
+    requeued_jobs = 0
+    existing_jobs = 0
+
+    for article_id_batch in batched(article_ids, batch_size):
+        result = await job_store.enqueue_article_jobs(
+            job_type=RESOLVE_ARTICLE_CASES_JOB,
+            article_ids=article_id_batch,
+            max_attempts=max_attempts,
+        )
+
+        inserted_jobs += result.inserted_jobs
+        requeued_jobs += result.requeued_jobs
+        existing_jobs += result.existing_jobs
+
     return CaseResolutionEnqueueStats(
         selected_cards=len(article_ids),
-        inserted_jobs=result.inserted_jobs,
-        requeued_jobs=result.requeued_jobs,
-        existing_jobs=result.existing_jobs,
+        inserted_jobs=inserted_jobs,
+        requeued_jobs=requeued_jobs,
+        existing_jobs=existing_jobs,
         applied=True,
     )
 
@@ -95,14 +141,17 @@ async def _run(
     apply: bool,
     max_attempts: int,
     limit: int | None,
+    batch_size: int,
 ) -> CaseResolutionEnqueueStats:
     engine = create_async_engine_from_config(DatabaseConfig())
+
     try:
         return await enqueue_case_resolution_jobs(
             create_async_sessionmaker(engine),
             apply=apply,
             max_attempts=max_attempts,
             limit=limit,
+            batch_size=batch_size,
         )
     finally:
         await engine.dispose()
@@ -115,15 +164,21 @@ def main() -> None:
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--max-attempts", type=int, default=3)
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--batch-size", type=int, default=DEFAULT_ENQUEUE_BATCH_SIZE)
+
     args = parser.parse_args()
+
     stats = asyncio.run(
         _run(
             apply=args.apply,
             max_attempts=args.max_attempts,
             limit=args.limit,
+            batch_size=args.batch_size,
         )
     )
+
     action = "queued" if stats.applied else "would queue"
+
     print(
         f"{action} {stats.ensured_jobs} {RESOLVE_ARTICLE_CASES_JOB} jobs "
         f"for {stats.selected_cards} case-candidate article cards "
