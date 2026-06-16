@@ -101,6 +101,13 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - Runtime configuration uses three ignored env files: root `.env` for shared
   application settings and proxy access, `infra/postgres/.env` for PostgreSQL
   bootstrap credentials, and `infra/litellm/.env` for provider API keys.
+- A separate `docker-compose.prod.yaml` provides the minimal public-web server
+  deployment. It runs only `caddy`, `frontend`, `backend`, `postgres`, and a
+  one-shot `migrate` job; only Caddy publishes ports `80` and `443`.
+- Production runtime configuration uses root `.env.production` for public-web
+  settings and `infra/postgres/.env.production` for PostgreSQL bootstrap
+  credentials. Caddy serves `:80` when `PUBLIC_HOSTNAME` is empty and switches
+  to hostname-based managed HTTPS when it is set.
 - DVC tracks large local model binaries under `artifacts/models/`; Git tracks
   manifests and `.dvc` pointer files. No shared DVC remote is configured yet.
 

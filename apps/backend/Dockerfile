@@ -20,11 +20,13 @@ FROM python:3.12-slim-bookworm
 
 WORKDIR /app
 
-COPY --from=builder /opt/venv /app/.venv
+COPY --from=builder /opt/venv /opt/venv
 COPY apps/backend/src ./src
 COPY apps/backend/config.yaml ./config.yaml
+COPY packages/database/alembic.ini ./packages/database/alembic.ini
+COPY packages/database/migrations ./packages/database/migrations
 
-ENV PATH="/app/.venv/bin:$PATH"
-ENV PYTHONPATH="/app/src"
+ENV PATH="/opt/venv/bin:$PATH"
+ENV PYTHONPATH="/app/src:/app/packages/database"
 
 CMD ["python", "-m", "shkandal_backend.main"]
