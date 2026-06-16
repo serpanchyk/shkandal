@@ -298,9 +298,15 @@ separate resulting Case instead of being detached.
 `worker_ml.enqueue_case_audits --rerun-coherent-successes` dry-runs a targeted
 selection of active Cases whose latest coherence audit is `coherent` and whose
 coherence job succeeded; `--apply` requests a fresh job revision for that
-selection.
+selection. `worker_ml.enqueue_case_audits --rerun-public-interest` does the
+same for active Case public-interest audits regardless of the prior result, so
+prompt or contract tightening can be backfilled across the current active set.
 Public-interest audits permanently hide routine incidents, isolated headlines,
 and broad topic umbrellas while preserving their complete internal dossiers.
+Routine `ДТП`, domestic violence, child abuse, and other local crime stories
+stay hidden unless the provided context already shows a clear institutional,
+political, corruption, or national-resonance dimension with observable
+continuing consequences.
 Duplicate audits review explicit
 `possible_duplicate` relations and pairs sharing at least two Articles that
 cover at least half of the smaller Case. A merge preserves the Case with the

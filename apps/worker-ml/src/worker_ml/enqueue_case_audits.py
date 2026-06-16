@@ -1,4 +1,4 @@
-"""Dry-run-first Case coherence audit enqueueing and targeted reruns."""
+"""Dry-run-first Case audit enqueueing and targeted reruns."""
 
 from __future__ import annotations
 
@@ -15,8 +15,14 @@ from worker_ml.config import MlConfig
 from worker_ml.runtime.planning import MlJobPlanner
 
 
-async def run(*, apply: bool, limit: int | None, rerun_coherent_successes: bool) -> None:
-    """Report or enqueue due active Cases or targeted coherent reruns."""
+async def run(
+    *,
+    apply: bool,
+    limit: int | None,
+    rerun_coherent_successes: bool,
+    rerun_public_interest: bool,
+) -> None:
+    """Report or enqueue due active Cases or targeted reruns."""
 
     settings = MlConfig()
     engine = create_async_engine_from_config(
@@ -33,6 +39,14 @@ async def run(*, apply: bool, limit: int | None, rerun_coherent_successes: bool)
                     )
                 )
             print(f"coherent successful audit reruns selected: {selected or 0}")
+        elif rerun_public_interest:
+            async with session_factory() as session:
+                selected = await session.scalar(
+                    select(func.count()).select_from(
+                        planner._active_case_public_interest_rerun_query(limit=limit).subquery()
+                    )
+                )
+            print(f"active Case public-interest reruns selected: {selected or 0}")
         else:
             selected_limit = limit or 5
             async with session_factory() as session:
@@ -56,6 +70,11 @@ async def run(*, apply: bool, limit: int | None, rerun_coherent_successes: bool)
                 limit=limit,
                 max_attempts=settings.job_max_attempts,
             )
+        elif rerun_public_interest:
+            stats = await planner.enqueue_active_case_public_interest_reruns(
+                limit=limit,
+                max_attempts=settings.job_max_attempts,
+            )
         else:
             stats = await planner.enqueue_due_case_audit_jobs(
                 limit=limit or 5,
@@ -71,7 +90,7 @@ async def run(*, apply: bool, limit: int | None, rerun_coherent_successes: bool)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Enqueue Case coherence audits.")
+    parser = argparse.ArgumentParser(description="Enqueue Case audits.")
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--limit", type=int)
     parser.add_argument(
@@ -79,13 +98,21 @@ def main() -> None:
         action="store_true",
         help="rerun active Cases whose latest audit is coherent and job succeeded",
     )
+    parser.add_argument(
+        "--rerun-public-interest",
+        action="store_true",
+        help="rerun public-interest audits for active Cases regardless of prior result",
+    )
     args = parser.parse_args()
+    if args.rerun_coherent_successes and args.rerun_public_interest:
+        parser.error("choose only one rerun mode")
     limit = max(1, args.limit) if args.limit is not None else None
     asyncio.run(
         run(
             apply=args.apply,
             limit=limit,
             rerun_coherent_successes=args.rerun_coherent_successes,
+            rerun_public_interest=args.rerun_public_interest,
         )
     )
 

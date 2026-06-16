@@ -59,7 +59,7 @@ PROMPTS: dict[str, PromptDefinition] = {
     ),
     "case_public_interest_audit": PromptDefinition(
         name="case_public_interest_audit",
-        version="2026-06-15-4",
+        version="2026-06-16-1",
         filename="case_public_interest_audit.uk.md",
         input_variables=("case_json", "schema_json"),
     ),

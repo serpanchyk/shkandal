@@ -47,3 +47,15 @@ def test_prompts_no_longer_use_old_reason_then_choose_pattern() -> None:
         "event_resolution",
     ):
         assert legacy_pattern.search(registry.load_text(name)) is None
+
+
+def test_public_interest_prompt_blacklists_routine_crime_topics() -> None:
+    prompt = PromptRegistry().load_text("case_public_interest_audit")
+
+    assert "усіх звичайних `ДТП`" in prompt
+    assert "домашнє насильство" in prompt
+    assert "жорстоке поводження з дітьми" in prompt
+    assert (
+        "не є\n`public_interest_anchor_uk`" in prompt
+        or "не є `public_interest_anchor_uk`" in prompt
+    )

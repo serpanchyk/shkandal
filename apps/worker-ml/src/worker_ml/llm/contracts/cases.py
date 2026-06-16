@@ -8,6 +8,16 @@ from pydantic import Field, model_validator
 
 from worker_ml.llm.contracts.types import CaseRelationType, StrictOutput
 
+_SPECULATIVE_DURABILITY_MARKERS = (
+    "можлив",
+    "ймовір",
+    "може ",
+    "можуть",
+    "можна очікувати",
+    "очікується",
+    "потенцій",
+)
+
 
 class CaseCandidate(StrictOutput):
     """Candidate case retrieved before case resolution."""
@@ -314,7 +324,9 @@ class CaseCoherenceDiagnosis(StrictOutput):
     coherence_test_uk: str = Field(
         min_length=1,
         max_length=240,
-        description="Коротка відповідь на тест, чи всі статті можна описати одним конкретним реченням.",
+        description=(
+            "Коротка відповідь на тест, чи всі статті можна описати одним конкретним реченням."
+        ),
     )
 
 
@@ -429,6 +441,15 @@ class CasePublicInterestAuditOutput(StrictOutput):
                 raise ValueError("keep requires a concrete story core")
             if self.diagnosis.public_interest_anchor_uk is None:
                 raise ValueError("keep requires a public-interest anchor")
+            if self.diagnosis.durability_signal_uk is None:
+                raise ValueError("keep requires a durability signal")
+            if self.diagnosis.hide_signals_uk:
+                raise ValueError("keep cannot include hide signals")
+            durability = self.diagnosis.durability_signal_uk.casefold()
+            if any(marker in durability for marker in _SPECULATIVE_DURABILITY_MARKERS):
+                raise ValueError(
+                    "keep requires an observed durability signal, not a speculative one"
+                )
         if self.outcome == "hide" and not self.diagnosis.hide_signals_uk:
             raise ValueError("hide requires at least one hide signal")
         return self

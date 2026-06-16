@@ -10,6 +10,7 @@ from shkandal_database.jobs import ArticleJobStore, BulkEnqueueJobResult
 from worker_ml.articles.relevance import RelevanceModel, build_classifier_text
 from worker_ml.runtime.planning import (
     AUDIT_CASE_COHERENCE_JOB,
+    AUDIT_CASE_PUBLIC_INTEREST_JOB,
     CLASSIFY_ARTICLE_JOB,
     CREATE_ARTICLE_CARD_JOB,
     EnqueueStats,
@@ -203,6 +204,38 @@ async def test_job_planner_requests_new_revisions_for_coherent_successful_audits
     assert stats.requeued_jobs == 2
     assert all(
         call.kwargs["job_type"] == AUDIT_CASE_COHERENCE_JOB
+        for call in job_store.enqueue_case_job.await_args_list
+    )
+
+
+@pytest.mark.asyncio
+async def test_job_planner_requests_public_interest_reruns_for_active_cases() -> None:
+    case_ids = [uuid4(), uuid4()]
+    session = AsyncMock()
+    session.scalars = AsyncMock(return_value=SimpleNamespace(all=lambda: case_ids))
+    session_context = AsyncMock()
+    session_context.__aenter__.return_value = session
+    session_factory = Mock(return_value=session_context)
+    job_store = Mock(spec=ArticleJobStore)
+    job_store.enqueue_case_job = AsyncMock(
+        side_effect=[
+            SimpleNamespace(state="inserted"),
+            SimpleNamespace(state="requeued"),
+        ]
+    )
+
+    stats = await MlJobPlanner(
+        session_factory, job_store
+    ).enqueue_active_case_public_interest_reruns(
+        limit=2,
+        max_attempts=3,
+    )
+
+    assert stats.scanned_articles == 2
+    assert stats.inserted_jobs == 1
+    assert stats.requeued_jobs == 1
+    assert all(
+        call.kwargs["job_type"] == AUDIT_CASE_PUBLIC_INTEREST_JOB
         for call in job_store.enqueue_case_job.await_args_list
     )
 

@@ -12,6 +12,7 @@ from shkandal_database.models import (
     ArticleRelevance,
     Case,
     CaseCoherenceAudit,
+    CasePublicInterestAudit,
     Job,
 )
 from sqlalchemy import Select, or_, select
@@ -223,6 +224,41 @@ class MlJobPlanner:
             existing_jobs=len(states) - inserted - requeued,
         )
 
+    async def enqueue_active_case_public_interest_reruns(
+        self,
+        *,
+        limit: int | None,
+        max_attempts: int,
+    ) -> EnqueueStats:
+        """Request fresh public-interest audit revisions for active Cases."""
+
+        async with self._session_factory() as session:
+            case_ids = list(
+                (
+                    await session.scalars(
+                        self._active_case_public_interest_rerun_query(limit=limit)
+                    )
+                ).all()
+            )
+        states = [
+            await self._job_store.enqueue_case_job(
+                job_type=AUDIT_CASE_PUBLIC_INTEREST_JOB,
+                case_id=case_id,
+                payload={"case_id": str(case_id)},
+                max_attempts=max_attempts,
+            )
+            for case_id in case_ids
+        ]
+        inserted = sum(result.state == "inserted" for result in states)
+        requeued = sum(result.state == "requeued" for result in states)
+        return EnqueueStats(
+            scanned_articles=len(case_ids),
+            ensured_jobs=inserted + requeued,
+            inserted_jobs=inserted,
+            requeued_jobs=requeued,
+            existing_jobs=len(states) - inserted - requeued,
+        )
+
     @staticmethod
     def _coherent_successful_case_audit_rerun_query(
         *,
@@ -249,6 +285,31 @@ class MlJobPlanner:
                 CaseCoherenceAudit.outcome == "coherent",
             )
             .order_by(CaseCoherenceAudit.created_at.asc(), Case.created_at.asc())
+        )
+        return query.limit(limit) if limit is not None else query
+
+    @staticmethod
+    def _active_case_public_interest_rerun_query(
+        *,
+        limit: int | None,
+    ) -> Select[tuple[UUID]]:
+        latest_audit_id = (
+            select(CasePublicInterestAudit.id)
+            .where(CasePublicInterestAudit.case_id == Case.id)
+            .order_by(CasePublicInterestAudit.created_at.desc(), CasePublicInterestAudit.id.desc())
+            .limit(1)
+            .correlate(Case)
+            .scalar_subquery()
+        )
+        query = (
+            select(Case.id)
+            .outerjoin(CasePublicInterestAudit, CasePublicInterestAudit.id == latest_audit_id)
+            .where(Case.status == "active")
+            .order_by(
+                CasePublicInterestAudit.created_at.asc().nulls_first(),
+                Case.last_interest_audited_at.asc().nulls_first(),
+                Case.created_at.asc(),
+            )
         )
         return query.limit(limit) if limit is not None else query
 
