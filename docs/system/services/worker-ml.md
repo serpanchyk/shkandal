@@ -231,6 +231,9 @@ non-empty text and the configured vector size. `VectorIndexService` composes
 that embedder with the shared Qdrant case, entity, and event repositories for
 typed upsert and search operations. Article-card generation and resolution jobs
 are separate pipeline stages; Case, Entity, and Event resolution are implemented.
+`worker-ml` now loads that embedding stack lazily, so idle polling and
+non-retrieval jobs do not require the local embedding artifact directory to be
+present at process start.
 
 Each pass rotates through pipeline-priority order: article-card creation,
 Case-copy update, Case resolution, Entity resolution, Event resolution, then

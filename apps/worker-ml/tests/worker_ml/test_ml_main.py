@@ -15,6 +15,7 @@ from worker_ml.articles.cards import ArticleCardJobHandler
 from worker_ml.articles.relevance import ClassificationJobHandler, RelevanceModel
 from worker_ml.config import MlConfig
 from worker_ml.llm.runner import LlmRateLimitError
+from worker_ml.retrieval.embeddings import E5Embedder
 from worker_ml.runtime.execution import drain_backfill, run_cycle
 from worker_ml.runtime.planning import EnqueueStats, MlJobPlanner
 
@@ -959,6 +960,11 @@ async def test_worker_loop_sleeps_when_cycle_is_idle(monkeypatch: pytest.MonkeyP
     )
     sleep = AsyncMock()
     monkeypatch.setattr(RelevanceModel, "load", Mock())
+    monkeypatch.setattr(
+        E5Embedder,
+        "load",
+        Mock(side_effect=AssertionError("idle worker loop should not load embeddings")),
+    )
     monkeypatch.setattr(entrypoint, "create_async_engine_from_config", Mock(return_value=engine))
     monkeypatch.setattr(entrypoint, "create_async_sessionmaker", Mock())
     cooldown_store = Mock(spec=LlmCooldownStore)
