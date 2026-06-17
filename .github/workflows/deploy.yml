@@ -1,0 +1,83 @@
+name: Deploy Production
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: shkandal
+          POSTGRES_PASSWORD: shkandal_dev_password
+          POSTGRES_DB: shkandal
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U shkandal -d shkandal"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      POSTGRES_DATABASE_URL: postgresql://shkandal:shkandal_dev_password@localhost:5432/shkandal
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Check uv lock
+        run: uv lock --check
+
+      - name: Install Python dependencies
+        run: uv sync --frozen --all-packages
+
+      - name: Run pre-commit
+        run: uv run pre-commit run --all-files
+
+      - name: Pytest
+        run: uv run pytest
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install frontend dependencies
+        run: npm install
+        working-directory: apps/frontend
+
+      - name: Lint frontend
+        run: npm run lint
+        working-directory: apps/frontend
+
+      - name: Build frontend
+        run: npm run build
+        working-directory: apps/frontend
+
+      - name: Configure SSH
+        env:
+          DROPLET_HOST: ${{ secrets.DROPLET_HOST }}
+          DROPLET_SSH_KEY: ${{ secrets.DROPLET_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          install -m 600 /dev/null ~/.ssh/droplet_deploy_key
+          printf '%s\n' "${DROPLET_SSH_KEY}" > ~/.ssh/droplet_deploy_key
+          ssh-keyscan -H "${DROPLET_HOST}" >> ~/.ssh/known_hosts
+
+      - name: Deploy to Droplet
+        env:
+          DROPLET_APP_DIR: ${{ secrets.DROPLET_APP_DIR }}
+          DROPLET_HOST: ${{ secrets.DROPLET_HOST }}
+          DROPLET_USER: ${{ secrets.DROPLET_USER }}
+        run: |
+          ssh -i ~/.ssh/droplet_deploy_key -o IdentitiesOnly=yes "${DROPLET_USER}@${DROPLET_HOST}" \
+            "cd \"${DROPLET_APP_DIR}\" && bash ops/deploy-production"

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, cast
 from uuid import UUID, uuid4
@@ -34,6 +35,16 @@ from worker_ml.runtime.planning import (
     RESOLVE_ARTICLE_EVENTS_JOB,
     UPDATE_CASE_COPY_JOB,
 )
+
+CASE_CREATION_AFTER_DROPPED_LINKS_PROMPT = "case_creation_after_dropped_links"
+
+
+@dataclass(frozen=True)
+class RecheckedCaseResolution:
+    """Resolution output after link audits, plus optional fallback provenance."""
+
+    output: CaseResolutionOutput
+    run_id: UUID | None
 
 
 class ArticleCaseResolutionJobHandler:
@@ -111,21 +122,24 @@ class ArticleCaseResolutionJobHandler:
             output = _normalize_invalid_case_relations(output, candidate_ids)
             if output.outcome == "rejected":
                 return output
-            output = await self._recheck_existing_case_links(
+            rechecked = await self._recheck_existing_case_links_for_resolution(
                 session,
                 job=job,
                 article=article,
+                source=source,
                 card=card,
                 output=output,
                 candidates=candidates,
+                initial_run_id=result.run_id,
             )
+            output = rechecked.output
             if output.outcome == "rejected":
                 return output
             affected_case_ids = await self._persist_resolution(
                 session,
                 article=article,
                 output=output,
-                run_id=result.run_id,
+                run_id=rechecked.run_id,
                 candidate_ids=candidate_ids,
             )
             for case_id in affected_case_ids:
@@ -184,15 +198,50 @@ class ArticleCaseResolutionJobHandler:
         output: CaseResolutionOutput,
         candidates: list[dict[str, Any]],
     ) -> CaseResolutionOutput:
+        result = await self._recheck_existing_case_links_for_resolution(
+            session,
+            job=job,
+            article=article,
+            source=None,
+            card=card,
+            output=output,
+            candidates=candidates,
+            initial_run_id=None,
+        )
+        return result.output
+
+    async def _recheck_existing_case_links_for_resolution(
+        self,
+        session: AsyncSession,
+        *,
+        job: ClaimedJob,
+        article: Article,
+        source: Source | None,
+        card: ArticleCard,
+        output: CaseResolutionOutput,
+        candidates: list[dict[str, Any]],
+        initial_run_id: UUID | None,
+    ) -> RecheckedCaseResolution:
         if not output.existing_case_links:
-            return output
+            return RecheckedCaseResolution(output=output, run_id=initial_run_id)
         candidate_by_id = {candidate["case_id"]: candidate for candidate in candidates}
         kept_case_ids: set[str] = set()
         rechecked_links = []
+        dropped_link_audits: list[dict[str, Any]] = []
         for link in output.existing_case_links:
             case_id = UUID(link.case_id)
             case = await session.get(Case, case_id)
             if case is None or case.status != "active":
+                dropped_link_audits.append(
+                    {
+                        "case_id": link.case_id,
+                        "link_reason_uk": link.link_reason_uk,
+                        "confidence": link.confidence,
+                        "audit_outcome": "drop",
+                        "audit_reason_uk": "Candidate case is missing or inactive.",
+                        "candidate": candidate_by_id.get(link.case_id),
+                    }
+                )
                 continue
             linked_cards = await load_case_article_cards(session, case_id)
             decision = await self._run_case_link_audit(
@@ -204,6 +253,17 @@ class ArticleCaseResolutionJobHandler:
                 linked_cards=linked_cards,
             )
             if decision.outcome != "connect":
+                dropped_link_audits.append(
+                    {
+                        "case_id": link.case_id,
+                        "link_reason_uk": link.link_reason_uk,
+                        "confidence": link.confidence,
+                        "audit_outcome": decision.outcome,
+                        "audit_reason_uk": decision.reason_uk,
+                        "audit_diagnosis": decision.diagnosis.model_dump(mode="json"),
+                        "candidate": candidate_by_id[link.case_id],
+                    }
+                )
                 continue
             kept_case_ids.add(link.case_id)
             rechecked_links.append(link)
@@ -214,8 +274,61 @@ class ArticleCaseResolutionJobHandler:
             }
         )
         if filtered.existing_case_links or filtered.new_cases:
-            return filtered
-        return _reject_resolution_after_link_audit(output)
+            return RecheckedCaseResolution(output=filtered, run_id=initial_run_id)
+        if source is not None:
+            fallback = await self._run_new_case_fallback_after_dropped_links(
+                job=job,
+                article=article,
+                source=source,
+                card=card,
+                output=output,
+                candidates=candidates,
+                dropped_link_audits=dropped_link_audits,
+            )
+            if fallback.output.outcome == "resolved":
+                return fallback
+            return RecheckedCaseResolution(output=fallback.output, run_id=fallback.run_id)
+        return RecheckedCaseResolution(
+            output=_reject_resolution_after_link_audit(output),
+            run_id=initial_run_id,
+        )
+
+    async def _run_new_case_fallback_after_dropped_links(
+        self,
+        *,
+        job: ClaimedJob,
+        article: Article,
+        source: Source,
+        card: ArticleCard,
+        output: CaseResolutionOutput,
+        candidates: list[dict[str, Any]],
+        dropped_link_audits: list[dict[str, Any]],
+    ) -> RecheckedCaseResolution:
+        result = await self._runner.run_with_provenance(
+            run_type="case_resolution",
+            prompt_name=CASE_CREATION_AFTER_DROPPED_LINKS_PROMPT,
+            model_name=self._model_name,
+            variables={
+                "resolution_json": _dropped_link_fallback_json(
+                    article=article,
+                    source=source,
+                    card=card,
+                    original_output=output,
+                    candidates=candidates,
+                    dropped_link_audits=dropped_link_audits,
+                ),
+                "schema_json": prompt_schema_json(CaseResolutionOutput),
+            },
+            metadata={
+                "article_id": str(article.id),
+                "job_id": str(job.id),
+                "fallback_reason": "all_existing_case_links_dropped",
+                "dropped_existing_link_count": len(dropped_link_audits),
+            },
+        )
+        fallback_output = cast(CaseResolutionOutput, result.output)
+        _validate_dropped_link_fallback_output(fallback_output)
+        return RecheckedCaseResolution(output=fallback_output, run_id=result.run_id)
 
     async def _run_case_link_audit(
         self,
@@ -472,6 +585,64 @@ def _resolution_json(
         ensure_ascii=False,
         separators=(",", ":"),
     )
+
+
+def _dropped_link_fallback_json(
+    *,
+    article: Article,
+    source: Source,
+    card: ArticleCard,
+    original_output: CaseResolutionOutput,
+    candidates: list[dict[str, Any]],
+    dropped_link_audits: list[dict[str, Any]],
+) -> str:
+    return json.dumps(
+        {
+            "article": {
+                "article_id": str(article.id),
+                "source_title": article.title,
+                "url": article.url,
+                "published_at": article.published_at.isoformat() if article.published_at else None,
+                "source_name": source.name,
+                "source_slug": source.slug,
+                "card": {
+                    "title_uk": card.title_uk,
+                    "summary_uk": card.summary_uk,
+                    **card.card_json,
+                },
+            },
+            "original_case_resolution": {
+                "diagnosis": original_output.diagnosis.model_dump(mode="json"),
+                "decision_reason_uk": original_output.decision_reason_uk,
+                "existing_case_links": [
+                    link.model_dump(mode="json") for link in original_output.existing_case_links
+                ],
+                "new_cases": [
+                    decision.model_dump(mode="json") for decision in original_output.new_cases
+                ],
+                "case_relations": [
+                    relation.model_dump(mode="json") for relation in original_output.case_relations
+                ],
+            },
+            "rejected_candidate_cases": candidates,
+            "case_link_audit_outcomes": dropped_link_audits,
+            "fallback_instruction": (
+                "All proposed existing links were dropped by case_link_audit. "
+                "Create only genuinely new cases, or reject."
+            ),
+        },
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+
+def _validate_dropped_link_fallback_output(output: CaseResolutionOutput) -> None:
+    if output.existing_case_links:
+        raise ValueError("dropped-link fallback cannot return existing case links")
+    if output.case_relations:
+        raise ValueError("dropped-link fallback cannot return case relations")
+    if output.outcome == "resolved" and not output.new_cases:
+        raise ValueError("dropped-link fallback resolution must create a new case")
 
 
 def _relation_endpoint(
