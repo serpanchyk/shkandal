@@ -23,10 +23,10 @@ export function Footer() {
         <div className="footerLinks footerLinks--secondary">
           <a href="https://chat.whatsapp.com/GKLJlgZ5Fh8Fp4WGc6ThB6" {...externalLinkProps}>
             <span>Маєте ідеї або знайшли ваду?</span>{" "}
-            <span>Доєднуйтесь до спільноти у WhatsApp. ↗</span>
+            <span>Доєднуйтесь до спільноти у WhatsApp ↗</span>
           </a>
           <a href="https://www.linkedin.com/in/anton-mykhalchuk/" {...externalLinkProps}>
-            Розробник: Антон Михальчук. ↗
+            Розробник: Антон Михальчук ↗
           </a>
         </div>
       </div>
