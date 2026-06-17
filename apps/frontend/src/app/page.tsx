@@ -7,10 +7,10 @@ import { getCaseFeed, getLatestEvents, type CaseSort } from "@/lib/api";
 import { formatCount } from "@/lib/ukrainian";
 
 const sorts: Array<[CaseSort, string]> = [
-  ["trending", "у тренді"],
+  ["trending", "набирають обертів"],
   ["latest", "останні оновлення"],
-  ["newest", "нові справи"],
-  ["popular", "популярні"],
+  ["newest", "найновіші"],
+  ["popular", "найвідвідуваніші"],
   ["biggest", "найбільші"],
 ];
 
@@ -34,7 +34,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
     <main className="pageShell">
       <section className="feedIntro">
         <div>
-          <p className="kicker">від окремих новин — до живої хронології справи</p>
+          <p className="kicker">від окремих новин — до живого часопису</p>
           <h1 className="feedTitle">Справи, за якими варто стежити</h1>
         </div>
         <EventTicker events={events} />

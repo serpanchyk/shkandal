@@ -91,7 +91,7 @@ review and correction tooling are later quality layers, not blocking MVP stages.
   collection, and point context where available. Persisted job errors are never
   empty. An explicit dry-run-first worker-ML recovery command can requeue
   selected exhausted failures without changing successful domain output.
-- LLM calls go through a pinned LiteLLM proxy service. `worker-ml` uses logical per-stage aliases, while provider credentials, throttling, and routing belong to proxy configuration. The tracked proxy configuration maps every alias to one shared Lapatonia deployment with a combined 60 RPM limit and retries transient timeout/internal-server failures once. The Amazon Bedrock Gemma 3 27B model entry is retained but is not configured as a fallback. Four Lapatonia failures within one hour start a shared one-hour in-memory cooldown; restarting `llm-proxy` clears it. No secrets are committed.
+- LLM calls go through a pinned LiteLLM proxy service. `worker-ml` uses logical per-stage aliases, while provider credentials, throttling, and routing belong to proxy configuration. The tracked proxy configuration maps every alias to one shared Lapathoniia deployment with a combined 60 RPM limit and retries transient timeout/internal-server failures once. The Amazon Bedrock Gemma 3 27B model entry is retained but is not configured as a fallback. Four Lapathoniia failures within one hour start a shared one-hour in-memory cooldown; restarting `llm-proxy` clears it. No secrets are committed.
 - Provider HTTP `429` responses that remain after LiteLLM routing
   create a shared durable LLM cooldown. The current LLM job is deferred without
   consuming an attempt and the ML pass exits.
