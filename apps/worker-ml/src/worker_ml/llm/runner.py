@@ -127,20 +127,12 @@ class LlmTaskRunner:
                 run_type: _task_chain(
                     registry=registry,
                     run_type=cast(LlmRunType, run_type),
-                    prompt_name=run_type,
                     settings=settings,
                     model_name=model_name,
                 )
                 for run_type, model_name in aliases.items()
                 if run_type != "repair"
             },
-        )
-        task_chains["case_creation_after_dropped_links"] = _task_chain(
-            registry=registry,
-            run_type="case_resolution",
-            prompt_name="case_creation_after_dropped_links",
-            settings=settings,
-            model_name=aliases["case_resolution"],
         )
         repair_chain = cast(
             AsyncTextChain,
@@ -182,13 +174,12 @@ class LlmTaskRunner:
         model_name: str,
         variables: Mapping[str, Any],
         metadata: dict[str, Any] | None = None,
-        prompt_name: str | None = None,
     ) -> LlmTaskResult:
         """Run an LLM task and return validated output with run provenance."""
 
         task = LLM_TASKS[run_type]
         output_model = task.output_model
-        prompt = self._prompt_registry.get(prompt_name or run_type)
+        prompt = self._prompt_registry.get(run_type)
         run_id = None
         if self._run_store is not None:
             run_id = await self._run_store.create_run(
@@ -207,10 +198,7 @@ class LlmTaskRunner:
         repair_duration_seconds: float | None = None
         try:
             request_started_at = time.monotonic()
-            provider_output = await invoke_chain(
-                self._chain_for(prompt.name),
-                dict(variables),
-            )
+            provider_output = await invoke_chain(self._chain_for(run_type), dict(variables))
             request_duration_seconds = time.monotonic() - request_started_at
             await self._record_successful_request()
             raw_text, parse_result = _coerce_provider_output(
@@ -360,7 +348,7 @@ class LlmTaskRunner:
             )
         return LlmTaskResult(output=parsed, run_id=run_id)
 
-    def _chain_for(self, run_type: str) -> AsyncTextChain:
+    def _chain_for(self, run_type: LlmRunType) -> AsyncTextChain:
         try:
             return self._task_chains[run_type]
         except KeyError as exc:
@@ -464,7 +452,6 @@ def _task_chain(
     *,
     registry: PromptRegistry,
     run_type: LlmRunType,
-    prompt_name: str,
     settings: MlConfig,
     model_name: str,
 ) -> AsyncTextChain:
@@ -472,7 +459,7 @@ def _task_chain(
 
     model = create_litellm_chat_model(settings=settings, model_name=model_name)
     if settings.llm_structured_output_mode == "disabled":
-        return cast(AsyncTextChain, registry.chat_prompt(prompt_name) | model | StrOutputParser())
+        return cast(AsyncTextChain, registry.chat_prompt(run_type) | model | StrOutputParser())
 
     task = LLM_TASKS[run_type]
     method: Literal["function_calling", "json_schema"] = (
@@ -481,7 +468,7 @@ def _task_chain(
         else "json_schema"
     )
     structured_model = model.with_structured_output(task.output_model, method=method)
-    return cast(AsyncTextChain, registry.chat_prompt(prompt_name) | structured_model)
+    return cast(AsyncTextChain, registry.chat_prompt(run_type) | structured_model)
 
 
 def parse_json_object(text: str) -> dict[str, Any]:

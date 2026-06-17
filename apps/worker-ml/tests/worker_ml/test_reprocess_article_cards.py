@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import pytest
 from shkandal_database.models import Job
-from worker_ml.scripts.reprocess_article_cards import JOB_UPSERT_BATCH_SIZE, reprocess_article_cards
+from worker_ml.reprocess_article_cards import JOB_UPSERT_BATCH_SIZE, reprocess_article_cards
 
 
 def _session_context(session: MagicMock) -> MagicMock:

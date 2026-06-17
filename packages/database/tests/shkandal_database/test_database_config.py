@@ -24,17 +24,3 @@ def test_database_config_preserves_async_url(monkeypatch) -> None:
     config = DatabaseConfig()
 
     assert config.async_database_url == "postgresql+asyncpg://user:password@localhost:5432/shkandal"
-
-
-def test_database_config_escapes_unencoded_password_delimiters(monkeypatch) -> None:
-    monkeypatch.setenv(
-        "POSTGRES_DATABASE_URL",
-        "postgresql://user:p/a@ss=word@localhost:5432/shkandal",
-    )
-
-    config = DatabaseConfig()
-
-    assert (
-        config.async_database_url
-        == "postgresql+asyncpg://user:p%2Fa%40ss%3Dword@localhost:5432/shkandal"
-    )

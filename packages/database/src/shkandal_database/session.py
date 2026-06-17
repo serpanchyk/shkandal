@@ -17,11 +17,7 @@ def create_async_engine_from_config(config: DatabaseConfig | None = None) -> Asy
     """Create an async SQLAlchemy engine from database settings."""
 
     settings = config or DatabaseConfig()
-    return create_async_engine(
-        settings.async_database_url,
-        pool_pre_ping=True,
-        connect_args={"timeout": 5},
-    )
+    return create_async_engine(settings.async_database_url, pool_pre_ping=True)
 
 
 def create_async_sessionmaker(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
