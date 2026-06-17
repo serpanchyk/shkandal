@@ -169,6 +169,18 @@ The report counts succeeded `resolve_article_cases` jobs, linked articles,
 unconnected articles after succeeded resolution, failed jobs, unfinished jobs,
 and recent unconnected examples for audit.
 
+To reprocess historical case-candidate articles that likely fell through after
+all provisional links were dropped by `case_link_audit`, use the dry-run reset
+CLI. Apply mode resets only succeeded `resolve_article_cases` jobs for
+case-candidate articles with no `case_articles` row and at least one matching
+`case_link_audit` LLM run:
+
+```bash
+uv run python -m worker_ml.reset_unconnected_case_resolution_jobs
+uv run python -m worker_ml.reset_unconnected_case_resolution_jobs --limit 50
+uv run python -m worker_ml.reset_unconnected_case_resolution_jobs --apply
+```
+
 Entity and Event identity namespaces use separate PostgreSQL advisory locks.
 Existing identities are conservatively enriched, Event anchor conflicts reject
 automatic merging, and affected vectors are written before the PostgreSQL

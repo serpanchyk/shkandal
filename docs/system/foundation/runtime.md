@@ -43,8 +43,13 @@ its own durable output exists. `classify_article` succeeds by writing
 `create_article_card` succeeds by writing `article_cards`; it then enqueues
 `resolve_article_cases`. That stage first matches against retrieved Case cards,
 then rechecks each provisional existing-Case link against the selected Case's
-linked Article Cards before persisting any `case_articles` rows. After case
-links exist, the worker can enqueue
+linked Article Cards before persisting any `case_articles` rows. If every
+provisional existing-Case link is dropped by that audit and the original
+resolution did not already create a new Case, the worker runs a dedicated
+new-Case fallback prompt under the `case_resolution` run type. A resolved
+fallback creates a Case normally; a rejected fallback leaves the article
+unconnected and does not enqueue downstream work. After case links exist, the
+worker can enqueue
 `resolve_article_entities` and `resolve_article_events`. Later jobs are not
 pre-enqueued because they depend on upstream outputs and relevance gates.
 
