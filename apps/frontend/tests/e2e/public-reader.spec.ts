@@ -53,6 +53,14 @@ test("reader can inspect the global project explanation", async ({ page }) => {
     "href",
     "https://github.com/serpanchyk/shkandal",
   );
+  await expect(
+    footer.getByRole("link", {
+      name: "Маєте ідеї або знайшли ваду? Доєднуйтесь до спільноти у WhatsApp.",
+    }),
+  ).toHaveAttribute("href", "https://chat.whatsapp.com/GKLJlgZ5Fh8Fp4WGc6ThB6");
+  await expect(
+    footer.getByRole("link", { name: "Розробник: Антон Михальчук." }),
+  ).toHaveAttribute("href", "https://www.linkedin.com/in/anton-mykhalchuk/");
   await expect(footer.getByRole("link", { name: /Катедри систем штучного інтелекту/ })).toHaveAttribute(
     "href",
     "https://aidept.com.ua/",

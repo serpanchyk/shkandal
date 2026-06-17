@@ -21,6 +21,12 @@ export function Footer() {
         <a href="https://github.com/serpanchyk/shkandal" {...externalLinkProps}>
           GitHub ↗
         </a>
+        <a href="https://chat.whatsapp.com/GKLJlgZ5Fh8Fp4WGc6ThB6" {...externalLinkProps}>
+          Маєте ідеї або знайшли ваду? Доєднуйтесь до спільноти у WhatsApp.
+        </a>
+        <a href="https://www.linkedin.com/in/anton-mykhalchuk/" {...externalLinkProps}>
+          Розробник: Антон Михальчук.
+        </a>
       </nav>
       <p className="footerSupport">
         Шкандаль розроблено за підтримки{" "}
