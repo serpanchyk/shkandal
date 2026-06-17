@@ -26,8 +26,13 @@ fi
 docker_compose=(
     docker compose
     -f docker-compose.prod.yaml
-    --env-file .env.production
 )
+
+if [[ -f docker-compose.prod.tunnel.yaml ]]; then
+    docker_compose+=(-f docker-compose.prod.tunnel.yaml)
+fi
+
+docker_compose+=(--env-file .env.production)
 
 git fetch origin master
 git reset --hard origin/master
