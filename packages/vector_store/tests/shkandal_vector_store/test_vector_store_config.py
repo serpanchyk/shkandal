@@ -3,7 +3,10 @@ from pathlib import Path
 from shkandal_vector_store.config import VectorStoreConfig
 
 
-def test_vector_store_config_defaults() -> None:
+def test_vector_store_config_defaults(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv("QDRANT_URL", raising=False)
+    monkeypatch.chdir(tmp_path)
+
     settings = VectorStoreConfig()
 
     assert settings.qdrant_url == "http://qdrant:6333"
@@ -15,6 +18,7 @@ def test_vector_store_config_defaults() -> None:
 
 
 def test_vector_store_config_loads_yaml_overrides(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv("QDRANT_URL", raising=False)
     (tmp_path / "config.yaml").write_text(
         "\n".join(
             [
