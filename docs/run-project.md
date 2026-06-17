@@ -406,8 +406,8 @@ them. The recovery command is dry-run by default and does not modify successful
 domain output:
 
 ```bash
-docker compose --profile jobs run --rm worker-ml python -m worker_ml.recover_failed_jobs --job-type update_case_copy
-docker compose --profile jobs run --rm worker-ml python -m worker_ml.recover_failed_jobs --job-type update_case_copy --error-contains Qdrant --limit 12 --apply
+docker compose --profile jobs run --rm worker-ml python -m worker_ml.scripts.recover_failed_jobs --job-type update_case_copy
+docker compose --profile jobs run --rm worker-ml python -m worker_ml.scripts.recover_failed_jobs --job-type update_case_copy --error-contains Qdrant --limit 12 --apply
 ```
 
 ### Smoke-test 10 article cards
@@ -517,15 +517,15 @@ to proceed if any `create_article_card` job is running. Existing `llm_runs`
 remain available for comparison and debugging:
 
 ```bash
-uv run python -m worker_ml.reprocess_article_cards
-uv run python -m worker_ml.reprocess_article_cards --apply
+uv run python -m worker_ml.scripts.reprocess_article_cards
+uv run python -m worker_ml.scripts.reprocess_article_cards --apply
 ```
 
 To regenerate the same ten most recently created existing cards for a
 before/after comparison:
 
 ```bash
-uv run python -m worker_ml.reprocess_article_cards --apply --limit 10
+uv run python -m worker_ml.scripts.reprocess_article_cards --apply --limit 10
 docker compose --profile jobs run --rm -e CLAIM_BATCH_SIZE=10 worker-ml
 docker compose exec postgres psql -U shkandal -d shkandal -c \
   "SELECT article_id, is_case_candidate, card_json->>'noise_reason' AS noise_reason, title_uk, card_json FROM article_cards ORDER BY created_at DESC LIMIT 10;"

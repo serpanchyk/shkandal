@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from urllib.parse import urlsplit
 from uuid import UUID
 
 from shkandal_database.config import DatabaseConfig
@@ -121,11 +123,31 @@ def main() -> None:
     parser.add_argument("--limit", type=int)
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args()
-    stats = asyncio.run(_run(apply=args.apply, limit=args.limit))
+    try:
+        stats = asyncio.run(_run(apply=args.apply, limit=args.limit))
+    except (OSError, TimeoutError):
+        host, port = _configured_database_target()
+        print(
+            (
+                "could not connect to PostgreSQL"
+                f"{f' at {host}:{port}' if host and port else ''}; "
+                "check POSTGRES_DATABASE_URL or run the command with a matching database URL"
+            ),
+            file=sys.stderr,
+        )
+        raise SystemExit(2) from None
     action = "reset" if stats.applied else "would reset"
     print(f"{action} {stats.selected_count} dropped-link resolve_article_cases jobs")
     for selected in stats.selected_jobs:
         print(f"{selected.job_id} article_id={selected.article_id}")
+
+
+def _configured_database_target() -> tuple[str | None, int | None]:
+    try:
+        parts = urlsplit(DatabaseConfig().async_database_url)
+        return parts.hostname, parts.port
+    except ValueError:
+        return None, None
 
 
 if __name__ == "__main__":

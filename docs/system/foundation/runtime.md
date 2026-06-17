@@ -9,6 +9,11 @@ For the public web, the repo also ships a separate
 network ports, exposing `80` and `443`; backend, frontend, and PostgreSQL stay
 on the internal Compose network.
 
+Production deploys run over SSH to the existing Droplet checkout. GitHub
+Actions validates the repo first, then runs `ops/deploy-production` in the
+server repository. Production env files remain on the Droplet and are not copied
+into CI.
+
 Runtime dependencies:
 
 - PostgreSQL 16 for durable application data.

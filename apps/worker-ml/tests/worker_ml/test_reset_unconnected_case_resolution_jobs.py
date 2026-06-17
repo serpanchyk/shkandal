@@ -5,7 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 from uuid import uuid4
 
 import pytest
-from worker_ml.reset_unconnected_case_resolution_jobs import (
+import worker_ml.scripts.reset_unconnected_case_resolution_jobs as reset_cli
+from worker_ml.scripts.reset_unconnected_case_resolution_jobs import (
     reset_unconnected_case_resolution_jobs,
 )
 
@@ -105,3 +106,23 @@ async def test_reset_unconnected_case_resolution_jobs_rejects_non_positive_limit
 ) -> None:
     with pytest.raises(ValueError, match="greater than zero"):
         await reset_unconnected_case_resolution_jobs(Mock(), apply=False, limit=limit)
+
+
+def test_reset_cli_reports_database_timeout_without_traceback(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    async def timeout_run(*, apply: bool, limit: int | None) -> None:  # noqa: ARG001
+        raise TimeoutError
+
+    monkeypatch.setattr(reset_cli, "_run", timeout_run)
+    monkeypatch.setattr(reset_cli, "_configured_database_target", lambda: ("127.0.0.1", 15432))
+    monkeypatch.setattr("sys.argv", ["reset_unconnected_case_resolution_jobs"])
+
+    with pytest.raises(SystemExit) as raised:
+        reset_cli.main()
+
+    assert raised.value.code == 2
+    captured = capsys.readouterr()
+    assert "could not connect to PostgreSQL at 127.0.0.1:15432" in captured.err
+    assert "POSTGRES_DATABASE_URL" in captured.err

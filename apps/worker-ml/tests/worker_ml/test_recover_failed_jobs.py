@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 from uuid import uuid4
 
 import pytest
-from worker_ml.recover_failed_jobs import recover_failed_jobs
+from worker_ml.scripts.recover_failed_jobs import recover_failed_jobs
 
 
 def _session_context(session: MagicMock) -> MagicMock:

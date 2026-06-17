@@ -161,8 +161,8 @@ Use the read-only connectivity report to inspect how many case-candidate
 articles completed Case resolution but still have no `case_articles` link:
 
 ```bash
-uv run python -m worker_ml.case_resolution_connectivity_report
-uv run python -m worker_ml.case_resolution_connectivity_report --example-limit 50
+uv run python -m worker_ml.scripts.case_resolution_connectivity_report
+uv run python -m worker_ml.scripts.case_resolution_connectivity_report --example-limit 50
 ```
 
 The report counts succeeded `resolve_article_cases` jobs, linked articles,
@@ -176,9 +176,9 @@ case-candidate articles with no `case_articles` row and at least one matching
 `case_link_audit` LLM run:
 
 ```bash
-uv run python -m worker_ml.reset_unconnected_case_resolution_jobs
-uv run python -m worker_ml.reset_unconnected_case_resolution_jobs --limit 50
-uv run python -m worker_ml.reset_unconnected_case_resolution_jobs --apply
+uv run python -m worker_ml.scripts.reset_unconnected_case_resolution_jobs
+uv run python -m worker_ml.scripts.reset_unconnected_case_resolution_jobs --limit 50
+uv run python -m worker_ml.scripts.reset_unconnected_case_resolution_jobs --apply
 ```
 
 Entity and Event identity namespaces use separate PostgreSQL advisory locks.
@@ -194,15 +194,15 @@ running, deletes current cards, and resets or creates card jobs for all
 classifier-positive articles while preserving historical `llm_runs`:
 
 ```bash
-uv run python -m worker_ml.reprocess_article_cards
-uv run python -m worker_ml.reprocess_article_cards --apply
+uv run python -m worker_ml.scripts.reprocess_article_cards
+uv run python -m worker_ml.scripts.reprocess_article_cards --apply
 ```
 
 To compare a small stable sample after a prompt change, regenerate only the most
 recently created existing cards:
 
 ```bash
-uv run python -m worker_ml.reprocess_article_cards --apply --limit 10
+uv run python -m worker_ml.scripts.reprocess_article_cards --apply --limit 10
 docker compose --profile jobs run --rm -e CLAIM_BATCH_SIZE=10 worker-ml
 ```
 
@@ -240,8 +240,8 @@ Inspect and explicitly recover selected exhausted failures after fixing their
 cause:
 
 ```bash
-uv run python -m worker_ml.recover_failed_jobs --job-type update_case_copy
-uv run python -m worker_ml.recover_failed_jobs --job-type update_case_copy --error-contains Qdrant --limit 12 --apply
+uv run python -m worker_ml.scripts.recover_failed_jobs --job-type update_case_copy
+uv run python -m worker_ml.scripts.recover_failed_jobs --job-type update_case_copy --error-contains Qdrant --limit 12 --apply
 ```
 
 The command is dry-run by default and requeues only exhausted failed jobs. It
@@ -361,10 +361,10 @@ They may detach links only with positive evidence that the Article belongs to
 no concrete durable story, such as an incidental mention, broad overview, or
 noise. An Article about another concrete durable story is assigned to a
 separate resulting Case instead of being detached.
-`worker_ml.enqueue_case_audits --rerun-coherent-successes` dry-runs a targeted
+`worker_ml.scripts.enqueue_case_audits --rerun-coherent-successes` dry-runs a targeted
 selection of active Cases whose latest coherence audit is `coherent` and whose
 coherence job succeeded; `--apply` requests a fresh job revision for that
-selection. `worker_ml.enqueue_case_audits --rerun-public-interest` does the
+selection. `worker_ml.scripts.enqueue_case_audits --rerun-public-interest` does the
 same for active Case public-interest audits regardless of the prior result, so
 prompt or contract tightening can be backfilled across the current active set.
 Public-interest audits permanently hide routine incidents, isolated headlines,
