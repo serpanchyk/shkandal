@@ -27,8 +27,9 @@ every feed request.
 
 Only active Cases with a non-empty Ukrainian summary and at least one linked
 article are public. Only described Entities linked to a public Case and a
-supporting article are public. Fuzzy Case-title search uses PostgreSQL trigram
-similarity and relevance ordering.
+supporting article are public. Public Case search uses PostgreSQL substring and
+trigram matching across Case titles, summaries, linked Entity text, and linked
+Event text, then orders matches by relevance.
 
 The API reads current PostgreSQL rows directly in the MVP. There are no
 published snapshots. Multi-row public-page updates should be transactional where
@@ -43,7 +44,7 @@ Current endpoints:
 - `GET /healthz`: returns service status.
 - `GET /metrics`: Prometheus request/process metrics and read-only durable
   pipeline aggregates.
-- `GET /api/cases`: paginated feed and fuzzy Case-title search.
+- `GET /api/cases`: paginated feed and multi-field Case search.
 - `GET /api/cases/{slug}`: composed public Case page.
 - `POST /api/cases/{slug}/views`: anonymous aggregate view increment.
 - `GET /api/entities/{slug}`: composed public Entity page.

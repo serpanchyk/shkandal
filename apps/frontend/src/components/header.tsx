@@ -8,7 +8,7 @@ export function Header() {
         <Image alt="Shkandal" height={36} priority src="/logo.svg" width={255} />
       </Link>
       <form action="/" className="headerSearch">
-        <label className="srOnly" htmlFor="header-query">Пошук справи за назвою</label>
+        <label className="srOnly" htmlFor="header-query">Пошук справ</label>
         <input id="header-query" minLength={2} name="query" placeholder="Пошук справи" />
         <button type="submit">знайти</button>
       </form>

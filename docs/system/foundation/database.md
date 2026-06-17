@@ -21,11 +21,13 @@ worker does not rely on a URL remaining in a current feed to retry it.
 
 ## Public Reader Indexes
 
-PostgreSQL owns public feed ordering and title search. Active Case titles have a
-`pg_trgm` GIN index for typo-tolerant search. `cases.last_updated_at` represents
-the newest linked article publication time; undated articles do not change it.
-Sources may store a nullable frontend-owned `logo_path` using
-`/sources/{source-slug}.png`; image bytes do not live in PostgreSQL.
+PostgreSQL owns public feed ordering and public Case search. Active Case titles
+and summaries, Entity names/descriptions, and Event titles/descriptions/locations
+have `pg_trgm` GIN indexes for typo-tolerant multi-field search.
+`cases.last_updated_at` represents the newest linked article publication time;
+undated articles do not change it. Sources may store a nullable frontend-owned
+`logo_path` using `/sources/{source-slug}.png`; image bytes do not live in
+PostgreSQL.
 
 ## Session Usage
 

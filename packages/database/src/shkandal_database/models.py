@@ -267,6 +267,13 @@ class Case(Base):
             postgresql_ops={"title_uk": "gin_trgm_ops"},
             postgresql_where=text("status = 'active'"),
         ),
+        Index(
+            "ix_cases_active_summary_uk_trgm",
+            "summary_uk",
+            postgresql_using="gin",
+            postgresql_ops={"summary_uk": "gin_trgm_ops"},
+            postgresql_where=text("status = 'active'"),
+        ),
     )
 
     id: Mapped[UUID] = uuid_pk_column()
@@ -467,6 +474,18 @@ class Entity(Base):
         ),
         Index("ix_entities_entity_type", "entity_type"),
         Index("ix_entities_aliases", "aliases", postgresql_using="gin"),
+        Index(
+            "ix_entities_canonical_name_uk_trgm",
+            "canonical_name_uk",
+            postgresql_using="gin",
+            postgresql_ops={"canonical_name_uk": "gin_trgm_ops"},
+        ),
+        Index(
+            "ix_entities_description_uk_trgm",
+            "description_uk",
+            postgresql_using="gin",
+            postgresql_ops={"description_uk": "gin_trgm_ops"},
+        ),
     )
 
     id: Mapped[UUID] = uuid_pk_column()
@@ -581,6 +600,24 @@ class Event(Base):
         ),
         Index("ix_events_event_date_parts", "event_year", "event_month", "event_day"),
         Index("ix_events_created_at", "created_at"),
+        Index(
+            "ix_events_title_uk_trgm",
+            "title_uk",
+            postgresql_using="gin",
+            postgresql_ops={"title_uk": "gin_trgm_ops"},
+        ),
+        Index(
+            "ix_events_description_uk_trgm",
+            "description_uk",
+            postgresql_using="gin",
+            postgresql_ops={"description_uk": "gin_trgm_ops"},
+        ),
+        Index(
+            "ix_events_location_uk_trgm",
+            "location_uk",
+            postgresql_using="gin",
+            postgresql_ops={"location_uk": "gin_trgm_ops"},
+        ),
         CheckConstraint(
             "(event_date_precision = 'unknown' AND event_year IS NULL "
             "AND event_month IS NULL AND event_day IS NULL) OR "

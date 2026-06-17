@@ -13,7 +13,7 @@ test("reader can sort and fuzzy-search the Case feed", async ({ page }) => {
   await page.getByRole("link", { name: "останні оновлення" }).click();
   await expect(page).toHaveURL(/sort=latest/);
 
-  await page.getByLabel("Пошук справи за назвою").fill("корупційна");
+  await page.getByLabel("Пошук справ").fill("корупційна");
   await page.getByRole("button", { name: "знайти" }).click();
   await expect(page.getByRole("heading", { name: "Корупційна справа для перевірки" })).toBeVisible();
   await expect(page.locator('[data-case-variant="lead"]')).toHaveCount(0);
