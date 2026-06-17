@@ -98,12 +98,15 @@ tunnel without exposing port `5432` publicly.
 
 The automated production deployment runs on pushes to `master` and can also be
 started manually from the `Deploy Production` GitHub Actions workflow. Configure
-these repository secrets before enabling it:
+these repository variables before enabling it:
 
 - `DROPLET_HOST`: Droplet hostname or IP address.
 - `DROPLET_USER`: SSH user that can run Docker Compose in the app directory.
-- `DROPLET_SSH_KEY`: private SSH key for that user.
 - `DROPLET_APP_DIR`: server repository path, for example `/opt/shkandal`.
+
+Configure this repository secret:
+
+- `DROPLET_SSH_KEY`: private SSH key for that user.
 
 The workflow runs the project checks first, then connects over SSH and runs:
 
