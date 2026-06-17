@@ -89,16 +89,24 @@ Open the server IP or hostname in a browser. Caddy should route:
 - `/healthz` to `backend:8000`
 - everything else to `frontend:3000`
 
+The production deploy script also includes `docker-compose.prod.tunnel.yaml`
+when that file is present. This binds Postgres to `127.0.0.1:5432` on the
+Droplet only, so local workers can reach production Postgres through an SSH
+tunnel without exposing port `5432` publicly.
+
 ## 5. Update the deployment
 
 The automated production deployment runs on pushes to `master` and can also be
 started manually from the `Deploy Production` GitHub Actions workflow. Configure
-these repository secrets before enabling it:
+these repository variables before enabling it:
 
 - `DROPLET_HOST`: Droplet hostname or IP address.
 - `DROPLET_USER`: SSH user that can run Docker Compose in the app directory.
-- `DROPLET_SSH_KEY`: private SSH key for that user.
 - `DROPLET_APP_DIR`: server repository path, for example `/opt/shkandal`.
+
+Configure this repository secret:
+
+- `DROPLET_SSH_KEY`: private SSH key for that user.
 
 The workflow runs the project checks first, then connects over SSH and runs:
 
