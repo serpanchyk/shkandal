@@ -33,6 +33,12 @@ PROMPTS: dict[str, PromptDefinition] = {
         filename="case_resolution.uk.md",
         input_variables=("resolution_json", "schema_json"),
     ),
+    "case_creation_after_dropped_links": PromptDefinition(
+        name="case_creation_after_dropped_links",
+        version="2026-06-17-1",
+        filename="case_creation_after_dropped_links.uk.md",
+        input_variables=("resolution_json", "schema_json"),
+    ),
     "case_link_audit": PromptDefinition(
         name="case_link_audit",
         version="2026-06-16-1",
