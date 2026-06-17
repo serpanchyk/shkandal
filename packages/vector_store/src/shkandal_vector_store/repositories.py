@@ -7,7 +7,9 @@ from uuid import UUID
 from pydantic import BaseModel
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http import models
+from qdrant_client.http.exceptions import ResponseHandlingException
 
+from shkandal_vector_store.errors import VectorStoreError, VectorStoreUnavailableError
 from shkandal_vector_store.schemas import (
     CaseVectorPayload,
     CaseVectorRecord,
@@ -48,9 +50,12 @@ class BaseVectorRepository[PayloadT: BaseModel, RecordT: VectorRecord[Any]]:
                 ],
             )
         except Exception as exc:
-            raise RuntimeError(
+            message = (
                 f"Qdrant upsert failed: collection={self.collection_name}, point_id={record.id}"
-            ) from exc
+            )
+            if _is_qdrant_transport_error(exc):
+                raise VectorStoreUnavailableError(message) from exc
+            raise VectorStoreError(message) from exc
 
     async def delete(self, point_id: UUID) -> None:
         """Delete one vector point by ID."""
@@ -78,9 +83,10 @@ class BaseVectorRepository[PayloadT: BaseModel, RecordT: VectorRecord[Any]]:
                 with_payload=True,
             )
         except Exception as exc:
-            raise RuntimeError(
-                f"Qdrant search failed: collection={self.collection_name}, limit={limit}"
-            ) from exc
+            message = f"Qdrant search failed: collection={self.collection_name}, limit={limit}"
+            if _is_qdrant_transport_error(exc):
+                raise VectorStoreUnavailableError(message) from exc
+            raise VectorStoreError(message) from exc
 
         candidates: list[VectorSearchResult[PayloadT]] = []
         for result in response.points:
@@ -94,6 +100,20 @@ class BaseVectorRepository[PayloadT: BaseModel, RecordT: VectorRecord[Any]]:
                 )
             )
         return candidates
+
+
+def _is_qdrant_transport_error(exc: Exception) -> bool:
+    if isinstance(exc, ResponseHandlingException):
+        return True
+    current: BaseException | None = exc
+    while current is not None:
+        if isinstance(current, TimeoutError | ConnectionError | OSError):
+            return True
+        module_name = type(current).__module__
+        if module_name.startswith("httpx.") or module_name.startswith("httpcore."):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 class CaseVectorRepository(BaseVectorRepository[CaseVectorPayload, CaseVectorRecord]):

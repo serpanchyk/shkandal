@@ -10,6 +10,9 @@ Create an Ubuntu Droplet, point a firewall at it, and allow inbound `80` and
 
 Clone the repository onto the server and enter the project directory.
 
+The production deploy script expects the repository at the path configured in
+GitHub Actions, currently `/opt/shkandal` on the Droplet.
+
 ## 2. Prepare production env files
 
 Copy the tracked examples and fill in real values:
@@ -42,6 +45,9 @@ NEXT_PUBLIC_SITE_URL=https://example.com
 ```
 
 Caddy will then request and renew certificates automatically.
+
+Production env files stay on the Droplet. Do not copy production secrets into
+GitHub Actions, commit them to Git, or generate them from CI.
 
 ## 3. Build and start the stack
 
@@ -85,10 +91,46 @@ Open the server IP or hostname in a browser. Caddy should route:
 
 ## 5. Update the deployment
 
-Pull the latest code, then rebuild and restart:
+The automated production deployment runs on pushes to `master` and can also be
+started manually from the `Deploy Production` GitHub Actions workflow. Configure
+these repository secrets before enabling it:
+
+- `DROPLET_HOST`: Droplet hostname or IP address.
+- `DROPLET_USER`: SSH user that can run Docker Compose in the app directory.
+- `DROPLET_SSH_KEY`: private SSH key for that user.
+- `DROPLET_APP_DIR`: server repository path, for example `/opt/shkandal`.
+
+The workflow runs the project checks first, then connects over SSH and runs:
 
 ```bash
-docker compose -f docker-compose.prod.yaml --env-file .env.production build frontend backend migrate
-docker compose -f docker-compose.prod.yaml --env-file .env.production run --rm migrate
-docker compose -f docker-compose.prod.yaml --env-file .env.production up -d caddy frontend backend postgres
+bash ops/deploy-production
+```
+
+For a manual server-side update, run the deploy script from the repository:
+
+```bash
+ops/deploy-production
+```
+
+The script fetches `origin/master`, resets the server checkout to it, validates
+the production Compose file, rebuilds `backend`, `frontend`, and `migrate`, runs
+migrations, restarts `caddy`, `frontend`, `backend`, and `postgres`, checks
+`/healthz`, and prunes unused Docker images.
+
+## 6. Roll back manually
+
+SSH to the Droplet, enter the app directory, reset to a known good commit, and
+rebuild the production services:
+
+```bash
+git reset --hard <old_commit>
+docker compose -f docker-compose.prod.yaml --env-file .env.production up -d --build
+```
+
+## 7. Inspect logs
+
+Follow the public-web service logs:
+
+```bash
+docker compose -f docker-compose.prod.yaml --env-file .env.production logs -f caddy backend frontend
 ```

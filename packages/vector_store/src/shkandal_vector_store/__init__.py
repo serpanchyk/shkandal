@@ -3,6 +3,7 @@
 from shkandal_vector_store.bootstrap import bootstrap_qdrant_collections
 from shkandal_vector_store.client import create_qdrant_client
 from shkandal_vector_store.config import VectorStoreConfig
+from shkandal_vector_store.errors import VectorStoreError, VectorStoreUnavailableError
 from shkandal_vector_store.repositories import (
     CaseVectorRepository,
     EntityVectorRepository,
@@ -30,6 +31,8 @@ __all__ = [
     "EventVectorRepository",
     "VectorSearchResult",
     "VectorStoreConfig",
+    "VectorStoreError",
+    "VectorStoreUnavailableError",
     "bootstrap_qdrant_collections",
     "create_qdrant_client",
 ]

@@ -9,6 +9,11 @@ For the public web, the repo also ships a separate
 network ports, exposing `80` and `443`; backend, frontend, and PostgreSQL stay
 on the internal Compose network.
 
+Production deploys run over SSH to the existing Droplet checkout. GitHub
+Actions validates the repo first, then runs `ops/deploy-production` in the
+server repository. Production env files remain on the Droplet and are not copied
+into CI.
+
 Runtime dependencies:
 
 - PostgreSQL 16 for durable application data.
@@ -43,8 +48,13 @@ its own durable output exists. `classify_article` succeeds by writing
 `create_article_card` succeeds by writing `article_cards`; it then enqueues
 `resolve_article_cases`. That stage first matches against retrieved Case cards,
 then rechecks each provisional existing-Case link against the selected Case's
-linked Article Cards before persisting any `case_articles` rows. After case
-links exist, the worker can enqueue
+linked Article Cards before persisting any `case_articles` rows. If every
+provisional existing-Case link is dropped by that audit and the original
+resolution did not already create a new Case, the worker runs a dedicated
+new-Case fallback prompt under the `case_resolution` run type. A resolved
+fallback creates a Case normally; a rejected fallback leaves the article
+unconnected and does not enqueue downstream work. After case links exist, the
+worker can enqueue
 `resolve_article_entities` and `resolve_article_events`. Later jobs are not
 pre-enqueued because they depend on upstream outputs and relevance gates.
 
