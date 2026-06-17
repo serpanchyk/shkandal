@@ -157,6 +157,18 @@ the current limits of 12 Cases, 8 Entities, and 8 Events. LLM run metadata
 records the actual candidate counts returned after vector retrieval and
 PostgreSQL filtering.
 
+Use the read-only connectivity report to inspect how many case-candidate
+articles completed Case resolution but still have no `case_articles` link:
+
+```bash
+uv run python -m worker_ml.case_resolution_connectivity_report
+uv run python -m worker_ml.case_resolution_connectivity_report --example-limit 50
+```
+
+The report counts succeeded `resolve_article_cases` jobs, linked articles,
+unconnected articles after succeeded resolution, failed jobs, unfinished jobs,
+and recent unconnected examples for audit.
+
 Entity and Event identity namespaces use separate PostgreSQL advisory locks.
 Existing identities are conservatively enriched, Event anchor conflicts reject
 automatic merging, and affected vectors are written before the PostgreSQL
