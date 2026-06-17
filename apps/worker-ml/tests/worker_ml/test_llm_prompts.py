@@ -22,7 +22,6 @@ def test_key_prompts_require_pre_decision_diagnostics() -> None:
     for name in (
         "article_card",
         "case_resolution",
-        "case_creation_after_dropped_links",
         "case_link_audit",
         "case_coherence_audit",
         "case_duplicate_audit",
@@ -70,19 +69,6 @@ def test_case_resolution_prompt_blocks_institutional_umbrellas() -> None:
     assert "ВАКС — це місце розгляду та інституція, а не ідентичність справи" in prompt
     assert "`case_coherence_test_uk`" in prompt
     assert "конкретне фактичне ядро" in prompt
-
-
-def test_dropped_link_fallback_prompt_only_allows_new_case_or_rejection() -> None:
-    prompt = PromptRegistry().load_text("case_creation_after_dropped_links")
-
-    assert "case_link_audit" in prompt
-    assert "`existing_case_links = []`" in prompt
-    assert "`case_relations = []`" in prompt
-    assert "звичайною кримінальною хронікою" in prompt
-    assert "домашнє насильство" in prompt
-    assert "жорстоке поводження з дітьми" in prompt
-    assert "Потрібен конкретний" in prompt
-    assert "публічний інтерес" in prompt
 
 
 def test_case_link_audit_prompt_requires_safe_specific_membership() -> None:

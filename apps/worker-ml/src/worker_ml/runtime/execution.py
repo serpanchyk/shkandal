@@ -9,7 +9,6 @@ from typing import Protocol
 
 from shkandal_database.jobs import ArticleJobStore, ClaimedJob, JobQueueSummary
 from shkandal_database.llm_cooldowns import LlmCooldownStore
-from shkandal_vector_store import VectorStoreUnavailableError
 
 from worker_ml.cases.audits import CaseAuditSupersededError
 from worker_ml.cases.publication import CaseMutationBusyError
@@ -262,19 +261,6 @@ class _CycleExecutor:
                 run_after=datetime.now(UTC) + timedelta(seconds=10),
                 reason=str(exc),
             )
-        except VectorStoreUnavailableError as exc:
-            resume_at = await self._defer_transient_dependency_job(job, exc)
-            self._logger.warning(
-                "worker_ml_dependency_unavailable",
-                extra={
-                    "job_id": str(job.id),
-                    "job_type": job.job_type,
-                    "article_id": str(job.article_id),
-                    "dependency": "qdrant",
-                    "resume_at": resume_at.isoformat(),
-                    "duration_seconds": round(time.monotonic() - started_at, 6),
-                },
-            )
         except Exception as exc:
             await self._job_store.fail_job(
                 job_id=job.id,
@@ -330,22 +316,6 @@ class _CycleExecutor:
                     reason=str(error),
                 )
             return self._rate_limit_resume_at
-
-    async def _defer_transient_dependency_job(
-        self,
-        job: ClaimedJob,
-        error: Exception,
-    ) -> datetime:
-        self._stop_claiming.set()
-        resume_at = datetime.now(UTC) + timedelta(
-            seconds=max(10, self._settings.poll_interval_seconds)
-        )
-        await self._job_store.defer_job(
-            job_id=job.id,
-            run_after=resume_at,
-            reason=str(error),
-        )
-        return resume_at
 
 
 async def cleanup_stale_llm_runs(

@@ -96,66 +96,6 @@ async def test_runner_returns_persisted_run_provenance() -> None:
 
 
 @pytest.mark.asyncio
-async def test_runner_records_prompt_override_under_case_resolution_run_type() -> None:
-    run_id = uuid4()
-    run_store = Mock(spec=LlmRunStore)
-    run_store.create_run = AsyncMock(return_value=run_id)
-    run_store.finish_run = AsyncMock()
-    runner = LlmTaskRunner(
-        prompt_registry=PromptRegistry(),
-        run_store=run_store,
-        task_chains={
-            "case_creation_after_dropped_links": FakeChain(
-                json.dumps(
-                    {
-                        "diagnosis": {
-                            "article_story_core_uk": "Стаття описує конкретну закупівлю.",
-                            "specific_case_core_uk": "Нова закупівельна справа.",
-                            "only_broad_overlap_uk": None,
-                            "merge_blockers_uk": [],
-                            "separate_story_cores_uk": [],
-                            "case_coherence_test_uk": "Так, це одна конкретна справа.",
-                            "matching_existing_case_ids": [],
-                            "new_case_core_uk": "Нова закупівельна справа.",
-                            "rejection_signals_uk": [],
-                            "broad_theme_warning_uk": None,
-                        },
-                        "existing_case_links": [],
-                        "new_cases": [
-                            {
-                                "new_case_ref": "new_case_1",
-                                "title_uk": "Закупівля дронів у компанії X",
-                                "summary_uk": "Нова справа щодо конкретної закупівлі.",
-                                "link_reason_uk": "Стаття започатковує окрему справу.",
-                                "confidence": 0.86,
-                            }
-                        ],
-                        "case_relations": [],
-                        "decision_reason_uk": "Після відкидання кандидатів лишилась нова справа.",
-                        "outcome": "resolved",
-                    },
-                    ensure_ascii=False,
-                )
-            )
-        },
-    )
-
-    result = await runner.run_with_provenance(
-        run_type="case_resolution",
-        prompt_name="case_creation_after_dropped_links",
-        model_name="shkandal-case-resolution",
-        variables={"resolution_json": "{}", "schema_json": "{}"},
-    )
-
-    assert result.run_id == run_id
-    assert isinstance(result.output, CaseResolutionOutput)
-    assert run_store.create_run.await_args.kwargs["run_type"] == "case_resolution"
-    assert (
-        run_store.create_run.await_args.kwargs["prompt_name"] == "case_creation_after_dropped_links"
-    )
-
-
-@pytest.mark.asyncio
 async def test_runner_persists_deterministically_normalized_output_as_repaired() -> None:
     run_id = uuid4()
     run_store = Mock(spec=LlmRunStore)

@@ -3,7 +3,6 @@ from uuid import UUID, uuid4
 
 import pytest
 from qdrant_client.http import models
-from shkandal_vector_store.errors import VectorStoreUnavailableError
 from shkandal_vector_store.repositories import (
     CaseVectorRepository,
     EntityVectorRepository,
@@ -239,8 +238,5 @@ async def test_repository_search_failure_includes_operation_and_collection() -> 
         collection_name="events_v2",
     )
 
-    with pytest.raises(
-        VectorStoreUnavailableError,
-        match="Qdrant search failed: collection=events_v2, limit=4",
-    ):
+    with pytest.raises(RuntimeError, match="Qdrant search failed: collection=events_v2, limit=4"):
         await repository.search([0.1], limit=4)
