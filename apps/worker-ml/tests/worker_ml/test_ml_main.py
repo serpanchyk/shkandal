@@ -11,6 +11,7 @@ import worker_ml.runtime.application as entrypoint
 import worker_ml.runtime.execution as execution
 from shkandal_database.jobs import ArticleJobStore, JobQueueSummary
 from shkandal_database.llm_cooldowns import LlmCooldownDecision, LlmCooldownStore
+from shkandal_vector_store import VectorStoreUnavailableError
 from worker_ml.articles.cards import ArticleCardJobHandler
 from worker_ml.articles.relevance import ClassificationJobHandler, RelevanceModel
 from worker_ml.config import MlConfig
@@ -198,6 +199,50 @@ async def testrun_cycle_defers_rate_limited_job_and_ends_pass() -> None:
     job_store.defer_job.assert_awaited_once()
     job_store.claim_next_job.assert_awaited_once()
     classification_handler.handle.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_cycle_defers_qdrant_unavailable_without_consuming_failure() -> None:
+    planner = Mock(spec=MlJobPlanner)
+    planner.enqueue_missing_classification_jobs = AsyncMock(
+        return_value=EnqueueStats(0, 0, 0, 0, 0)
+    )
+    planner.enqueue_missing_article_card_jobs = AsyncMock(return_value=EnqueueStats(0, 0, 0, 0, 0))
+    job = SimpleNamespace(
+        id="case-job",
+        article_id="case-article",
+        job_type="resolve_article_cases",
+        attempt_count=1,
+        max_attempts=3,
+    )
+    job_store = Mock(spec=ArticleJobStore)
+    job_store.claim_next_job = AsyncMock(return_value=job)
+    job_store.complete_job = AsyncMock()
+    job_store.fail_job = AsyncMock()
+    job_store.defer_job = AsyncMock()
+    cooldown_store = Mock(spec=LlmCooldownStore)
+    cooldown_store.active_resume_at = AsyncMock(return_value=None)
+    handler = Mock()
+    handler.handle = AsyncMock(
+        side_effect=VectorStoreUnavailableError(
+            "Qdrant search failed: collection=case_cards, limit=12"
+        )
+    )
+
+    result = await run_cycle(
+        settings=MlConfig(claim_batch_size=2, worker_concurrency=1, poll_interval_seconds=30),
+        logger=Mock(),
+        planner=planner,
+        job_store=job_store,
+        cooldown_store=cooldown_store,
+        handlers={"resolve_article_cases": handler},
+    )
+
+    assert result["processed_jobs"] == 0
+    assert result["failed_jobs"] == 0
+    job_store.defer_job.assert_awaited_once()
+    job_store.fail_job.assert_not_awaited()
+    job_store.complete_job.assert_not_awaited()
 
 
 @pytest.mark.asyncio

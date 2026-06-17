@@ -211,7 +211,7 @@ asyncio.run(main())
 PY
 
 echo "Enqueueing Case-resolution jobs for case-candidate Article Cards..."
-POSTGRES_DATABASE_URL="${database_url}" uv run python -m worker_ml.enqueue_case_resolution_jobs --apply
+POSTGRES_DATABASE_URL="${database_url}" uv run python -m worker_ml.scripts.enqueue_case_resolution_jobs --apply
 
 cat <<'EOF'
 Reset complete.

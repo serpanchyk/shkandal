@@ -3,6 +3,7 @@
 !.env.example
 !.env.*.example
 
+
 .venv/
 .idea/
 .pytest_cache/
@@ -15,7 +16,9 @@ build/
 *.egg-info/
 __pycache__/
 *.py[cod]
+*.dump
 
+artifacts/dumps/**
 artifacts/models/**
 !artifacts/models/**/
 !artifacts/models/**/manifest.json

@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+project_dir="$(cd -- "${script_dir}/.." && pwd)"
+lock_file="/tmp/shkandal-production-deploy.lock"
+
+exec 9>"${lock_file}"
+if ! flock -n 9; then
+    echo "another production deploy is already running" >&2
+    exit 75
+fi
+
+cd "${project_dir}"
+
+if [[ ! -f .env.production ]]; then
+    echo "missing ${project_dir}/.env.production" >&2
+    exit 66
+fi
+
+if [[ ! -f infra/postgres/.env.production ]]; then
+    echo "missing ${project_dir}/infra/postgres/.env.production" >&2
+    exit 66
+fi
+
+docker_compose=(
+    docker compose
+    -f docker-compose.prod.yaml
+    --env-file .env.production
+)
+
+git fetch origin master
+git reset --hard origin/master
+
+"${docker_compose[@]}" config
+"${docker_compose[@]}" build backend frontend migrate
+"${docker_compose[@]}" run --rm migrate
+"${docker_compose[@]}" up -d --remove-orphans caddy frontend backend postgres
+"${docker_compose[@]}" ps
+docker image prune -f
+
+curl --fail --silent --show-error http://127.0.0.1/healthz
