@@ -322,10 +322,10 @@ All runtime LLM calls go through the LiteLLM proxy. `worker-ml` requests logical
 per-stage aliases such as `shkandal-article-card` and `shkandal-repair`; the
 proxy owns provider credentials, throttling, and routing policy. The tracked
 proxy configuration maps all aliases to one shared MamayLM deployment through
-Lapatonia with a combined 60 RPM limit. The Amazon Bedrock Gemma 3 27B model
+Lapathoniia with a combined 60 RPM limit. The Amazon Bedrock Gemma 3 27B model
 entry is retained but is not configured as a fallback. Timeout and
 internal-server failures are retried once; request errors and rate limits are
-not retried. Four Lapatonia failures within one hour start a shared one-hour
+not retried. Four Lapathoniia failures within one hour start a shared one-hour
 in-memory cooldown; restarting `llm-proxy` clears it.
 Provider HTTP `429` responses that still reach `worker-ml` after proxy routing
 create a durable shared LLM cooldown: the rejected job is deferred without
@@ -369,7 +369,7 @@ Redis is excluded from the MVP. Background work starts with one generic PostgreS
 
 The first public release should happen after a one-year curated-source backfill completes or reaches a manually chosen "ready enough" checkpoint. Public pages can update automatically after launch.
 
-The project currently runs on servers provided by the Department of Artificial Intelligence Systems at Lviv Polytechnic National University and uses Lapatonia LLM infrastructure.
+The project currently runs on servers provided by the Department of Artificial Intelligence Systems at Lviv Polytechnic National University and uses Lapathoniia LLM infrastructure.
 
 ## Later
 

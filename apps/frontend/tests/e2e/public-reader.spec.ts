@@ -57,7 +57,7 @@ test("reader can inspect the global project explanation", async ({ page }) => {
     "href",
     "https://aidept.com.ua/",
   );
-  await expect(footer.getByRole("link", { name: "Lapatonia" })).toHaveAttribute(
+  await expect(footer.getByRole("link", { name: "Lapathoniia" })).toHaveAttribute(
     "href",
     "https://lapathoniia.top/",
   );

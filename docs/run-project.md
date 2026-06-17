@@ -412,13 +412,13 @@ docker compose --profile jobs run --rm worker-ml python -m worker_ml.scripts.rec
 
 ### Smoke-test 10 article cards
 
-Put real Lapatonia credentials in the ignored LiteLLM env file. AWS credentials
+Put real Lapathoniia credentials in the ignored LiteLLM env file. AWS credentials
 are optional while Bedrock fallback routing is disabled. The
 tracked LiteLLM configuration routes all logical aliases through one shared
-OpenAI-compatible Lapatonia deployment with a combined 60 RPM limit and falls
+OpenAI-compatible Lapathoniia deployment with a combined 60 RPM limit and falls
 back to no secondary provider when a primary request fails. The Amazon Bedrock
 Gemma 3 27B model entry and credential settings are retained for optional direct
-testing or future reactivation. After four Lapatonia failures within one hour,
+testing or future reactivation. After four Lapathoniia failures within one hour,
 every alias remains unavailable for one hour. The cooldown is in memory, so
 restarting `llm-proxy` clears it:
 

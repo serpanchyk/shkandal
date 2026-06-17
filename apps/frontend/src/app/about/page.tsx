@@ -67,7 +67,7 @@ export default function AboutPage() {
             </a>{" "}
             та{" "}
             <a href="https://lapathoniia.top/" rel="noopener noreferrer" target="_blank">
-              Lapatonia
+              Lapathoniia
             </a>
             .
           </p>

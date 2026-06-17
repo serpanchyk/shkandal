@@ -29,7 +29,7 @@ export function Footer() {
         </a>{" "}
         та{" "}
         <a href="https://lapathoniia.top/" {...externalLinkProps}>
-          Lapatonia
+          Lapathoniia
         </a>
         .
       </p>
