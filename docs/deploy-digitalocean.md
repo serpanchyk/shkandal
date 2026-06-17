@@ -89,6 +89,11 @@ Open the server IP or hostname in a browser. Caddy should route:
 - `/healthz` to `backend:8000`
 - everything else to `frontend:3000`
 
+The production deploy script also includes `docker-compose.prod.tunnel.yaml`
+when that file is present. This binds Postgres to `127.0.0.1:5432` on the
+Droplet only, so local workers can reach production Postgres through an SSH
+tunnel without exposing port `5432` publicly.
+
 ## 5. Update the deployment
 
 The automated production deployment runs on pushes to `master` and can also be
