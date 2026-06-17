@@ -66,6 +66,12 @@ def test_key_indexes_are_registered() -> None:
     assert "ix_entities_aliases" in index_names("entities")
     assert "ix_case_events_case_id_event_date_parts" in index_names("case_events")
     assert "ix_cases_active_title_uk_trgm" in index_names("cases")
+    assert "ix_cases_active_summary_uk_trgm" in index_names("cases")
+    assert "ix_entities_canonical_name_uk_trgm" in index_names("entities")
+    assert "ix_entities_description_uk_trgm" in index_names("entities")
+    assert "ix_events_title_uk_trgm" in index_names("events")
+    assert "ix_events_description_uk_trgm" in index_names("events")
+    assert "ix_events_location_uk_trgm" in index_names("events")
 
 
 def test_foreign_keys_are_registered() -> None:

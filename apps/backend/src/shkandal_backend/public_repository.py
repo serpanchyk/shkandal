@@ -24,7 +24,7 @@ from shkandal_database.models import (
     Event,
     Source,
 )
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import Text, and_, case, func, or_, select
 from sqlalchemy.dialects.postgresql import aggregate_order_by, insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import aliased
@@ -81,6 +81,7 @@ class SqlAlchemyPublicRepository:
         self._image_url_checker = image_url_checker
 
     async def case_feed(self, *, sort: CaseSort, query: str | None, page: int) -> CaseFeedPage:
+        query = query.strip() if query is not None else None
         async with self._session_factory() as session:
             views = (
                 select(
@@ -131,9 +132,10 @@ class SqlAlchemyPublicRepository:
                 .where(_public_case_predicate())
             )
             if query:
-                similarity = func.similarity(Case.title_uk, query)
-                statement = statement.where(similarity > 0.15).order_by(
-                    similarity.desc(), Case.last_updated_at.desc().nulls_last(), Case.id
+                search_match = _case_search_match(query)
+                search_score = _case_search_score(query)
+                statement = statement.where(search_match).order_by(
+                    search_score.desc(), Case.last_updated_at.desc().nulls_last(), Case.id
                 )
             elif sort == "latest":
                 statement = statement.order_by(Case.last_updated_at.desc().nulls_last(), Case.id)
@@ -351,6 +353,96 @@ def _public_case_predicate() -> ColumnElement[bool]:
         Case.summary_uk.is_not(None),
         func.length(func.trim(Case.summary_uk)) > 0,
         select(CaseArticle.id).where(CaseArticle.case_id == Case.id).exists(),
+    )
+
+
+def _case_search_match(query: str) -> ColumnElement[bool]:
+    like_query = f"%{query}%"
+    return or_(
+        Case.title_uk.ilike(like_query),
+        Case.summary_uk.ilike(like_query),
+        _case_entity_search_match(query),
+        _case_event_search_match(query),
+        _case_search_score(query) > 0.15,
+    )
+
+
+def _case_search_score(query: str) -> ColumnElement[float]:
+    return func.greatest(
+        func.similarity(Case.title_uk, query),
+        func.similarity(func.coalesce(Case.summary_uk, ""), query),
+        _case_entity_search_score(query),
+        _case_event_search_score(query),
+    )
+
+
+def _case_entity_search_match(query: str) -> ColumnElement[bool]:
+    like_query = f"%{query}%"
+    return (
+        select(CaseEntity.id)
+        .join(Entity, Entity.id == CaseEntity.entity_id)
+        .where(
+            CaseEntity.case_id == Case.id,
+            or_(
+                Entity.canonical_name_uk.ilike(like_query),
+                Entity.description_uk.ilike(like_query),
+                func.cast(Entity.aliases, Text).ilike(like_query),
+            ),
+        )
+        .exists()
+    )
+
+
+def _case_entity_search_score(query: str) -> ColumnElement[float]:
+    return func.coalesce(
+        select(
+            func.max(
+                func.greatest(
+                    func.similarity(Entity.canonical_name_uk, query),
+                    func.similarity(func.coalesce(Entity.description_uk, ""), query),
+                    func.similarity(func.cast(Entity.aliases, Text), query),
+                )
+            )
+        )
+        .join(CaseEntity, CaseEntity.entity_id == Entity.id)
+        .where(CaseEntity.case_id == Case.id)
+        .scalar_subquery(),
+        0,
+    )
+
+
+def _case_event_search_match(query: str) -> ColumnElement[bool]:
+    like_query = f"%{query}%"
+    return (
+        select(CaseEvent.id)
+        .join(Event, Event.id == CaseEvent.event_id)
+        .where(
+            CaseEvent.case_id == Case.id,
+            or_(
+                Event.title_uk.ilike(like_query),
+                Event.description_uk.ilike(like_query),
+                Event.location_uk.ilike(like_query),
+            ),
+        )
+        .exists()
+    )
+
+
+def _case_event_search_score(query: str) -> ColumnElement[float]:
+    return func.coalesce(
+        select(
+            func.max(
+                func.greatest(
+                    func.similarity(Event.title_uk, query),
+                    func.similarity(func.coalesce(Event.description_uk, ""), query),
+                    func.similarity(func.coalesce(Event.location_uk, ""), query),
+                )
+            )
+        )
+        .join(CaseEvent, CaseEvent.event_id == Event.id)
+        .where(CaseEvent.case_id == Case.id)
+        .scalar_subquery(),
+        0,
     )
 
 

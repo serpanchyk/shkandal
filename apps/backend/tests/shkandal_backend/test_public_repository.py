@@ -128,14 +128,33 @@ async def test_case_feed_builds_each_ranking(sort) -> None:
     assert result.items[0].image_url == "https://example.com/image.jpg"
 
 
-async def test_case_feed_uses_similarity_order_for_search() -> None:
+async def test_case_feed_searches_case_entity_and_event_text() -> None:
     session = FakeSession(scalars=[0], executes=[[]])
 
-    result = await _repository(session).case_feed(sort="trending", query="справа", page=2)
+    result = await _repository(session).case_feed(sort="trending", query=" офіс ", page=2)
+    sql = str(
+        session.executed_statements[0].compile(
+            compile_kwargs={"literal_binds": True},
+        )
+    )
 
-    assert result.query == "справа"
+    assert result.query == "офіс"
     assert result.page == 2
     assert result.items == []
+    assert "cases.title_uk" in sql
+    assert "cases.summary_uk" in sql
+    assert "case_entities" in sql
+    assert "entities.canonical_name_uk" in sql
+    assert "entities.description_uk" in sql
+    assert "entities.aliases" in sql
+    assert "case_events" in sql
+    assert "events.title_uk" in sql
+    assert "events.description_uk" in sql
+    assert "events.location_uk" in sql
+    assert "similarity" in sql
+    assert "LIKE" in sql
+    assert "%офіс%" in sql
+    assert "ORDER BY greatest" in sql
 
 
 async def test_case_feed_uses_first_linked_non_empty_article_image() -> None:

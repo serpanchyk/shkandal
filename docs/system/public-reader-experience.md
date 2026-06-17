@@ -26,7 +26,7 @@ The frontend source routes are:
 ## Reader Surfaces
 
 The homepage defaults to trending Cases and supports page-number navigation,
-typo-tolerant title search, and five sort modes:
+typo-tolerant multi-field search, and five sort modes:
 
 - `trending`: linked articles published during the previous seven days;
 - `latest`: newest dated linked article;
@@ -84,7 +84,7 @@ files fall back to Source initials in the reader UI.
 The backend exposes strict Pydantic response contracts:
 
 - `GET /api/cases?sort=trending&page=1&query=...`: feed, sorting, pagination,
-  and optional fuzzy title search;
+  and optional multi-field Case search;
 - `GET /api/events/latest`: up to 50 newest known-date Events linked to public
   Cases, ordered by occurrence date;
 - `GET /api/cases/{slug}`: composed Case page;
@@ -93,9 +93,10 @@ The backend exposes strict Pydantic response contracts:
 - `GET /api/sitemap`: public-ready Case and Entity routes;
 - `GET /healthz`: backend health.
 
-Search queries are 2 to 120 characters. PostgreSQL `pg_trgm` similarity ranks
-fuzzy title matches. The backend reads current PostgreSQL rows and returns
-page-ready data so public composition rules remain outside the frontend.
+Search queries are 2 to 120 characters. PostgreSQL substring and `pg_trgm`
+matching search Case titles, summaries, linked Entity text, and linked Event
+text. The backend reads current PostgreSQL rows and returns page-ready data so
+public composition rules remain outside the frontend.
 
 Case views are intentionally approximate. The frontend stores
 `shkandal:viewed:{slug}` in browser session storage and sends at most one view

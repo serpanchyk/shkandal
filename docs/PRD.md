@@ -128,7 +128,8 @@ current database rows.
   velocity, latest is newest linked-article publication time, popular is
   all-time views, biggest is linked-article count, and newest is Case creation.
 - Undated articles remain evidence but do not affect latest or trending.
-- Public Case-title search is typo-tolerant and similarity-ranked.
+- Public Case search covers titles, summaries, linked Entities, and linked Events
+  with substring and typo-tolerant similarity matching.
 - Public Cases require a title, summary, and linked article. Public Entity pages
   require a name, description, public Case link, and supporting article.
 - Case pages label linked Entities as mentioned people and organizations, not

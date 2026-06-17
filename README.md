@@ -116,7 +116,8 @@ publication time, `trending` as linked articles published in the previous seven
 days, `popular` as all-time aggregate views, `biggest` as linked-article count,
 and `newest` as Case creation time. The homepage defaults to `trending`.
 Undated articles remain evidence but do not affect `latest` or `trending`.
-Typo-tolerant Case-title search uses PostgreSQL trigram similarity.
+Case search uses PostgreSQL substring and trigram matching across Case titles,
+summaries, linked Entities, and linked Events.
 
 Future homepage ideas include live event streams, infographics, and real-time update blocks.
 

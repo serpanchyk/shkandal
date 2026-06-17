@@ -16,7 +16,7 @@ Implemented MVP surfaces:
 
 The frontend server-renders current API data without page-data caching. The
 homepage defaults to trending Cases, supports five sort modes, page-number
-navigation, header-based fuzzy Case-title search, a featured first-page layout
+navigation, header-based multi-field Case search, a featured first-page layout
 with one lead Case and four supporting Cases, a compact one-row-per-Case feed,
 and an animated rolling list of the newest known-date Events. Search results and
 later feed pages use only the compact list. Case pages show a compact
