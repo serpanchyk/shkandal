@@ -6,9 +6,9 @@ import { Pagination } from "@/components/pagination";
 import { getCaseFeed, getLatestEvents, type CaseSort } from "@/lib/api";
 import { formatCount } from "@/lib/ukrainian";
 
-const sorts: Array<[CaseSort, string]> = [
-  ["trending", "набирають обертів"],
-  ["latest", "останні оновлення"],
+const availableSorts: CaseSort[] = ["trending", "latest", "newest", "popular", "biggest"];
+
+const visibleSorts: Array<[CaseSort, string]> = [
   ["newest", "найновіші"],
   ["popular", "найвідвідуваніші"],
   ["biggest", "найбільші"],
@@ -18,9 +18,9 @@ type SearchParams = Promise<{ sort?: string; page?: string; query?: string }>;
 
 export default async function Home({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
-  const sort = sorts.some(([value]) => value === params.sort)
+  const sort = availableSorts.some((value) => value === params.sort)
     ? (params.sort as CaseSort)
-    : "trending";
+    : "popular";
   const page = Math.max(1, Number.parseInt(params.page ?? "1", 10) || 1);
   const query = params.query?.trim();
   const [feed, events] = await Promise.all([getCaseFeed(sort, page, query), getLatestEvents()]);
@@ -50,7 +50,7 @@ export default async function Home({ searchParams }: { searchParams: SearchParam
         </div>
       ) : (
         <nav aria-label="Сортування справ" className="sortTabs">
-          {sorts.map(([value, label]) => (
+          {visibleSorts.map(([value, label]) => (
             <Link
               aria-current={sort === value ? "page" : undefined}
               href={`/?sort=${value}`}

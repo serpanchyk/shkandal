@@ -5,23 +5,11 @@ import asyncio
 
 from worker_ml.runtime.application import run_backfill, run_once, run_worker
 from worker_ml.runtime.planning import (
-    AUDIT_CASE_COHERENCE_JOB,
-    AUDIT_CASE_DUPLICATES_JOB,
-    AUDIT_CASE_PUBLIC_INTEREST_JOB,
     JOB_TYPE_SCHEDULE,
     SUPPORTED_JOB_TYPES,
 )
 
-DEFAULT_CLI_JOB_TYPES = tuple(
-    job_type
-    for job_type in JOB_TYPE_SCHEDULE
-    if job_type
-    not in {
-        AUDIT_CASE_COHERENCE_JOB,
-        AUDIT_CASE_DUPLICATES_JOB,
-        AUDIT_CASE_PUBLIC_INTEREST_JOB,
-    }
-)
+DEFAULT_CLI_JOB_TYPES = JOB_TYPE_SCHEDULE
 
 
 def main() -> None:

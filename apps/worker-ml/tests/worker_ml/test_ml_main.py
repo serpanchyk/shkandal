@@ -637,6 +637,9 @@ def test_no_args_dispatches_one_cycle(monkeypatch: pytest.MonkeyPatch) -> None:
         job_types=(
             "create_article_card",
             "update_case_copy",
+            "audit_case_coherence",
+            "audit_case_public_interest",
+            "audit_case_duplicates",
             "resolve_article_cases",
             "resolve_article_entities",
             "resolve_article_events",
@@ -656,6 +659,9 @@ def test_loop_flag_dispatches_worker_loop(monkeypatch: pytest.MonkeyPatch) -> No
         job_types=(
             "create_article_card",
             "update_case_copy",
+            "audit_case_coherence",
+            "audit_case_public_interest",
+            "audit_case_duplicates",
             "resolve_article_cases",
             "resolve_article_entities",
             "resolve_article_events",
@@ -714,6 +720,9 @@ def test_backfill_flag_dispatches_successful_backfill(monkeypatch: pytest.Monkey
         job_types=(
             "create_article_card",
             "update_case_copy",
+            "audit_case_coherence",
+            "audit_case_public_interest",
+            "audit_case_duplicates",
             "resolve_article_cases",
             "resolve_article_entities",
             "resolve_article_events",
