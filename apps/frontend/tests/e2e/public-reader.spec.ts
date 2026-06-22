@@ -10,8 +10,12 @@ test("reader can sort and fuzzy-search the Case feed", async ({ page }) => {
   await expect(page.locator('[data-case-variant="lead"]')).toHaveCount(1);
   await expect(page.locator('[data-case-variant="supporting"]')).toHaveCount(4);
   await expect(page.locator('[data-case-variant="list"]')).toHaveCount(15);
-  await page.getByRole("link", { name: "останні оновлення" }).click();
-  await expect(page).toHaveURL(/sort=latest/);
+  await expect(page.getByRole("link", { name: "найвідвідуваніші" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expect(page.getByRole("link", { name: "набирають обертів" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "останні оновлення" })).toHaveCount(0);
 
   await page.getByLabel("Пошук справ").fill("корупційна");
   await page.getByRole("button", { name: "знайти" }).click();
@@ -23,7 +27,7 @@ test("reader can sort and fuzzy-search the Case feed", async ({ page }) => {
 test("reader can page through the Case feed without the featured layout repeating", async ({
   page,
 }) => {
-  await page.goto("/?sort=latest");
+  await page.goto("/?sort=popular");
 
   const pagination = page.getByRole("navigation", { name: "Сторінки" });
   await expect(pagination.getByRole("link", { name: "1", exact: true })).toHaveAttribute(
@@ -34,7 +38,7 @@ test("reader can page through the Case feed without the featured layout repeatin
   await expect(pagination.getByRole("link", { name: "9", exact: true })).toBeVisible();
   await pagination.getByRole("link", { name: "2", exact: true }).click();
 
-  await expect(page).toHaveURL(/sort=latest.*page=2/);
+  await expect(page).toHaveURL(/sort=popular.*page=2/);
   await expect(page.locator('[data-case-variant="lead"]')).toHaveCount(0);
   await expect(page.locator('[data-case-variant="supporting"]')).toHaveCount(0);
   await expect(page.locator('[data-case-variant="list"]')).toHaveCount(20);
