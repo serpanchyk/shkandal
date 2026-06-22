@@ -148,6 +148,20 @@ async def test_summarize_jobs_returns_selected_queue_state() -> None:
     assert "jobs.attempt_count >= jobs.max_attempts" in str(statement)
 
 
+def test_article_job_claims_are_ordered_by_article_publication_date() -> None:
+    query = ArticleJobStore._eligible_job_id_query(
+        stale_before=datetime(2026, 6, 11, 17, 30, tzinfo=UTC),
+        now=datetime(2026, 6, 11, 18, 0, tzinfo=UTC),
+        job_types=("create_article_card",),
+    )
+
+    query_text = str(query)
+
+    assert "articles.published_at" in query_text
+    assert "NULLS LAST" in query_text
+    assert query_text.index("articles.published_at") < query_text.index("jobs.created_at")
+
+
 @pytest.mark.asyncio
 async def test_enqueue_case_job_requests_another_revision() -> None:
     job_id = uuid4()

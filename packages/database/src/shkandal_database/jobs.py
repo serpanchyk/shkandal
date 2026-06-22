@@ -12,7 +12,7 @@ from sqlalchemy import Select, and_, case, desc, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from shkandal_database.models import Job
+from shkandal_database.models import Article, Job
 from shkandal_database.session import async_session_scope
 
 JOB_STATUS_QUEUED = "queued"
@@ -589,10 +589,29 @@ class ArticleJobStore:
             Job.locked_at < stale_before,
             Job.attempt_count < Job.max_attempts,
         )
+        article_published_at = (
+            select(Article.published_at)
+            .where(Article.id == Job.article_id)
+            .correlate(Job)
+            .scalar_subquery()
+        )
+        article_created_at = (
+            select(Article.created_at)
+            .where(Article.id == Job.article_id)
+            .correlate(Job)
+            .scalar_subquery()
+        )
         statement = (
             select(Job.id)
             .where(or_(queued, stale_running))
-            .order_by(desc(Job.priority), Job.run_after.asc().nulls_first(), Job.created_at.asc())
+            .order_by(
+                desc(Job.priority),
+                Job.run_after.asc().nulls_first(),
+                article_published_at.asc().nulls_last(),
+                article_created_at.asc().nulls_last(),
+                Job.created_at.asc(),
+                Job.id.asc(),
+            )
             .limit(1)
         )
         if job_types is not None:
