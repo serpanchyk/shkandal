@@ -858,7 +858,6 @@ def test_case_resolution_contract_accepts_explicit_rejection() -> None:
             "outcome": "rejected",
             "existing_case_links": [],
             "new_cases": [],
-            "case_relations": [],
         }
     )
 
@@ -885,7 +884,6 @@ def test_case_resolution_contract_rejects_resolved_without_story_core() -> None:
                         "confidence": 0.8,
                     }
                 ],
-                "case_relations": [],
             }
         )
 
@@ -907,7 +905,6 @@ def test_case_resolution_contract_rejects_resolved_without_specific_case_core() 
                         "confidence": 0.8,
                     }
                 ],
-                "case_relations": [],
             }
         )
 
@@ -920,7 +917,6 @@ def test_case_duplicate_audit_rejects_merge_without_shared_specific_core() -> No
                     "case_a_core_uk": "Перша справа.",
                     "case_b_core_uk": "Друга справа.",
                     "shared_specific_core_uk": None,
-                    "relation_anchor_uk": None,
                     "only_broad_overlap_uk": "Спільний лише орган.",
                     "merge_blockers_uk": [],
                 },
@@ -942,7 +938,6 @@ def test_case_duplicate_audit_rejects_merge_without_shared_specific_core() -> No
             "outcome": "resolved",
             "existing_case_links": [],
             "new_cases": [],
-            "case_relations": [],
         },
         {
             "diagnosis": case_resolution_diagnosis(
@@ -962,7 +957,6 @@ def test_case_duplicate_audit_rejects_merge_without_shared_specific_core() -> No
                     "confidence": 0.8,
                 }
             ],
-            "case_relations": [],
         },
     ],
 )

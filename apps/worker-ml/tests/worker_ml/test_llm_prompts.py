@@ -77,7 +77,7 @@ def test_dropped_link_fallback_prompt_only_allows_new_case_or_rejection() -> Non
 
     assert "case_link_audit" in prompt
     assert "`existing_case_links = []`" in prompt
-    assert "`case_relations = []`" in prompt
+    assert "case_relations" not in prompt
     assert "звичайною кримінальною хронікою" in prompt
     assert "домашнє насильство" in prompt
     assert "жорстоке поводження з дітьми" in prompt

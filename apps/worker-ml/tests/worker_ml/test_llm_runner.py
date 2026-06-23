@@ -130,7 +130,6 @@ async def test_runner_records_prompt_override_under_case_resolution_run_type() -
                                 "confidence": 0.86,
                             }
                         ],
-                        "case_relations": [],
                         "decision_reason_uk": "Після відкидання кандидатів лишилась нова справа.",
                         "outcome": "resolved",
                     },
@@ -572,7 +571,6 @@ async def test_runner_truncates_overlong_case_resolution_fields_without_repair()
                                 "confidence": 0.8,
                             }
                         ],
-                        "case_relations": [],
                         "decision_reason_uk": long_text,
                         "outcome": "resolved",
                     },
@@ -630,7 +628,6 @@ async def test_runner_truncates_overlong_case_resolution_fields_after_repair() -
                     "confidence": 0.8,
                 }
             ],
-            "case_relations": [],
             "decision_reason_uk": long_text,
             "outcome": "resolved",
         },

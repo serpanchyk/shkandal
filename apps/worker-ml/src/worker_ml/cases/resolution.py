@@ -10,7 +10,7 @@ from typing import Any, cast
 from uuid import UUID, uuid4
 
 from shkandal_database.jobs import ArticleJobStore, ClaimedJob
-from shkandal_database.models import Article, ArticleCard, Case, CaseArticle, CaseRelation, Source
+from shkandal_database.models import Article, ArticleCard, Case, CaseArticle, Source
 from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -22,11 +22,7 @@ from worker_ml.cases.publication import (
     case_vector_payload,
     try_case_mutation_lock,
 )
-from worker_ml.llm.contracts import (
-    CaseLinkAuditOutput,
-    CaseRelationDecision,
-    CaseResolutionOutput,
-)
+from worker_ml.llm.contracts import CaseLinkAuditOutput, CaseResolutionOutput
 from worker_ml.llm.runner import LlmTaskRunner
 from worker_ml.llm.schema import prompt_schema_json
 from worker_ml.retrieval.vector_index import VectorIndexService
@@ -119,7 +115,6 @@ class ArticleCaseResolutionJobHandler:
             )
             output = cast(CaseResolutionOutput, result.output)
             candidate_ids = {candidate["case_id"] for candidate in candidates}
-            output = _normalize_invalid_case_relations(output, candidate_ids)
             if output.outcome == "rejected":
                 return output
             rechecked = await self._recheck_existing_case_links_for_resolution(
@@ -267,12 +262,7 @@ class ArticleCaseResolutionJobHandler:
                 continue
             kept_case_ids.add(link.case_id)
             rechecked_links.append(link)
-        filtered = output.model_copy(
-            update={
-                "existing_case_links": rechecked_links,
-                "case_relations": _filter_case_relations(output.case_relations, kept_case_ids),
-            }
-        )
+        filtered = output.model_copy(update={"existing_case_links": rechecked_links})
         if filtered.existing_case_links or filtered.new_cases:
             return RecheckedCaseResolution(output=filtered, run_id=initial_run_id)
         if source is not None:
@@ -390,14 +380,12 @@ class ArticleCaseResolutionJobHandler:
         run_id: UUID | None,
         candidate_ids: set[str],
     ) -> set[UUID]:
-        resolved: dict[str, UUID] = {}
         affected: set[UUID] = set()
         published_at = article.published_at
         for link in output.existing_case_links:
             if link.case_id not in candidate_ids:
                 raise ValueError(f"existing link references non-candidate case: {link.case_id}")
             case_id = UUID(link.case_id)
-            resolved[link.case_id] = case_id
             affected.add(case_id)
             inserted_id = await session.scalar(
                 insert(CaseArticle)
@@ -429,7 +417,6 @@ class ArticleCaseResolutionJobHandler:
                 )
         for decision in output.new_cases:
             case_id = uuid4()
-            resolved[decision.new_case_ref] = case_id
             affected.add(case_id)
             session.add(
                 Case(
@@ -452,60 +439,7 @@ class ArticleCaseResolutionJobHandler:
                     confidence=Decimal(str(decision.confidence)),
                 )
             )
-        for relation in output.case_relations:
-            case_a = _relation_endpoint(relation.case_a_id, relation.case_a_new_ref, resolved)
-            case_b = _relation_endpoint(relation.case_b_id, relation.case_b_new_ref, resolved)
-            if relation.case_a_id and relation.case_a_id not in candidate_ids:
-                raise ValueError("relation references non-candidate existing case")
-            if relation.case_b_id and relation.case_b_id not in candidate_ids:
-                raise ValueError("relation references non-candidate existing case")
-            case_a, case_b = sorted((case_a, case_b))
-            await session.execute(
-                insert(CaseRelation)
-                .values(
-                    case_a_id=case_a,
-                    case_b_id=case_b,
-                    relation_type=relation.relation_type,
-                    llm_run_id=run_id,
-                )
-                .on_conflict_do_nothing(
-                    index_elements=[
-                        CaseRelation.case_a_id,
-                        CaseRelation.case_b_id,
-                        CaseRelation.relation_type,
-                    ]
-                )
-            )
         return affected
-
-
-def _normalize_invalid_case_relations(
-    output: CaseResolutionOutput,
-    candidate_ids: set[str],
-) -> CaseResolutionOutput:
-    """Discard optional relations that reference an unretrieved existing Case."""
-
-    relations = [
-        relation
-        for relation in output.case_relations
-        if (relation.case_a_id is None or relation.case_a_id in candidate_ids)
-        and (relation.case_b_id is None or relation.case_b_id in candidate_ids)
-    ]
-    return output.model_copy(update={"case_relations": relations})
-
-
-def _filter_case_relations(
-    relations: list[CaseRelationDecision],
-    kept_case_ids: set[str],
-) -> list[CaseRelationDecision]:
-    """Drop relations that mention removed existing Cases."""
-
-    return [
-        relation
-        for relation in relations
-        if (relation.case_a_id is None or relation.case_a_id in kept_case_ids)
-        and (relation.case_b_id is None or relation.case_b_id in kept_case_ids)
-    ]
 
 
 def _reject_resolution_after_link_audit(output: CaseResolutionOutput) -> CaseResolutionOutput:
@@ -525,7 +459,6 @@ def _reject_resolution_after_link_audit(output: CaseResolutionOutput) -> CaseRes
             "diagnosis": diagnosis.model_dump(mode="json"),
             "existing_case_links": [],
             "new_cases": [],
-            "case_relations": [],
             "decision_reason_uk": (
                 "Повторна перевірка не підтвердила безпечну прив'язку "
                 "статті до жодної наявної справи."
@@ -620,9 +553,6 @@ def _dropped_link_fallback_json(
                 "new_cases": [
                     decision.model_dump(mode="json") for decision in original_output.new_cases
                 ],
-                "case_relations": [
-                    relation.model_dump(mode="json") for relation in original_output.case_relations
-                ],
             },
             "rejected_candidate_cases": candidates,
             "case_link_audit_outcomes": dropped_link_audits,
@@ -639,21 +569,8 @@ def _dropped_link_fallback_json(
 def _validate_dropped_link_fallback_output(output: CaseResolutionOutput) -> None:
     if output.existing_case_links:
         raise ValueError("dropped-link fallback cannot return existing case links")
-    if output.case_relations:
-        raise ValueError("dropped-link fallback cannot return case relations")
     if output.outcome == "resolved" and not output.new_cases:
         raise ValueError("dropped-link fallback resolution must create a new case")
-
-
-def _relation_endpoint(
-    existing_id: str | None,
-    new_ref: str | None,
-    resolved: dict[str, UUID],
-) -> UUID:
-    key = existing_id or cast(str, new_ref)
-    if key in resolved:
-        return resolved[key]
-    return UUID(key)
 
 
 async def _representative_article_titles_by_case(

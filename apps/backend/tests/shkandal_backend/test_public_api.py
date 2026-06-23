@@ -10,7 +10,7 @@ from shkandal_backend.schemas import (
     CasePage,
     EntityPage,
     LatestEvent,
-    RelatedCasePreview,
+    OtherCasePreview,
     SitemapEntry,
     SourcePreview,
 )
@@ -78,7 +78,7 @@ class FakePublicRepository:
             entities=[],
             events=[],
             articles=[_article()],
-            related_cases=[],
+            other_cases=[],
             disclaimer_uk="Автоматично зібрано.",
         )
 
@@ -106,7 +106,7 @@ class FakePublicRepository:
             entity_type="person",
             aliases=[],
             description_uk="Опис.",
-            cases=[RelatedCasePreview(slug="case-a", title_uk="Справа А", summary_uk="Опис.")],
+            cases=[OtherCasePreview(slug="case-a", title_uk="Справа А", summary_uk="Опис.")],
             articles=[_article()],
         )
 

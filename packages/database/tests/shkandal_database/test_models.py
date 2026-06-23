@@ -13,7 +13,6 @@ EXPECTED_TABLES = {
     "article_cards",
     "cases",
     "case_articles",
-    "case_relations",
     "case_coherence_audits",
     "case_public_interest_audits",
     "case_duplicate_audits",
@@ -54,7 +53,6 @@ def test_key_constraints_are_registered() -> None:
         "case_articles",
         UniqueConstraint,
     )
-    assert "ck_case_relations_canonical_pair" in constraint_names("case_relations", CheckConstraint)
     assert "ck_entities_entity_type" in constraint_names("entities", CheckConstraint)
     assert "ck_jobs_status" in constraint_names("jobs", CheckConstraint)
 

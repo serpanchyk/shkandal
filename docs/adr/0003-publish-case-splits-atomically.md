@@ -8,7 +8,7 @@ Accepted
 
 Case Coherence Audits prepare their full decision before acquiring the Case,
 Entity, and Event mutation locks. A decisive audit then rewrites article
-assignments, Case-scoped Entity/Event links, public copy, counts, relations, and
+assignments, Case-scoped Entity/Event links, public copy, counts, and
 vectors as one locked publication operation. PostgreSQL commits only after all
 affected vectors are updated, so readers continue seeing the previous dossier
 until the complete split is ready. Inconclusive or superseded audits make no

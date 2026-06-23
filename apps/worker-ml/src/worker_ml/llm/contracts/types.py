@@ -27,7 +27,6 @@ EntityType = Literal[
     "unknown_actor",
     "other",
 ]
-CaseRelationType = Literal["related", "possible_duplicate"]
 EventDatePrecision = Literal["day", "month", "year", "unknown"]
 NoiseReason = Literal[
     "culture",

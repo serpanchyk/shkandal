@@ -381,7 +381,6 @@ def test_case_resolution_truncates_whitelisted_diagnostic_fields() -> None:
                     "confidence": 0.8,
                 }
             ],
-            "case_relations": [],
             "decision_reason_uk": long_text,
             "outcome": "resolved",
         },
@@ -480,7 +479,6 @@ def test_case_resolution_keeps_non_whitelisted_fields_strictly_invalid() -> None
                     "confidence": 0.8,
                 }
             ],
-            "case_relations": [],
             "decision_reason_uk": "Створюємо нову конкретну справу.",
             "outcome": "resolved",
         },

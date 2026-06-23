@@ -21,7 +21,6 @@ from shkandal_database.models import (
     CaseCoherenceAudit,
     CaseEntity,
     CaseEvent,
-    CaseRelation,
 )
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.postgresql import insert
@@ -428,21 +427,6 @@ async def _apply_decisive_audit(
     await rebuild_case_events(session, affected_event_pairs)
     for target in story_cases.values():
         await refresh_case_counts(session, target)
-    for target in story_cases.values():
-        if target.id == case.id:
-            continue
-        case_a, case_b = sorted((case.id, target.id))
-        await session.execute(
-            insert(CaseRelation)
-            .values(case_a_id=case_a, case_b_id=case_b, relation_type="related", llm_run_id=run_id)
-            .on_conflict_do_nothing(
-                index_elements=[
-                    CaseRelation.case_a_id,
-                    CaseRelation.case_b_id,
-                    CaseRelation.relation_type,
-                ]
-            )
-        )
     evidence_changed = output.outcome == "split" or bool(output.detached_articles)
     case.evidence_revision = evidence_revision + int(evidence_changed)
     case.last_audited_revision = case.evidence_revision

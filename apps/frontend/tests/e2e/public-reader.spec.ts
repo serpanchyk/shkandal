@@ -133,9 +133,17 @@ test("reader can inspect Case provenance and navigate to an Entity", async ({ pa
   await expect(articleArchive.locator(".articleCard")).toBeHidden();
   await articleArchive.getByText("1 матеріал справи").click();
   await expect(articleArchive.locator(".articleCard")).toBeVisible();
+  const otherCases = page.locator(".otherCasesArchive");
+  await expect(otherCases.getByRole("link", { name: /Інша справа зі спільним матеріалом/ })).toBeHidden();
+  await otherCases.getByText("1 інша справа").click();
+  await expect(otherCases.getByRole("link", { name: /Інша справа зі спільним матеріалом/ })).toBeVisible();
   await page.getByText("1 джерело події").click();
   await expect(page.getByRole("heading", { name: "Джерельний матеріал для перевірки" })).toBeVisible();
 
+  const entitiesArchive = page.locator(".entitiesArchive");
+  await expect(entitiesArchive.getByRole("link", { name: /Тестова особа/ })).toBeHidden();
+  await entitiesArchive.getByText("Згадані особи та організації").click();
+  await expect(entitiesArchive.getByRole("link", { name: /Тестова особа/ })).toBeVisible();
   await page.getByRole("link", { name: /Тестова особа/ }).click();
   await expect(page.getByRole("heading", { name: "Тестова особа" })).toBeVisible();
 });
