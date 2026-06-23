@@ -92,19 +92,30 @@ export default async function CasePage({ params }: { params: Params }) {
       </section>
 
       <section aria-labelledby="entities-title" className="dossierSection">
-        <div className="sectionHeading">
-          <p className="sectionCode">03 / mentions</p>
-          <h2 id="entities-title">Згадані особи та організації</h2>
-        </div>
-        <div className="entityGrid">
-          {dossier.entities.map((entity) => (
-            <Link className="entityCard" href={`/entities/${entity.slug}`} key={entity.slug}>
-              <span>{entity.entity_type} / {formatCount(entity.mention_count, ["згадка", "згадки", "згадок"])}</span>
-              <h3>{entity.canonical_name_uk}</h3>
-              {entity.description_uk ? <p>{entity.description_uk}</p> : null}
-            </Link>
-          ))}
-        </div>
+        <details className="entitiesArchive">
+          <summary className="sectionHeading">
+            <p className="sectionCode">03 / mentions</p>
+            <div className="entitiesHeading">
+              <h2 id="entities-title">Згадані особи та організації</h2>
+              <span>
+                {formatCount(dossier.entities.length, [
+                  "згадана особа або організація",
+                  "згадані особи або організації",
+                  "згаданих осіб або організацій",
+                ])}
+              </span>
+            </div>
+          </summary>
+          <div className="entityGrid">
+            {dossier.entities.map((entity) => (
+              <Link className="entityCard" href={`/entities/${entity.slug}`} key={entity.slug}>
+                <span>{entity.entity_type} / {formatCount(entity.mention_count, ["згадка", "згадки", "згадок"])}</span>
+                <h3>{entity.canonical_name_uk}</h3>
+                {entity.description_uk ? <p>{entity.description_uk}</p> : null}
+              </Link>
+            ))}
+          </div>
+        </details>
       </section>
 
       {dossier.related_cases.length ? (
