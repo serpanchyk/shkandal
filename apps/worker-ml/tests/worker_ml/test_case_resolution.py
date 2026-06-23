@@ -11,10 +11,7 @@ from worker_ml.cases.publication import case_vector_payload
 from worker_ml.cases.resolution import (
     ArticleCaseResolutionJobHandler,
     _enqueue_resolution_followups,
-    _filter_case_relations,
-    _normalize_invalid_case_relations,
     _reject_resolution_after_link_audit,
-    _relation_endpoint,
 )
 from worker_ml.llm.contracts import CaseLinkAuditOutput, CaseResolutionOutput
 from worker_ml.llm.runner import LlmTaskResult, LlmTaskRunner
@@ -89,7 +86,6 @@ def _case_resolution_with_existing(
                 }
             ],
             "new_cases": new_cases,
-            "case_relations": [],
         }
     )
 
@@ -119,7 +115,6 @@ def _fallback_new_case_output() -> CaseResolutionOutput:
                     "confidence": 0.86,
                 }
             ],
-            "case_relations": [],
             "decision_reason_uk": "Після відкидання кандидатів стаття створює нову справу.",
             "outcome": "resolved",
         }
@@ -143,7 +138,6 @@ def _fallback_rejection_output() -> CaseResolutionOutput:
             },
             "existing_case_links": [],
             "new_cases": [],
-            "case_relations": [],
             "decision_reason_uk": "Після аудиту немає безпечної прив'язки або нової справи.",
             "outcome": "rejected",
         }
@@ -159,71 +153,6 @@ def test_lifecycle_sample_preserves_first_last_and_full_span() -> None:
     assert sample[0] == {"position": 0}
     assert sample[-1] == {"position": 99}
     assert [card["position"] for card in sample] == sorted(card["position"] for card in sample)
-
-
-def test_relation_endpoint_resolves_new_ref_or_existing_uuid() -> None:
-    new_case_id = uuid4()
-    existing_case_id = uuid4()
-
-    assert _relation_endpoint(None, "new_1", {"new_1": new_case_id}) == new_case_id
-    assert _relation_endpoint(str(existing_case_id), None, {}) == existing_case_id
-
-
-def test_invalid_optional_case_relations_are_discarded() -> None:
-    candidate_id = uuid4()
-    invalid_id = uuid4()
-    output = CaseResolutionOutput.model_validate(
-        {
-            "diagnosis": {
-                "article_story_core_uk": "Стаття описує дві конкретні пов'язані справи.",
-                "specific_case_core_uk": "Окрема нова справа з цього ж матеріалу.",
-                "only_broad_overlap_uk": None,
-                "merge_blockers_uk": [],
-                "separate_story_cores_uk": ["Наявна справа.", "Окрема нова справа."],
-                "case_coherence_test_uk": "Так, кожна справа має конкретне ядро.",
-                "matching_existing_case_ids": [str(candidate_id)],
-                "new_case_core_uk": "Окрема нова справа з цього ж матеріалу.",
-                "rejection_signals_uk": [],
-                "broad_theme_warning_uk": None,
-            },
-            "decision_reason_uk": "Стаття описує дві пов'язані справи.",
-            "outcome": "resolved",
-            "existing_case_links": [
-                {
-                    "case_id": str(candidate_id),
-                    "link_reason_uk": "Та сама справа.",
-                    "confidence": 0.9,
-                }
-            ],
-            "new_cases": [
-                {
-                    "new_case_ref": "new_case",
-                    "title_uk": "Нова справа",
-                    "summary_uk": "Опис.",
-                    "link_reason_uk": "Окрема справа.",
-                    "confidence": 0.8,
-                }
-            ],
-            "case_relations": [
-                {
-                    "case_a_id": str(candidate_id),
-                    "case_b_new_ref": "new_case",
-                    "relation_type": "related",
-                },
-                {
-                    "case_a_id": str(invalid_id),
-                    "case_b_new_ref": "new_case",
-                    "relation_type": "related",
-                },
-            ],
-        }
-    )
-
-    normalized = _normalize_invalid_case_relations(output, {str(candidate_id)})
-
-    assert normalized.existing_case_links == output.existing_case_links
-    assert normalized.new_cases == output.new_cases
-    assert normalized.case_relations == output.case_relations[:1]
 
 
 @pytest.mark.asyncio
@@ -622,50 +551,6 @@ async def test_resolution_followups_are_idempotently_ensured() -> None:
     }
 
 
-def test_filter_case_relations_drops_removed_existing_case_links() -> None:
-    output = CaseResolutionOutput.model_validate(
-        {
-            "diagnosis": {
-                "article_story_core_uk": "Стаття описує дві конкретні пов'язані справи.",
-                "specific_case_core_uk": "Конкретне ядро справи.",
-                "only_broad_overlap_uk": None,
-                "merge_blockers_uk": [],
-                "separate_story_cores_uk": ["Перша історія.", "Друга історія."],
-                "case_coherence_test_uk": "Так, окремі справи конкретні.",
-                "matching_existing_case_ids": ["case-a", "case-b"],
-                "new_case_core_uk": None,
-                "rejection_signals_uk": [],
-                "broad_theme_warning_uk": None,
-            },
-            "decision_reason_uk": "Стаття описує дві пов'язані справи.",
-            "outcome": "resolved",
-            "existing_case_links": [
-                {"case_id": "case-a", "link_reason_uk": "Перша справа.", "confidence": 0.9},
-                {"case_id": "case-b", "link_reason_uk": "Друга справа.", "confidence": 0.9},
-            ],
-            "new_cases": [
-                {
-                    "new_case_ref": "new_case",
-                    "title_uk": "Нова справа",
-                    "summary_uk": "Опис.",
-                    "link_reason_uk": "Нова пов'язана справа.",
-                    "confidence": 0.8,
-                }
-            ],
-            "case_relations": [
-                {"case_a_id": "case-a", "case_b_id": "case-b", "relation_type": "related"},
-                {"case_a_id": "case-a", "case_b_new_ref": "new_case", "relation_type": "related"},
-            ],
-        }
-    )
-
-    filtered = _filter_case_relations(output.case_relations, {"case-a"})
-
-    assert len(filtered) == 1
-    assert filtered[0].case_a_id == "case-a"
-    assert filtered[0].case_b_new_ref == "new_case"
-
-
 def test_reject_resolution_after_link_audit_rewrites_to_rejected() -> None:
     output = CaseResolutionOutput.model_validate(
         {
@@ -687,7 +572,6 @@ def test_reject_resolution_after_link_audit_rewrites_to_rejected() -> None:
                 {"case_id": "case-a", "link_reason_uk": "Схожа справа.", "confidence": 0.7}
             ],
             "new_cases": [],
-            "case_relations": [],
         }
     )
 
@@ -780,13 +664,6 @@ async def test_link_recheck_keeps_only_connecting_existing_cases() -> None:
                 },
             ],
             "new_cases": [],
-            "case_relations": [
-                {
-                    "case_a_id": str(keep_case.id),
-                    "case_b_id": str(drop_case.id),
-                    "relation_type": "related",
-                }
-            ],
         }
     )
 
@@ -822,7 +699,6 @@ async def test_link_recheck_keeps_only_connecting_existing_cases() -> None:
     )
 
     assert [link.case_id for link in filtered.existing_case_links] == [str(keep_case.id)]
-    assert filtered.case_relations == []
     monkeypatch.undo()
 
 
@@ -891,7 +767,6 @@ async def test_link_recheck_turns_resolution_into_rejection_when_all_existing_ca
                 {"case_id": str(case.id), "link_reason_uk": "Справa.", "confidence": 0.9}
             ],
             "new_cases": [],
-            "case_relations": [],
         }
     )
 

@@ -18,10 +18,8 @@ from shkandal_database.models import (
     CaseArticle,
     CaseDuplicateAudit,
     CasePublicInterestAudit,
-    CaseRelation,
 )
-from sqlalchemy import case as sql_case
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -115,7 +113,7 @@ class CasePublicInterestAuditJobHandler:
                 )
             )
             await session.commit()
-        if outcome == "keep":
+        if outcome == "keep" and await self._has_duplicate_candidate(job.case_id):
             await self._job_store.enqueue_case_job(
                 job_type=AUDIT_CASE_DUPLICATES_JOB,
                 case_id=job.case_id,
@@ -123,9 +121,16 @@ class CasePublicInterestAuditJobHandler:
             )
         return output
 
+    async def _has_duplicate_candidate(self, case_id: UUID) -> bool:
+        async with self._session_factory() as session:
+            case = await session.get(Case, case_id)
+            if case is None or case.status != "active":
+                return False
+            return bool(await _duplicate_candidate_ids(session, case))
+
 
 class CaseDuplicateAuditJobHandler:
-    """Resolve possible duplicate relations for one active Case."""
+    """Audit active Cases whose shared Articles indicate a possible duplicate."""
 
     def __init__(
         self,
@@ -145,12 +150,11 @@ class CaseDuplicateAuditJobHandler:
     async def handle(self, job: ClaimedJob) -> list[CaseDuplicateAuditOutput] | None:
         if job.case_id is None:
             raise ValueError("Case duplicate audit requires case_id")
-        await self._ensure_overlap_candidates(job.case_id)
         async with self._session_factory() as session:
             case = await session.get(Case, job.case_id)
             if case is None or case.status != "active":
                 return None
-            candidate_ids = await _possible_duplicate_ids(session, case.id)
+            candidate_ids = await _duplicate_candidate_ids(session, case)
         outputs: list[CaseDuplicateAuditOutput] = []
         for candidate_id in candidate_ids:
             output = await self._audit_pair(job, case.id, candidate_id)
@@ -163,49 +167,6 @@ class CaseDuplicateAuditJobHandler:
                 case.last_duplicate_audited_at = datetime.now(UTC)
                 await session.commit()
         return outputs
-
-    async def _ensure_overlap_candidates(self, case_id: UUID) -> None:
-        async with self._session_factory() as session:
-            case = await session.get(Case, case_id)
-            if case is None or case.status != "active":
-                return
-            shared = (
-                select(
-                    CaseArticle.case_id.label("other_id"),
-                    func.count(CaseArticle.article_id.distinct()).label("shared_count"),
-                )
-                .where(
-                    CaseArticle.case_id != case_id,
-                    CaseArticle.article_id.in_(
-                        select(CaseArticle.article_id).where(CaseArticle.case_id == case_id)
-                    ),
-                )
-                .group_by(CaseArticle.case_id)
-                .subquery()
-            )
-            rows = (
-                await session.execute(
-                    select(shared.c.other_id, shared.c.shared_count, Case.article_count)
-                    .join(Case, Case.id == shared.c.other_id)
-                    .where(Case.status == "active", shared.c.shared_count >= 2)
-                )
-            ).all()
-            for other_id, shared_count, other_count in rows:
-                if shared_count * 2 < min(case.article_count, other_count):
-                    continue
-                case_a, case_b = sorted((case_id, other_id))
-                await session.execute(
-                    insert(CaseRelation)
-                    .values(case_a_id=case_a, case_b_id=case_b, relation_type="possible_duplicate")
-                    .on_conflict_do_nothing(
-                        index_elements=[
-                            CaseRelation.case_a_id,
-                            CaseRelation.case_b_id,
-                            CaseRelation.relation_type,
-                        ]
-                    )
-                )
-            await session.commit()
 
     async def _audit_pair(
         self, job: ClaimedJob, case_id: UUID, candidate_id: UUID
@@ -282,8 +243,6 @@ class CaseDuplicateAuditJobHandler:
                     case_id=survivor.id,
                     payload={"case_id": str(survivor.id)},
                 )
-            elif outcome in {"related", "distinct"}:
-                await _resolve_relation(session, case_a.id, case_b.id, output.outcome, run_id)
             pair_a, pair_b = sorted((case_a.id, case_b.id))
             revisions_by_id = {case_a.id: revisions[0], case_b.id: revisions[1]}
             session.add(
@@ -323,19 +282,35 @@ def _compact_cards(cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ]
 
 
-async def _possible_duplicate_ids(session: AsyncSession, case_id: UUID) -> list[UUID]:
+async def _duplicate_candidate_ids(session: AsyncSession, current: Case) -> list[UUID]:
+    """Return active Cases sharing at least 30% of the smaller Case's Articles."""
+
+    shared = (
+        select(
+            CaseArticle.case_id.label("other_id"),
+            func.count(CaseArticle.article_id.distinct()).label("shared_count"),
+        )
+        .where(
+            CaseArticle.case_id != current.id,
+            CaseArticle.article_id.in_(
+                select(CaseArticle.article_id).where(CaseArticle.case_id == current.id)
+            ),
+        )
+        .group_by(CaseArticle.case_id)
+        .subquery()
+    )
+    smaller_count = func.least(current.article_count, Case.article_count)
     return list(
         (
             await session.scalars(
-                select(
-                    sql_case(
-                        (CaseRelation.case_a_id == case_id, CaseRelation.case_b_id),
-                        else_=CaseRelation.case_a_id,
-                    )
-                ).where(
-                    CaseRelation.relation_type == "possible_duplicate",
-                    or_(CaseRelation.case_a_id == case_id, CaseRelation.case_b_id == case_id),
+                select(shared.c.other_id)
+                .join(Case, Case.id == shared.c.other_id)
+                .where(
+                    Case.status == "active",
+                    shared.c.shared_count >= 1,
+                    shared.c.shared_count * 10 >= smaller_count * 3,
                 )
+                .order_by(shared.c.shared_count.desc(), Case.created_at.asc(), Case.id.asc())
             )
         ).all()
     )
@@ -418,67 +393,6 @@ async def _merge_cases(
     survivor.evidence_revision += 1
     absorbed.status = "merged"
     absorbed.merged_into_case_id = survivor.id
-    relation_rows = (
-        await session.execute(
-            select(CaseRelation).where(
-                or_(
-                    CaseRelation.case_a_id == absorbed.id,
-                    CaseRelation.case_b_id == absorbed.id,
-                )
-            )
-        )
-    ).scalars()
-    for relation in relation_rows:
-        other_id = relation.case_b_id if relation.case_a_id == absorbed.id else relation.case_a_id
-        if other_id == survivor.id:
-            continue
-        pair_a, pair_b = sorted((survivor.id, other_id))
-        await session.execute(
-            insert(CaseRelation)
-            .values(
-                case_a_id=pair_a,
-                case_b_id=pair_b,
-                relation_type=relation.relation_type,
-                llm_run_id=run_id,
-            )
-            .on_conflict_do_nothing(
-                index_elements=[
-                    CaseRelation.case_a_id,
-                    CaseRelation.case_b_id,
-                    CaseRelation.relation_type,
-                ]
-            )
-        )
-    await session.execute(
-        delete(CaseRelation).where(
-            or_(CaseRelation.case_a_id == absorbed.id, CaseRelation.case_b_id == absorbed.id)
-        )
-    )
-
-
-async def _resolve_relation(
-    session: AsyncSession, case_a: UUID, case_b: UUID, outcome: str, run_id: UUID | None
-) -> None:
-    pair_a, pair_b = sorted((case_a, case_b))
-    await session.execute(
-        delete(CaseRelation).where(
-            CaseRelation.case_a_id == pair_a,
-            CaseRelation.case_b_id == pair_b,
-            CaseRelation.relation_type == "possible_duplicate",
-        )
-    )
-    if outcome == "related":
-        await session.execute(
-            insert(CaseRelation)
-            .values(case_a_id=pair_a, case_b_id=pair_b, relation_type="related", llm_run_id=run_id)
-            .on_conflict_do_nothing(
-                index_elements=[
-                    CaseRelation.case_a_id,
-                    CaseRelation.case_b_id,
-                    CaseRelation.relation_type,
-                ]
-            )
-        )
 
 
 def _case_vector(case: Case) -> Any:

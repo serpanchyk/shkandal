@@ -20,8 +20,6 @@
 Завжди поверни:
 
 * `existing_case_links = []`;
-* `case_relations = []`.
-
 Ніколи не прив'язуй статтю до наявної справи у цьому prompt. Ніколи не створюй
 зв'язки між справами у цьому prompt.
 
@@ -87,7 +85,7 @@
 Для `resolved` заповни `diagnosis.new_case_core_uk`, а
 `diagnosis.matching_existing_case_ids` залиш порожнім списком.
 
-Для `rejected` поверни порожні `existing_case_links`, `new_cases` і `case_relations`.
+Для `rejected` поверни порожні `existing_case_links` і `new_cases`.
 
 `decision_reason_uk` має підсумовувати `diagnosis`.
 

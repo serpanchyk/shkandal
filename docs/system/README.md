@@ -8,12 +8,13 @@ automatic dossier-building pipeline:
 3. classify relevance with a local binary ML classifier;
 4. create a provisional Ukrainian article card with an LLM JSON contract;
 5. retrieve candidate cases from Qdrant;
-6. resolve article-case links and case relations with the LLM;
+6. resolve article-case links with the LLM;
 7. retrieve and resolve global entities from Qdrant;
 8. retrieve and resolve global events from Qdrant;
 9. materialize direct case-entity and case-event links;
 10. update public case and entity pages immediately from PostgreSQL.
-11. periodically audit Case coherence and atomically split mixed durable stories.
+11. periodically audit Case coherence and atomically split mixed durable stories;
+12. derive Other Cases navigation from shared evidence.
 
 One relevant article is enough to create a case, and one supporting article is
 enough to create an event. Source provenance must remain visible. Articles can

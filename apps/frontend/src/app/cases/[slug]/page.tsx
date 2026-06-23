@@ -118,20 +118,23 @@ export default async function CasePage({ params }: { params: Params }) {
         </details>
       </section>
 
-      {dossier.related_cases.length ? (
-        <section aria-labelledby="related-title" className="dossierSection">
+      {dossier.other_cases.length ? (
+        <section aria-labelledby="other-cases-title" className="dossierSection">
           <div className="sectionHeading">
             <p className="sectionCode">04 / links</p>
-            <h2 id="related-title">Пов’язані справи</h2>
+            <h2 id="other-cases-title">Інші справи</h2>
           </div>
-          <div className="relatedGrid">
-            {dossier.related_cases.map((related) => (
-              <Link href={`/cases/${related.slug}`} key={related.slug}>
-                <h3 className="caseTitle">{related.title_uk}</h3>
-                <p>{related.summary_uk}</p>
-              </Link>
-            ))}
-          </div>
+          <details className="otherCasesArchive">
+            <summary>{formatCount(dossier.other_cases.length, ["інша справа", "інші справи", "інших справ"])}</summary>
+            <div className="relatedGrid">
+              {dossier.other_cases.map((otherCase) => (
+                <Link href={`/cases/${otherCase.slug}`} key={otherCase.slug}>
+                  <h3 className="caseTitle">{otherCase.title_uk}</h3>
+                  <p>{otherCase.summary_uk}</p>
+                </Link>
+              ))}
+            </div>
+          </details>
         </section>
       ) : null}
 

@@ -63,10 +63,9 @@ Articles, public-interest audits permanently hide unsuitable dossiers, and
 duplicate audits merge or resolve internal candidate pairs. Inconclusive audits
 leave public data unchanged.
 
-Case relationships are explicit:
-
-- `related` for shared central actors or specific accountability themes;
-- `possible_duplicate` for automatic duplicate audit handling.
+Case-to-Case navigation is derived rather than stored. Case pages show up to ten
+Other Cases that share supporting Articles, materialized Events, or Mentioned
+Entities. Duplicate audits independently inspect substantial Article overlap.
 
 ### Article
 
@@ -231,8 +230,7 @@ The article card is embedded and used to retrieve candidate cases from Qdrant. T
 
 - link the article to one or more existing cases;
 - create one or more new durable reader-facing cases;
-- explicitly reject the candidate when it has no concrete trackable case;
-- create explicit case relations when useful.
+- explicitly reject the candidate when it has no concrete trackable case.
 
 Every resolution includes a Ukrainian decision reason and an explicit
 `resolved` or `rejected` outcome. A resolved candidate must link to or create at
@@ -289,7 +287,6 @@ Important MVP tables and relationships:
 - `article_cards`;
 - `cases`;
 - `case_articles`;
-- `case_relations`;
 - `entities`;
 - `article_entities`;
 - `article_entity_cases`;
@@ -303,6 +300,8 @@ Important MVP tables and relationships:
 - `case_view_counters`.
 
 `case_entities` and `case_events` are direct materialized public-page links. They are created from article-level LLM resolution plus article-case context, not from an independent manual curation step.
+Public Other Cases navigation is queried from shared `case_articles`,
+`case_events`, and `case_entities`; no Case-to-Case table is maintained.
 
 `case_articles` stays simple in the MVP: it records that an article belongs to a case and why, without roles such as primary, secondary, or background. Entity and event relevance carries the more specific case-scoped meaning.
 

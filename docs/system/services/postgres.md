@@ -16,7 +16,7 @@ Implemented MVP data areas:
 - provisional article cards;
 - reader-facing cases;
 - article-case links;
-- explicit case relations;
+- immutable duplicate-pair audit results;
 - global typed entities with aliases and Ukrainian descriptions;
 - article-entity links;
 - article-entity-case scoped relevance links;

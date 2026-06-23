@@ -94,7 +94,6 @@ SHORT_TEXT_LIMITS: dict[LlmRunType, dict[str, int]] = {
         "diagnosis.case_a_core_uk": 240,
         "diagnosis.case_b_core_uk": 240,
         "diagnosis.shared_specific_core_uk": 240,
-        "diagnosis.relation_anchor_uk": 240,
         "diagnosis.only_broad_overlap_uk": 240,
         "reason_uk": 320,
     },

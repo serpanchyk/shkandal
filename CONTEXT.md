@@ -41,11 +41,11 @@ Evidence or context that advances, documents, corrects, or materially explains a
 Case. An incidental background mention is not a material contribution.
 _Avoid_: mention, keyword match
 
-**Related Cases**:
-Distinct Cases connected through a central actor or a specific recurring
-accountability theme useful for reader navigation. Broad categories such as
-corruption alone are insufficient.
-_Avoid_: same case, possible duplicate
+**Other Cases**:
+Distinct public Cases shown as derived reader navigation because they share at
+least one supporting Article, materialized Event, or Mentioned Entity. This is
+not a persisted editorial relationship or evidence that the Cases are identical.
+_Avoid_: related case, possible duplicate
 
 **Possible Duplicate Cases**:
 Cases likely describing the same durable accountability story and therefore
@@ -65,8 +65,8 @@ not qualify.
 _Avoid_: popularity check, lifecycle status
 
 **Case Duplicate Audit**:
-An evaluation of whether two candidate Cases describe the same durable story,
-are related but distinct, or are distinct.
+An evaluation of whether two Article-overlap candidate Cases describe the same
+durable story or remain distinct.
 _Avoid_: similarity check, Case Coherence Audit
 
 **Case Audit Pipeline**:

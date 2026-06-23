@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import Field, model_validator
 
-from worker_ml.llm.contracts.types import CaseRelationType, StrictOutput
+from worker_ml.llm.contracts.types import StrictOutput
 
 _SPECULATIVE_DURABILITY_MARKERS = (
     "можлив",
@@ -66,50 +66,6 @@ class NewCaseDecision(StrictOutput):
         le=1,
         description="Впевненість у правильності створення справи від 0 до 1.",
     )
-
-
-class CaseRelationDecision(StrictOutput):
-    """Explicit relationship between resolved cases."""
-
-    case_a_id: str | None = Field(
-        default=None,
-        description="Ідентифікатор першої наявної справи; взаємовиключний із case_a_new_ref.",
-    )
-    case_a_new_ref: str | None = Field(
-        default=None,
-        pattern=r"^new_[a-z0-9_]+$",
-        description="Посилання на першу нову справу; взаємовиключне із case_a_id.",
-    )
-    case_b_id: str | None = Field(
-        default=None,
-        description="Ідентифікатор другої наявної справи; взаємовиключний із case_b_new_ref.",
-    )
-    case_b_new_ref: str | None = Field(
-        default=None,
-        pattern=r"^new_[a-z0-9_]+$",
-        description="Посилання на другу нову справу; взаємовиключне із case_b_id.",
-    )
-    relation_type: CaseRelationType = Field(description="Тип зв'язку між двома справами.")
-
-    @model_validator(mode="after")
-    def validate_endpoints(self) -> CaseRelationDecision:
-        """Require exactly one identifier for each relation endpoint."""
-
-        if (self.case_a_id is None) == (self.case_a_new_ref is None):
-            raise ValueError("case_a requires exactly one existing id or new-case ref")
-        if (self.case_b_id is None) == (self.case_b_new_ref is None):
-            raise ValueError("case_b requires exactly one existing id or new-case ref")
-        if (
-            self.case_a_id is not None
-            and self.case_b_id is not None
-            and self.case_a_id == self.case_b_id
-        ) or (
-            self.case_a_new_ref is not None
-            and self.case_b_new_ref is not None
-            and self.case_a_new_ref == self.case_b_new_ref
-        ):
-            raise ValueError("case relation cannot reference the same case twice")
-        return self
 
 
 class CaseResolutionDiagnosis(StrictOutput):
@@ -190,10 +146,6 @@ class CaseResolutionOutput(StrictOutput):
         default_factory=list,
         description="Нові справи, які потрібно створити для статті.",
     )
-    case_relations: list[CaseRelationDecision] = Field(
-        default_factory=list,
-        description="Явні зв'язки між справами, визначені під час розподілу.",
-    )
     decision_reason_uk: str = Field(
         min_length=1,
         max_length=320,
@@ -228,9 +180,7 @@ class CaseResolutionOutput(StrictOutput):
             and not self.diagnosis.matching_existing_case_ids
         ):
             raise ValueError("existing case links cannot rely only on broad overlap")
-        if self.outcome == "rejected" and (
-            self.existing_case_links or self.new_cases or self.case_relations
-        ):
+        if self.outcome == "rejected" and (self.existing_case_links or self.new_cases):
             raise ValueError("rejected case resolution cannot contain case actions")
         if self.outcome == "rejected" and not (
             self.diagnosis.rejection_signals_uk or self.diagnosis.article_story_core_uk is None
@@ -242,11 +192,6 @@ class CaseResolutionOutput(StrictOutput):
         new_refs = [case.new_case_ref for case in self.new_cases]
         if len(new_refs) != len(set(new_refs)):
             raise ValueError("new case refs must be unique")
-        known_refs = set(new_refs)
-        for relation in self.case_relations:
-            for ref in (relation.case_a_new_ref, relation.case_b_new_ref):
-                if ref is not None and ref not in known_refs:
-                    raise ValueError(f"unknown new case ref: {ref}")
         return self
 
 
@@ -591,11 +536,6 @@ class CaseDuplicateDiagnosis(StrictOutput):
         max_length=240,
         description="Одне спільне конкретне ядро, якщо обидві справи описують ту саму історію.",
     )
-    relation_anchor_uk: str | None = Field(
-        default=None,
-        max_length=240,
-        description="Короткий сильний якір корисного зв'язку між різними справами.",
-    )
     only_broad_overlap_uk: str | None = Field(
         default=None,
         max_length=240,
@@ -619,21 +559,19 @@ class CaseDuplicateAuditOutput(StrictOutput):
         max_length=320,
         description="Фактична підстава рішення щодо пари.",
     )
-    outcome: Literal["merge", "related", "distinct", "inconclusive"] = Field(
+    outcome: Literal["merge", "distinct", "inconclusive"] = Field(
         description="Підсумок перевірки можливої тотожності справ."
     )
 
     @model_validator(mode="after")
     def validate_outcome(self) -> CaseDuplicateAuditOutput:
-        """Require diagnosis support for merge or related outcomes."""
+        """Require diagnosis support for decisive outcomes."""
 
         if self.outcome == "merge":
             if self.diagnosis.shared_specific_core_uk is None:
                 raise ValueError("merge requires a shared specific core")
             if self.diagnosis.merge_blockers_uk:
                 raise ValueError("merge cannot contain merge blockers")
-        if self.outcome == "related" and self.diagnosis.relation_anchor_uk is None:
-            raise ValueError("related requires a relation anchor")
         if self.outcome == "distinct" and self.diagnosis.only_broad_overlap_uk is None:
             raise ValueError("distinct requires a broad-overlap diagnosis")
         return self

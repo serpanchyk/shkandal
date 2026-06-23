@@ -1,11 +1,12 @@
 """Tests for automatic Case public-interest and duplicate reviews."""
 
 from datetime import UTC, datetime, timedelta
-from uuid import uuid4
+from typing import Any
+from uuid import UUID, uuid4
 
 import pytest
 from shkandal_database.models import Case
-from worker_ml.cases.reviews import _compact_cards, _merge_order
+from worker_ml.cases.reviews import _compact_cards, _duplicate_candidate_ids, _merge_order
 from worker_ml.llm.contracts import (
     CaseDuplicateAuditOutput,
     CasePublicInterestAuditOutput,
@@ -42,6 +43,29 @@ def test_merge_survivor_tie_breaks_by_oldest_case() -> None:
     newer = _case(articles=3, created_at=now)
 
     assert _merge_order(newer, older) == (older, newer)
+
+
+@pytest.mark.asyncio
+async def test_duplicate_candidates_use_thirty_percent_of_smaller_case_with_one_article() -> None:
+    candidate_id = uuid4()
+
+    class ScalarRows:
+        def all(self) -> list[UUID]:
+            return [candidate_id]
+
+    class Session:
+        statement: Any = None
+
+        async def scalars(self, statement: Any) -> ScalarRows:
+            self.statement = statement
+            return ScalarRows()
+
+    session = Session()
+    current = _case(articles=3, created_at=datetime.now(UTC))
+
+    assert await _duplicate_candidate_ids(session, current) == [candidate_id]  # type: ignore[arg-type]
+    compiled = session.statement.compile()
+    assert {1, 3, 10}.issubset(set(compiled.params.values()))
 
 
 def test_review_cards_keep_only_bounded_factual_context() -> None:
@@ -81,7 +105,6 @@ def test_specialized_audit_contracts_allow_inconclusive_without_mutation() -> No
             case_a_core_uk=None,
             case_b_core_uk=None,
             shared_specific_core_uk=None,
-            relation_anchor_uk=None,
             only_broad_overlap_uk=None,
             merge_blockers_uk=[],
         ),

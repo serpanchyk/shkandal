@@ -38,7 +38,7 @@ Planned responsibilities:
 - create provisional Ukrainian article cards with Pydantic-validated LLM JSON;
 - embed article, case, entity, and event cards;
 - query Qdrant case, entity, and event collections;
-- resolve article-case relationships and explicit case relations;
+- resolve article-case relationships;
 - serialize Case identity/copy mutation and keep affected Case vectors current;
 - resolve global entities from provisional article entities;
 - resolve global strict real-world events from provisional article events;
@@ -139,8 +139,7 @@ Article Cards. Only links whose second pass returns `connect` are written;
 `drop` and `inconclusive` both remove the provisional link. If no existing
 links survive and no new Case remains, the final result is rewritten to
 `rejected`. Rejected outputs contain no case actions, remain auditable through
-`llm_runs`, and enqueue no Entity or Event jobs. Case resolution may create
-only symmetric `related` and `possible_duplicate` relations. After every new
+`llm_runs`, and enqueue no Entity or Event jobs. After every new
 article-case link, a unique case-scoped job regenerates summary copy and
 reviews whether the stable title materially needs replacement.
 
@@ -299,9 +298,7 @@ retrieved Event candidate, the worker creates a new source-grounded Event
 instead of merging incompatible occurrences.
 Case-resolution retries idempotently ensure downstream Case-copy, Entity, and
 Event jobs when article-Case links already exist.
-Optional Case relations that reference existing Cases outside the retrieved
-candidate set are discarded without aborting otherwise valid article-Case
-resolution. Primary links to unretrieved Cases remain invalid.
+Primary links to unretrieved Cases remain invalid.
 Case resolution uses explicit coherence diagnostics before resolving: the
 article must have one concrete Case nucleus, broad-only overlaps with a court,
 agency, person, topic, or procedure do not justify attaching to an existing
@@ -373,10 +370,11 @@ Routine `ДТП`, domestic violence, child abuse, and other local crime stories
 stay hidden unless the provided context already shows a clear institutional,
 political, corruption, or national-resonance dimension with observable
 continuing consequences.
-Duplicate audits review explicit
-`possible_duplicate` relations and pairs sharing at least two Articles that
-cover at least half of the smaller Case. A merge preserves the Case with the
-most Articles, redirects absorbed slugs, and regenerates the surviving dossier.
+Duplicate audits calculate candidates directly from `case_articles`. A pair
+qualifies when it shares at least one Article and shared Articles cover at least
+30% of the smaller Case. The audit decides `merge`, `distinct`, or
+`inconclusive`; a merge preserves the Case with the most Articles, redirects
+absorbed slugs, and regenerates the surviving dossier.
 
 Structured worker logs include job and cycle durations. LLM run metadata records
 request and repair durations. At startup, pending LLM runs older than the stale

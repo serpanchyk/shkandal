@@ -18,7 +18,6 @@ from shkandal_database.models import (
     CaseArticle,
     CaseEntity,
     CaseEvent,
-    CaseRelation,
     CaseViewCounter,
     Entity,
     Event,
@@ -41,7 +40,7 @@ from shkandal_backend.schemas import (
     EntityPreview,
     EventPreview,
     LatestEvent,
-    RelatedCasePreview,
+    OtherCasePreview,
     SitemapEntry,
     SourcePreview,
 )
@@ -231,7 +230,7 @@ class SqlAlchemyPublicRepository:
             sources = await _case_sources(session, case_row.id)
             entities = await _case_entities(session, case_row.id)
             events = await _case_events(session, case_row.id)
-            related_cases = await _related_cases(session, case_row.id)
+            other_cases = await _other_cases(session, case_row.id)
             view_count = await _case_view_count(session, case_row.id)
             return CasePage(
                 slug=case_row.slug,
@@ -245,7 +244,7 @@ class SqlAlchemyPublicRepository:
                 entities=entities,
                 events=events,
                 articles=articles,
-                related_cases=related_cases,
+                other_cases=other_cases,
                 disclaimer_uk=DISCLAIMER_UK,
             )
 
@@ -297,7 +296,7 @@ class SqlAlchemyPublicRepository:
                 entity_type=entity.entity_type,
                 aliases=entity.aliases,
                 description_uk=entity.description_uk,
-                cases=[_related_case(case_row) for case_row in case_rows],
+                cases=[_other_case(case_row) for case_row in case_rows],
                 articles=[_article_preview(article, source) for article, source in article_rows],
             )
 
@@ -570,30 +569,86 @@ async def _case_events(session: AsyncSession, case_id: UUID) -> list[EventPrevie
     return result
 
 
-async def _related_cases(session: AsyncSession, case_id: UUID) -> list[RelatedCasePreview]:
+async def _other_cases(session: AsyncSession, case_id: UUID) -> list[OtherCasePreview]:
+    """Return public Cases sharing Articles, Events, or Entities, strongest first."""
+
     other = aliased(Case)
-    related_id = case(
-        (CaseRelation.case_a_id == case_id, CaseRelation.case_b_id),
-        else_=CaseRelation.case_a_id,
+    shared_articles = (
+        select(
+            CaseArticle.case_id.label("case_id"),
+            func.count(CaseArticle.article_id.distinct()).label("shared_articles"),
+        )
+        .where(
+            CaseArticle.case_id != case_id,
+            CaseArticle.article_id.in_(
+                select(CaseArticle.article_id).where(CaseArticle.case_id == case_id)
+            ),
+        )
+        .group_by(CaseArticle.case_id)
+        .subquery()
+    )
+    shared_events = (
+        select(
+            CaseEvent.case_id.label("case_id"),
+            func.count(CaseEvent.event_id.distinct()).label("shared_events"),
+        )
+        .where(
+            CaseEvent.case_id != case_id,
+            CaseEvent.event_id.in_(select(CaseEvent.event_id).where(CaseEvent.case_id == case_id)),
+        )
+        .group_by(CaseEvent.case_id)
+        .subquery()
+    )
+    shared_entities = (
+        select(
+            CaseEntity.case_id.label("case_id"),
+            func.count(CaseEntity.entity_id.distinct()).label("shared_entities"),
+        )
+        .where(
+            CaseEntity.case_id != case_id,
+            CaseEntity.entity_id.in_(
+                select(CaseEntity.entity_id).where(CaseEntity.case_id == case_id)
+            ),
+        )
+        .group_by(CaseEntity.case_id)
+        .subquery()
+    )
+    article_count = func.coalesce(shared_articles.c.shared_articles, 0)
+    event_count = func.coalesce(shared_events.c.shared_events, 0)
+    entity_count = func.coalesce(shared_entities.c.shared_entities, 0)
+    shared_type_count = (
+        case((article_count > 0, 1), else_=0)
+        + case((event_count > 0, 1), else_=0)
+        + case((entity_count > 0, 1), else_=0)
     )
     rows = (
         await session.scalars(
             select(other)
-            .join(CaseRelation, other.id == related_id)
+            .outerjoin(shared_articles, shared_articles.c.case_id == other.id)
+            .outerjoin(shared_events, shared_events.c.case_id == other.id)
+            .outerjoin(shared_entities, shared_entities.c.case_id == other.id)
             .where(
-                or_(CaseRelation.case_a_id == case_id, CaseRelation.case_b_id == case_id),
-                CaseRelation.relation_type == "related",
+                other.id != case_id,
                 other.status == "active",
                 other.summary_uk.is_not(None),
+                article_count + event_count + entity_count > 0,
             )
-            .order_by(other.last_updated_at.desc().nulls_last())
+            .order_by(
+                shared_type_count.desc(),
+                article_count.desc(),
+                event_count.desc(),
+                entity_count.desc(),
+                other.last_updated_at.desc().nulls_last(),
+                other.id,
+            )
+            .limit(10)
         )
     ).all()
-    return [_related_case(row) for row in rows]
+    return [_other_case(row) for row in rows]
 
 
-def _related_case(case_row: Case) -> RelatedCasePreview:
-    return RelatedCasePreview(
+def _other_case(case_row: Case) -> OtherCasePreview:
+    return OtherCasePreview(
         slug=case_row.slug,
         title_uk=case_row.title_uk,
         summary_uk=case_row.summary_uk or "",

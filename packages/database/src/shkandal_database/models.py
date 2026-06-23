@@ -425,43 +425,6 @@ class CaseArticle(Base):
     created_at: Mapped[datetime] = created_at_column()
 
 
-class CaseRelation(Base):
-    """Explicit relationship between cases."""
-
-    __tablename__ = "case_relations"
-    __table_args__ = (
-        CheckConstraint("case_a_id < case_b_id", name="ck_case_relations_canonical_pair"),
-        CheckConstraint(
-            "relation_type in ('related', 'possible_duplicate')",
-            name="ck_case_relations_relation_type",
-        ),
-        UniqueConstraint(
-            "case_a_id",
-            "case_b_id",
-            "relation_type",
-            name="uq_case_relations_pair_type",
-        ),
-        Index(
-            "ix_case_relations_case_b_id_relation_type",
-            "case_b_id",
-            "relation_type",
-        ),
-    )
-
-    id: Mapped[UUID] = uuid_pk_column()
-    case_a_id: Mapped[UUID] = mapped_column(
-        ForeignKey("cases.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    case_b_id: Mapped[UUID] = mapped_column(
-        ForeignKey("cases.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    relation_type: Mapped[str] = mapped_column(Text, nullable=False)
-    llm_run_id: Mapped[UUID | None] = mapped_column(ForeignKey("llm_runs.id"))
-    created_at: Mapped[datetime] = created_at_column()
-
-
 class Entity(Base):
     """Global typed entity."""
 

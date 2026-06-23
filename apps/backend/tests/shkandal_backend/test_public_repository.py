@@ -58,6 +58,7 @@ class FakeSession:
         return FakeResult(self.execute_values.pop(0))
 
     async def scalars(self, statement: Any) -> FakeResult:
+        self.executed_statements.append(statement)
         return FakeResult(self.execute_values.pop(0))
 
 
@@ -225,7 +226,7 @@ async def test_case_page_composes_public_helpers(monkeypatch) -> None:
     monkeypatch.setattr(public_repository, "_case_sources", AsyncMock(return_value=[]))
     monkeypatch.setattr(public_repository, "_case_entities", AsyncMock(return_value=[]))
     monkeypatch.setattr(public_repository, "_case_events", AsyncMock(return_value=[]))
-    monkeypatch.setattr(public_repository, "_related_cases", AsyncMock(return_value=[]))
+    monkeypatch.setattr(public_repository, "_other_cases", AsyncMock(return_value=[]))
     monkeypatch.setattr(public_repository, "_case_view_count", AsyncMock(return_value=9))
 
     result = await _repository(session).case_page("case-a")
@@ -278,11 +279,11 @@ def test_preview_helpers_expose_source_and_article_contracts() -> None:
 
     source_preview = public_repository._source_preview(source, 3)
     article_preview = public_repository._article_preview(article, source)
-    related_preview = public_repository._related_case(_case())
+    other_preview = public_repository._other_case(_case())
 
     assert source_preview.article_count == 3
     assert article_preview.title == article.url
-    assert related_preview.slug == "case-a"
+    assert other_preview.slug == "case-a"
 
 
 async def test_entity_page_hides_missing_or_undescribed_entity() -> None:
@@ -374,13 +375,17 @@ async def test_case_article_source_and_entity_helpers() -> None:
     assert entities[0].mention_count == 3
 
 
-async def test_related_cases_helper_returns_only_query_rows() -> None:
-    related = await public_repository._related_cases(
-        cast(AsyncSession, FakeSession(executes=[[_case()]])),
-        uuid4(),
-    )
+async def test_other_cases_helper_returns_only_query_rows() -> None:
+    session = FakeSession(executes=[[_case()]])
+    other_cases = await public_repository._other_cases(cast(AsyncSession, session), uuid4())
 
-    assert related[0].slug == "case-a"
+    assert other_cases[0].slug == "case-a"
+    statement = session.executed_statements[0]
+    assert statement._limit_clause.value == 10
+    query = str(statement)
+    assert "case_articles" in query
+    assert "case_events" in query
+    assert "case_entities" in query
 
 
 async def test_case_events_helper_composes_supporting_articles() -> None:

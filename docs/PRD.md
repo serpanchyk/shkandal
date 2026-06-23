@@ -50,7 +50,7 @@ current database rows.
 22. As a project owner, I want a one-year backfill before launch, so that first public pages are not empty or misleadingly thin.
 23. As a project owner, I want backfill resolution oldest-to-newest, so that case timelines grow in historical order.
 24. As a project owner, I want cases to be reader-facing dossiers rather than exclusive clusters, so that broad and specific cases can overlap.
-25. As a project owner, I want explicit case relations, so that broad/specific and related cases can be navigated.
+25. As a reader, I want Other Cases derived from shared evidence, so that I can navigate between materially overlapping dossiers.
 26. As a project owner, I want one relevant article to be enough to create a case, so that the system favors coverage and speed.
 27. As a project owner, I want case-linked articles to be allowed without extracted events, so that background articles can still support a dossier.
 28. As a project owner, I want one global entity table, so that people, institutions, organizations, and companies can be deduplicated consistently.
@@ -79,7 +79,8 @@ current database rows.
 - One relevant article is enough to create a public case.
 - Case-linked articles may exist without extracted events.
 - Articles can link to multiple cases. Events can link to multiple cases. Entities can link to multiple cases.
-- Explicit symmetric case relations support `related` and `possible_duplicate`.
+- Other Cases navigation is derived from shared Articles, Events, and Entities;
+  duplicate candidates are calculated from Article overlap.
 - `Entity` is one global typed model with canonical name, aliases, type, and Ukrainian description.
 - `Event` is one global strict real-world occurrence. Related developments are separate events.
 - One supporting article is enough for a public event if provenance is preserved.

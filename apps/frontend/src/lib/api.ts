@@ -37,7 +37,7 @@ export type CaseFeedPage = {
   total_pages: number;
 };
 
-export type RelatedCase = {
+export type OtherCase = {
   slug: string;
   title_uk: string;
   summary_uk: string;
@@ -84,7 +84,7 @@ export type CasePage = {
   entities: EntityPreview[];
   events: EventPreview[];
   articles: ArticlePreview[];
-  related_cases: RelatedCase[];
+  other_cases: OtherCase[];
   disclaimer_uk: string;
 };
 
@@ -94,7 +94,7 @@ export type EntityPage = {
   entity_type: string;
   aliases: string[];
   description_uk: string;
-  cases: RelatedCase[];
+  cases: OtherCase[];
   articles: ArticlePreview[];
 };
 

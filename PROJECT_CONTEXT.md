@@ -117,7 +117,8 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - A `Case` follows one durable public-interest story across procedural stages.
 - Similar routine incidents do not form a broad systemic Case without one
   concrete shared scheme, investigation, decision, or causal chain.
-- Case relations are symmetric `related` or `possible_duplicate` links.
+- Case-to-Case relations are not persisted. Public Other Cases navigation is
+  derived from shared Articles, materialized Events, and Mentioned Entities.
 - One relevant article is enough to create a public case.
 - Articles, entities, and events can connect to multiple cases.
 - Case resolution can explicitly reject a case-candidate article without
@@ -128,9 +129,9 @@ review and correction tooling are later quality layers, not blocking MVP stages.
   new Cases for other coherent stories. A coherence audit preserves relevant
   repetition and may detach Article links that belong to no concrete story.
 - Hidden Cases are terminal and retain their complete internal dossier.
-- Duplicate merges preserve the Case with the most evidence, redirect absorbed
-  slugs, and resolve candidates from explicit relations or substantial shared
-  Article overlap.
+- Duplicate merges preserve the Case with the most evidence and redirect
+  absorbed slugs. Candidate pairs share at least one Article covering at least
+  30% of the smaller Case.
 - Articles can link to cases even when they do not create extracted events.
 - `case_entities` and `case_events` are direct materialized links for public pages, created from article-level resolution plus article-case context.
 - `Entity` is one global typed table for people, organizations, institutions, companies, political parties, informal groups, and unknown actors.

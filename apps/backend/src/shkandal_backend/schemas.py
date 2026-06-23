@@ -80,7 +80,7 @@ class LatestEvent(PublicModel):
     location_uk: str | None
 
 
-class RelatedCasePreview(PublicModel):
+class OtherCasePreview(PublicModel):
     slug: str
     title_uk: str
     summary_uk: str
@@ -98,7 +98,7 @@ class CasePage(PublicModel):
     entities: list[EntityPreview]
     events: list[EventPreview]
     articles: list[ArticlePreview]
-    related_cases: list[RelatedCasePreview]
+    other_cases: list[OtherCasePreview]
     disclaimer_uk: str
 
 
@@ -108,7 +108,7 @@ class EntityPage(PublicModel):
     entity_type: str
     aliases: list[str]
     description_uk: str
-    cases: list[RelatedCasePreview]
+    cases: list[OtherCasePreview]
     articles: list[ArticlePreview]
 
 

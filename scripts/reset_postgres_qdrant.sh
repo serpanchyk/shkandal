@@ -153,7 +153,6 @@ async def main() -> None:
                         article_entity_cases,
                         article_events,
                         article_entities,
-                        case_relations,
                         case_articles,
                         events,
                         entities

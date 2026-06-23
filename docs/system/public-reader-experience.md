@@ -44,7 +44,7 @@ A public Case page contains:
 - compact `Джерела справи` Source-logo strip;
 - oldest-to-newest Event timeline with expandable supporting articles;
 - source-backed Mentioned Entities;
-- Related Cases;
+- a collapsed Other Cases section derived from shared Articles, Events, or Entities;
 - newest-first linked article previews;
 - an automatic-assembly disclaimer.
 

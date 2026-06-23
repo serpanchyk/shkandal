@@ -24,6 +24,7 @@ from shkandal_database.session import create_async_engine_from_config, create_as
 SOURCE_ID = UUID("10000000-0000-0000-0000-000000000001")
 ARTICLE_ID = UUID("20000000-0000-0000-0000-000000000001")
 CASE_ID = UUID("30000000-0000-0000-0000-000000000001")
+OTHER_CASE_ID = UUID("30000000-0000-0000-0000-000000000002")
 ENTITY_ID = UUID("40000000-0000-0000-0000-000000000001")
 EVENT_ID = UUID("50000000-0000-0000-0000-000000000001")
 ARTICLE_ENTITY_ID = UUID("60000000-0000-0000-0000-000000000001")
@@ -97,6 +98,18 @@ async def seed() -> None:
                     event_count=1,
                 ),
                 CaseArticle(case_id=CASE_ID, article_id=ARTICLE_ID),
+                Case(
+                    id=OTHER_CASE_ID,
+                    slug="e2e-other-case",
+                    title_uk="Інша справа зі спільним матеріалом",
+                    summary_uk="Досьє для перевірки похідної навігації між справами.",
+                    status="active",
+                    first_seen_at=published_at,
+                    last_updated_at=published_at - timedelta(minutes=1),
+                    article_count=1,
+                    event_count=0,
+                ),
+                CaseArticle(case_id=OTHER_CASE_ID, article_id=ARTICLE_ID),
                 Entity(
                     id=ENTITY_ID,
                     slug="e2e-public-person",

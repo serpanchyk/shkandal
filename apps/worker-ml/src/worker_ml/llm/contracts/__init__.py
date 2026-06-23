@@ -21,7 +21,6 @@ from worker_ml.llm.contracts.cases import (
     CaseLinkDecision,
     CasePublicInterestAuditOutput,
     CasePublicInterestDiagnosis,
-    CaseRelationDecision,
     CaseResolutionDiagnosis,
     CaseResolutionOutput,
     NewCaseDecision,
@@ -37,7 +36,6 @@ from worker_ml.llm.contracts.identities import (
     EventResolutionOutput,
 )
 from worker_ml.llm.contracts.types import (
-    CaseRelationType,
     EntityType,
     EventDatePrecision,
     LlmRunType,
@@ -62,8 +60,6 @@ __all__ = [
     "CasePublicInterestAuditOutput",
     "CaseCopyUpdateOutput",
     "CaseLinkDecision",
-    "CaseRelationDecision",
-    "CaseRelationType",
     "CaseResolutionDiagnosis",
     "CaseResolutionOutput",
     "EntityCaseAssignment",

@@ -81,7 +81,6 @@ class LlmTaskDefinition:
                 "case_a_core_uk": None,
                 "case_b_core_uk": None,
                 "shared_specific_core_uk": None,
-                "relation_anchor_uk": None,
                 "only_broad_overlap_uk": None,
                 "merge_blockers_uk": [],
             }
