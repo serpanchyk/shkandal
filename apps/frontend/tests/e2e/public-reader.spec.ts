@@ -163,22 +163,30 @@ test("reader can inspect Case provenance and navigate to an Entity", async ({ pa
     const article = document.querySelector<HTMLElement>(".articleArchive .articleCard");
     const articleText = article?.querySelector<HTMLElement>("div:nth-child(2)");
     const related = document.querySelector<HTMLElement>('[data-case-variant="compact"]');
+    const relatedSummary = related?.querySelector<HTMLElement>(".caseSummary");
 
-    if (!article || !articleText || !related) throw new Error("Compact cards are missing.");
+    if (!article || !articleText || !related || !relatedSummary) {
+      throw new Error("Compact cards are missing.");
+    }
 
     return {
       articleHeight: article.getBoundingClientRect().height,
       articleTextLeft: articleText.getBoundingClientRect().left,
       articleLeft: article.getBoundingClientRect().left,
       relatedHeight: related.getBoundingClientRect().height,
+      summaryHeight: relatedSummary.getBoundingClientRect().height,
+      summaryLineHeight: Number.parseFloat(getComputedStyle(relatedSummary).lineHeight),
+      summaryWhiteSpace: getComputedStyle(relatedSummary).whiteSpace,
     };
   });
   expect(Math.abs(compactLayout.relatedHeight - compactLayout.articleHeight)).toBeLessThanOrEqual(8);
   expect(compactLayout.articleTextLeft - compactLayout.articleLeft).toBeGreaterThan(90);
+  expect(compactLayout.summaryHeight).toBeLessThanOrEqual(compactLayout.summaryLineHeight + 1);
+  expect(compactLayout.summaryWhiteSpace).toBe("nowrap");
   await expect(
     page.locator("section").filter({ has: page.locator("#other-cases-title") })
       .locator(".sectionHeading + details > summary"),
-  ).toHaveText("1 інша справа");
+  ).toHaveText("1 подібна справа");
   await otherCases.locator("summary").click();
   await expect(otherCases.getByRole("link", { name: /Інша справа зі спільним матеріалом/ })).toBeHidden();
   await otherCases.locator("summary").click();
