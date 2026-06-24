@@ -126,14 +126,14 @@ export default async function CasePage({ params }: { params: Params }) {
         <section aria-labelledby="other-cases-title" className="dossierSection">
           <div className="sectionHeading">
             <p className="sectionCode">04 / links</p>
-            <h2 id="other-cases-title">Інші справи</h2>
+            <h2 id="other-cases-title">Подібні справи</h2>
           </div>
           <details className="sectionDisclosure otherCasesArchive" open>
             <summary className="sectionDisclosureSummary">
               {formatCount(dossier.other_cases.length, [
-                "інша справа",
-                "інші справи",
-                "інших справ",
+                "подібна справа",
+                "подібні справи",
+                "подібних справ",
               ])}
             </summary>
             <div className="caseList">
