@@ -84,7 +84,7 @@ export type CasePage = {
   entities: EntityPreview[];
   events: EventPreview[];
   articles: ArticlePreview[];
-  other_cases: OtherCase[];
+  other_cases: CaseFeedItem[];
   disclaimer_uk: string;
 };
 

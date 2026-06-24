@@ -78,7 +78,17 @@ class FakePublicRepository:
             entities=[],
             events=[],
             articles=[_article()],
-            other_cases=[],
+            other_cases=[
+                CaseFeedItem(
+                    slug="related-case",
+                    title_uk="Пов’язана справа",
+                    summary_uk="Опис пов’язаної справи.",
+                    latest_article_at=datetime(2026, 6, 10, tzinfo=UTC),
+                    article_count=3,
+                    view_count=8,
+                    image_url="https://example.com/related.jpg",
+                )
+            ],
             disclaimer_uk="Автоматично зібрано.",
         )
 
@@ -152,6 +162,15 @@ async def test_public_pages_and_view_counter_return_contracts() -> None:
         assert (await client.get("/api/events/latest")).json()[0]["title_uk"] == "Нова подія"
         case_page = (await client.get("/api/cases/case-a")).json()
         assert case_page["sources"][0]["logo_path"].endswith(".png")
+        assert case_page["other_cases"][0] == {
+            "slug": "related-case",
+            "title_uk": "Пов’язана справа",
+            "summary_uk": "Опис пов’язаної справи.",
+            "latest_article_at": "2026-06-10T00:00:00Z",
+            "article_count": 3,
+            "view_count": 8,
+            "image_url": "https://example.com/related.jpg",
+        }
         assert (await client.get("/api/entities/person-a")).json()["canonical_name_uk"] == "Особа"
         assert (await client.post("/api/cases/case-a/views")).json() == {"view_count": 6}
         assert (await client.get("/api/sitemap")).json()[0]["path"] == "/cases/case-a"

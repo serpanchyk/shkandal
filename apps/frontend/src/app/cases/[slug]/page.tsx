@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ArticleCard } from "@/components/article-card";
+import { CaseCard } from "@/components/case-card";
 import { SourceLogo } from "@/components/source-logo";
 import { ViewCounter } from "@/components/view-counter";
 import { getCase } from "@/lib/api";
@@ -135,12 +136,9 @@ export default async function CasePage({ params }: { params: Params }) {
                 "інших справ",
               ])}
             </summary>
-            <div className="relatedGrid">
+            <div className="caseList">
               {dossier.other_cases.map((otherCase) => (
-                <Link href={`/cases/${otherCase.slug}`} key={otherCase.slug}>
-                  <h3 className="caseTitle">{otherCase.title_uk}</h3>
-                  <p>{otherCase.summary_uk}</p>
-                </Link>
+                <CaseCard item={otherCase} key={otherCase.slug} variant="list" />
               ))}
             </div>
           </details>

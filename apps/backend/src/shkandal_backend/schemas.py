@@ -98,7 +98,7 @@ class CasePage(PublicModel):
     entities: list[EntityPreview]
     events: list[EventPreview]
     articles: list[ArticlePreview]
-    other_cases: list[OtherCasePreview]
+    other_cases: list[CaseFeedItem]
     disclaimer_uk: str
 
 

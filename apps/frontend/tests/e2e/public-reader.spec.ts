@@ -135,9 +135,9 @@ test("reader can inspect Case provenance and navigate to an Entity", async ({ pa
   await expect(timelineSection.locator(".sectionHeading + details > summary")).toHaveText("1 подія");
   await expect(timeline).toHaveAttribute("open", "");
   await expect(timeline.locator(".timelineEvent")).toBeVisible();
-  await timeline.locator("summary").click();
+  await timeline.locator(":scope > summary").click();
   await expect(timeline.locator(".timelineEvent")).toBeHidden();
-  await timeline.locator("summary").click();
+  await timeline.locator(":scope > summary").click();
 
   const articleArchive = page.locator(".articleArchive");
   await expect(
@@ -151,6 +151,12 @@ test("reader can inspect Case provenance and navigate to an Entity", async ({ pa
 
   const otherCases = page.locator(".otherCasesArchive");
   await expect(otherCases.getByRole("link", { name: /Інша справа зі спільним матеріалом/ })).toBeVisible();
+  const relatedCaseCard = otherCases.locator('[data-case-variant="list"]');
+  await expect(relatedCaseCard).toHaveCount(1);
+  await expect(relatedCaseCard.getByText("Досьє для перевірки похідної навігації між справами.")).toBeVisible();
+  await expect(relatedCaseCard.getByText("1 матеріал")).toBeVisible();
+  await expect(relatedCaseCard.getByText("0 переглядів")).toBeVisible();
+  await expect(relatedCaseCard.getByText(/оновлено/)).toBeVisible();
   await expect(
     page.locator("section").filter({ has: page.locator("#other-cases-title") })
       .locator(".sectionHeading + details > summary"),
