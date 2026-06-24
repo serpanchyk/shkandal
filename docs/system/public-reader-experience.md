@@ -144,5 +144,9 @@ migrations, seeds the graph, starts the backend, runs the tests, and removes the
 database volume afterward.
 
 Manual UI development uses the separate persistent `shkandal-demo` Compose
-project through `make dev-demo`. Both workflows are isolated from the normal
+project through `make dev-demo`. Its deterministic seed includes about 160
+synthetic Cases, 500 Articles, 240 Events, and 90 Entities. Evidence is
+deliberately shared within thematic groups to exercise Other Cases and Entity
+navigation, while 40 percent of Articles omit images to preserve realistic card
+variation. Both demo and browser-test workflows are isolated from the normal
 local and production PostgreSQL runtimes.

@@ -710,8 +710,13 @@ make reset-demo
 make demo-down
 ```
 
-The fixture contains the deterministic browser-test graph and a sanitized
-snapshot of one public dossier. Raw article bodies, HTML, LLM outputs, and
+The fixture contains the deterministic browser-test graph, a sanitized snapshot
+of one public dossier, and a dense synthetic Ukrainian graph with about 160
+Cases, 500 Articles, 240 Events, and 90 Entities. Synthetic Cases intentionally
+share Articles, Events, and Entities so Other Cases navigation is populated.
+Forty percent of Articles have no image; the remainder reference one external
+TyKyiv image, so those previews degrade to image-free cards when the remote
+asset is unavailable. Raw publisher article bodies, HTML, LLM outputs, and
 operational records are excluded.
 
 Playwright provisions a separate disposable `shkandal-e2e` Compose project:

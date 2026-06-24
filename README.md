@@ -31,7 +31,10 @@ make dev-demo
 
 This starts a dedicated demo database and backend, then serves the frontend at
 <http://localhost:3000>. It does not use the database configured in the root
-`.env`. Restore the committed sample data with `make reset-demo`.
+`.env`. The deterministic synthetic graph contains about 160 Cases, 500
+Articles, 240 Events, and 90 Entities with intentional evidence overlap for
+Other Cases navigation. Restore the committed sample data with
+`make reset-demo`.
 
 A separate production Compose entrypoint now exists at
 `docker-compose.prod.yaml` for the minimal public web deployment. It includes
