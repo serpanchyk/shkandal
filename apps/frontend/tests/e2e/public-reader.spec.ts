@@ -52,18 +52,18 @@ test("reader can inspect the global project explanation", async ({ page }) => {
   await page.goto("/");
 
   const footer = page.getByRole("contentinfo");
-  await expect(footer.getByText(/Сторінки формуються автоматично/)).toBeVisible();
+  await expect(footer.getByText(/Сторінки складаються машинно/)).toBeVisible();
   await expect(footer.getByRole("link", { name: "GitHub ↗" })).toHaveAttribute(
     "href",
     "https://github.com/serpanchyk/shkandal",
   );
   await expect(
     footer.getByRole("link", {
-      name: "Маєте ідеї або знайшли ваду? Доєднуйтесь до спільноти у WhatsApp. ↗",
+      name: "Маєте ідеї або знайшли ваду? Доєднуйтесь до спільноти у WhatsApp ↗",
     }),
   ).toHaveAttribute("href", "https://chat.whatsapp.com/GKLJlgZ5Fh8Fp4WGc6ThB6");
   await expect(
-    footer.getByRole("link", { name: "Розробник: Антон Михальчук. ↗" }),
+    footer.getByRole("link", { name: "Розробник: Антон Михальчук ↗" }),
   ).toHaveAttribute("href", "https://www.linkedin.com/in/anton-mykhalchuk/");
   await expect(footer.getByRole("link", { name: /Катедри систем штучного інтелекту/ })).toHaveAttribute(
     "href",
@@ -89,7 +89,7 @@ test("project transparency footer fits responsive viewports", async ({ page }) =
     await expect(page.getByRole("link", { name: "GitHub ↗" })).toBeVisible();
     await expect(
       page.getByRole("link", {
-        name: "Маєте ідеї або знайшли ваду? Доєднуйтесь до спільноти у WhatsApp. ↗",
+        name: "Маєте ідеї або знайшли ваду? Доєднуйтесь до спільноти у WhatsApp ↗",
       }),
     ).toBeVisible();
 
@@ -129,20 +129,50 @@ test("reader can inspect Case provenance and navigate to an Entity", async ({ pa
 
   await expect(page.getByRole("heading", { name: "Джерела справи" })).toBeVisible();
   await expect(page.getByTitle(/Українська правда/)).toBeVisible();
+
+  const timelineSection = page.locator("section").filter({ has: page.locator("#timeline-title") });
+  const timeline = timelineSection.locator(".sectionDisclosure");
+  await expect(timelineSection.locator(".sectionHeading + details > summary")).toHaveText("1 подія");
+  await expect(timeline).toHaveAttribute("open", "");
+  await expect(timeline.locator(".timelineEvent")).toBeVisible();
+  await timeline.locator("summary").click();
+  await expect(timeline.locator(".timelineEvent")).toBeHidden();
+  await timeline.locator("summary").click();
+
   const articleArchive = page.locator(".articleArchive");
+  await expect(
+    page.locator("section").filter({ has: page.locator("#articles-title") })
+      .locator(".sectionHeading + details > summary"),
+  ).toHaveText("1 матеріал справи");
+  await expect(articleArchive).not.toHaveAttribute("open", "");
   await expect(articleArchive.locator(".articleCard")).toBeHidden();
-  await articleArchive.getByText("1 матеріал справи").click();
+  await articleArchive.locator("summary").click();
   await expect(articleArchive.locator(".articleCard")).toBeVisible();
+
   const otherCases = page.locator(".otherCasesArchive");
-  await expect(otherCases.getByRole("link", { name: /Інша справа зі спільним матеріалом/ })).toBeHidden();
-  await otherCases.getByText("1 інша справа").click();
   await expect(otherCases.getByRole("link", { name: /Інша справа зі спільним матеріалом/ })).toBeVisible();
+  await expect(
+    page.locator("section").filter({ has: page.locator("#other-cases-title") })
+      .locator(".sectionHeading + details > summary"),
+  ).toHaveText("1 інша справа");
+  await otherCases.locator("summary").click();
+  await expect(otherCases.getByRole("link", { name: /Інша справа зі спільним матеріалом/ })).toBeHidden();
+  await otherCases.locator("summary").click();
+
   await page.getByText("1 джерело події").click();
-  await expect(page.getByRole("heading", { name: "Джерельний матеріал для перевірки" })).toBeVisible();
+  await expect(
+    timeline.getByRole("heading", { name: "Джерельний матеріал для перевірки" }),
+  ).toBeVisible();
 
   const entitiesArchive = page.locator(".entitiesArchive");
+  await expect(
+    page.locator("section").filter({ has: page.locator("#entities-title") })
+      .locator(".sectionHeading + details > summary"),
+  ).toHaveText("1 згадана особа або організація");
+  await expect(entitiesArchive.getByRole("link", { name: /Тестова особа/ })).toBeVisible();
+  await entitiesArchive.locator("summary").click();
   await expect(entitiesArchive.getByRole("link", { name: /Тестова особа/ })).toBeHidden();
-  await entitiesArchive.getByText("Згадані особи та організації").click();
+  await entitiesArchive.locator("summary").click();
   await expect(entitiesArchive.getByRole("link", { name: /Тестова особа/ })).toBeVisible();
   await page.getByRole("link", { name: /Тестова особа/ }).click();
   await expect(page.getByRole("heading", { name: "Тестова особа" })).toBeVisible();

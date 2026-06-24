@@ -23,6 +23,19 @@ tracked examples: root `.env` for shared application settings,
 `infra/postgres/.env` for database bootstrap credentials, and
 `infra/litellm/.env` for provider API keys. See `docs/run-project.md` for setup.
 
+For frontend development with isolated sample dossiers, run:
+
+```bash
+make dev-demo
+```
+
+This starts a dedicated demo database and backend, then serves the frontend at
+<http://localhost:3000>. It does not use the database configured in the root
+`.env`. The deterministic synthetic graph contains about 160 Cases, 500
+Articles, 240 Events, and 90 Entities with intentional evidence overlap for
+Other Cases navigation. Restore the committed sample data with
+`make reset-demo`.
+
 A separate production Compose entrypoint now exists at
 `docker-compose.prod.yaml` for the minimal public web deployment. It includes
 only `caddy`, `frontend`, `backend`, `postgres`, and a one-shot `migrate`

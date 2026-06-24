@@ -10,8 +10,8 @@ content cache.
 - `apps/frontend`: Next.js TypeScript public UI.
 - `apps/backend`: FastAPI public API and page-composition queries.
 - `packages/database`: source-of-truth models and public-reader migrations.
-- `apps/backend/tests/seed_public_e2e.py`: deterministic public graph used by
-  browser tests.
+- `apps/backend/src/shkandal_backend/seed_demo.py`: deterministic public graph
+  used by local UI development and browser tests.
 
 The frontend source routes are:
 
@@ -44,9 +44,13 @@ A public Case page contains:
 - compact `Джерела справи` Source-logo strip;
 - oldest-to-newest Event timeline with expandable supporting articles;
 - source-backed Mentioned Entities;
-- a collapsed Other Cases section derived from shared Articles, Events, or Entities;
+- Other Cases derived from shared Articles, Events, or Entities;
 - newest-first linked article previews;
 - an automatic-assembly disclaimer.
+
+Timeline, Mentioned Entities, Other Cases, and linked Articles use the same
+native disclosure control. Timeline, Entities, and Other Cases start expanded;
+linked source Articles start collapsed.
 
 A public Entity page contains its canonical Ukrainian name, description,
 aliases, Related Cases, and supporting articles that mention it. Public wording
@@ -135,9 +139,14 @@ lower the latest date, and copy regeneration cannot bump the Case update time.
 
 Playwright covers the seeded reader journey through the feed, Case timeline
 provenance, original-source links, Entity pages, disclaimer, global footer, and
-`Про Шкандаль` page. CI starts an
-isolated PostgreSQL service, runs migrations, seeds a deterministic graph,
-starts the backend, and executes the browser tests.
+`Про Шкандаль` page. Its command owns a disposable Compose project, applies
+migrations, seeds the graph, starts the backend, runs the tests, and removes the
+database volume afterward.
 
-Local Playwright execution must use an isolated disposable database because the
-seed script writes a deterministic graph.
+Manual UI development uses the separate persistent `shkandal-demo` Compose
+project through `make dev-demo`. Its deterministic seed includes about 160
+synthetic Cases, 500 Articles, 240 Events, and 90 Entities. Evidence is
+deliberately shared within thematic groups to exercise Other Cases and Entity
+navigation, while 40 percent of Articles omit images to preserve realistic card
+variation. Both demo and browser-test workflows are isolated from the normal
+local and production PostgreSQL runtimes.

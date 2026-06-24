@@ -691,16 +691,44 @@ The frontend uses `BACKEND_INTERNAL_URL` for server rendering,
 `NEXT_PUBLIC_BACKEND_URL` for browser requests, and `NEXT_PUBLIC_SITE_URL` for
 metadata and sitemap URLs. All default to local development URLs.
 
-Playwright tests write a deterministic public graph. Run them only against an
-isolated disposable PostgreSQL database:
+For UI development with populated pages, start the isolated demo environment
+from the repository root:
+
+```bash
+make dev-demo
+```
+
+This starts the persistent `shkandal-demo` Compose project, applies migrations,
+seeds sample dossiers, serves the backend on <http://localhost:18000>, and runs
+the Next.js development server on <http://localhost:3000>. It never uses the
+database configured in the root `.env`.
+
+Restore the committed fixture or stop the demo services with:
+
+```bash
+make reset-demo
+make demo-down
+```
+
+The fixture contains the deterministic browser-test graph, a sanitized snapshot
+of one public dossier, and a dense synthetic Ukrainian graph with about 160
+Cases, 500 Articles, 240 Events, and 90 Entities. Synthetic Cases intentionally
+share Articles, Events, and Entities so Other Cases navigation is populated.
+Forty percent of Articles have no image; the remainder reference one external
+TyKyiv image, so those previews degrade to image-free cards when the remote
+asset is unavailable. Raw publisher article bodies, HTML, LLM outputs, and
+operational records are excluded.
+
+Playwright provisions a separate disposable `shkandal-e2e` Compose project:
 
 ```bash
 cd apps/frontend
 npm run test:e2e
 ```
 
-CI provisions the isolated database, applies migrations, seeds the graph,
-starts the backend, and runs Playwright automatically.
+The command applies migrations, seeds the graph, starts the backend on port
+18001 and frontend on port 13001, runs the browser suite, then removes the test
+containers and database volume even when a test fails. CI uses the same command.
 
 ## Common Recovery Commands
 
