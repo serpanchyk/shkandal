@@ -11,9 +11,14 @@ const dateFormat = new Intl.DateTimeFormat("uk-UA", {
 export function ArticleCard({ article }: { article: ArticlePreview }) {
   return (
     <a className="articleCard" href={article.url} rel="noopener noreferrer" target="_blank">
-      {article.image_url ? (
-        <Image alt="" height={70} src={article.image_url} unoptimized width={90} />
-      ) : null}
+      <div
+        aria-hidden="true"
+        className={`articleCardImage${article.image_url ? "" : " articleCardImage--empty"}`}
+      >
+        {article.image_url ? (
+          <Image alt="" height={70} src={article.image_url} unoptimized width={90} />
+        ) : null}
+      </div>
       <div>
         <p className="articleMeta">
           {article.source.name}

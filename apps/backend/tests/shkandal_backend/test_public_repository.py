@@ -376,16 +376,29 @@ async def test_case_article_source_and_entity_helpers() -> None:
 
 
 async def test_other_cases_helper_returns_only_query_rows() -> None:
-    session = FakeSession(executes=[[_case()]])
-    other_cases = await public_repository._other_cases(cast(AsyncSession, session), uuid4())
+    image_url = "https://example.com/related.jpg"
+    image_url_checker = FakeImageUrlChecker(image_url)
+    session = FakeSession(executes=[[(_case(), 7, [image_url])]])
+    other_cases = await public_repository._other_cases(
+        cast(AsyncSession, session),
+        uuid4(),
+        image_url_checker,
+    )
 
     assert other_cases[0].slug == "case-a"
+    assert other_cases[0].article_count == 2
+    assert other_cases[0].view_count == 7
+    assert other_cases[0].latest_article_at == datetime(2026, 6, 11, tzinfo=UTC)
+    assert other_cases[0].image_url == image_url
+    assert image_url_checker.calls == [[image_url]]
     statement = session.executed_statements[0]
     assert statement._limit_clause.value == 10
     query = str(statement)
     assert "case_articles" in query
     assert "case_events" in query
     assert "case_entities" in query
+    assert "case_view_counters" in query
+    assert "remote_image_url" in query
 
 
 async def test_case_events_helper_composes_supporting_articles() -> None:

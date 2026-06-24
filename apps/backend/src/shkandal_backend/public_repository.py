@@ -230,7 +230,7 @@ class SqlAlchemyPublicRepository:
             sources = await _case_sources(session, case_row.id)
             entities = await _case_entities(session, case_row.id)
             events = await _case_events(session, case_row.id)
-            other_cases = await _other_cases(session, case_row.id)
+            other_cases = await _other_cases(session, case_row.id, self._image_url_checker)
             view_count = await _case_view_count(session, case_row.id)
             return CasePage(
                 slug=case_row.slug,
@@ -569,10 +569,40 @@ async def _case_events(session: AsyncSession, case_id: UUID) -> list[EventPrevie
     return result
 
 
-async def _other_cases(session: AsyncSession, case_id: UUID) -> list[OtherCasePreview]:
+async def _other_cases(
+    session: AsyncSession,
+    case_id: UUID,
+    image_url_checker: ImageUrlChecker,
+) -> list[CaseFeedItem]:
     """Return public Cases sharing Articles, Events, or Entities, strongest first."""
 
     other = aliased(Case)
+    views = (
+        select(
+            CaseViewCounter.case_id.label("case_id"),
+            func.coalesce(func.sum(CaseViewCounter.view_count), 0).label("view_count"),
+        )
+        .group_by(CaseViewCounter.case_id)
+        .subquery()
+    )
+    image_candidates = (
+        select(
+            func.array_agg(
+                aggregate_order_by(
+                    Article.remote_image_url,
+                    CaseArticle.created_at.asc(),
+                    CaseArticle.id.asc(),
+                )
+            )
+        )
+        .join(CaseArticle, CaseArticle.article_id == Article.id)
+        .where(
+            CaseArticle.case_id == other.id,
+            Article.remote_image_url.is_not(None),
+            Article.remote_image_url != "",
+        )
+        .scalar_subquery()
+    )
     shared_articles = (
         select(
             CaseArticle.case_id.label("case_id"),
@@ -621,12 +651,18 @@ async def _other_cases(session: AsyncSession, case_id: UUID) -> list[OtherCasePr
         + case((event_count > 0, 1), else_=0)
         + case((entity_count > 0, 1), else_=0)
     )
+    view_count = func.coalesce(views.c.view_count, 0)
     rows = (
-        await session.scalars(
-            select(other)
+        await session.execute(
+            select(
+                other,
+                view_count.label("view_count"),
+                image_candidates.label("image_candidates"),
+            )
             .outerjoin(shared_articles, shared_articles.c.case_id == other.id)
             .outerjoin(shared_events, shared_events.c.case_id == other.id)
             .outerjoin(shared_entities, shared_entities.c.case_id == other.id)
+            .outerjoin(views, views.c.case_id == other.id)
             .where(
                 other.id != case_id,
                 other.status == "active",
@@ -644,7 +680,24 @@ async def _other_cases(session: AsyncSession, case_id: UUID) -> list[OtherCasePr
             .limit(10)
         )
     ).all()
-    return [_other_case(row) for row in rows]
+    image_urls = await asyncio.gather(
+        *[
+            image_url_checker.first_available(case_image_candidates or [])
+            for _, _, case_image_candidates in rows
+        ]
+    )
+    return [
+        CaseFeedItem(
+            slug=case_row.slug,
+            title_uk=case_row.title_uk,
+            summary_uk=case_row.summary_uk or "",
+            latest_article_at=case_row.last_updated_at,
+            article_count=case_row.article_count,
+            view_count=int(row_view_count),
+            image_url=image_url,
+        )
+        for (case_row, row_view_count, _), image_url in zip(rows, image_urls, strict=True)
+    ]
 
 
 def _other_case(case_row: Case) -> OtherCasePreview:

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ArticleCard } from "@/components/article-card";
+import { CaseCard } from "@/components/case-card";
 import { SourceLogo } from "@/components/source-logo";
 import { ViewCounter } from "@/components/view-counter";
 import { getCase } from "@/lib/api";
@@ -125,22 +126,19 @@ export default async function CasePage({ params }: { params: Params }) {
         <section aria-labelledby="other-cases-title" className="dossierSection">
           <div className="sectionHeading">
             <p className="sectionCode">04 / links</p>
-            <h2 id="other-cases-title">Інші справи</h2>
+            <h2 id="other-cases-title">Подібні справи</h2>
           </div>
           <details className="sectionDisclosure otherCasesArchive" open>
             <summary className="sectionDisclosureSummary">
               {formatCount(dossier.other_cases.length, [
-                "інша справа",
-                "інші справи",
-                "інших справ",
+                "подібна справа",
+                "подібні справи",
+                "подібних справ",
               ])}
             </summary>
-            <div className="relatedGrid">
+            <div className="caseList">
               {dossier.other_cases.map((otherCase) => (
-                <Link href={`/cases/${otherCase.slug}`} key={otherCase.slug}>
-                  <h3 className="caseTitle">{otherCase.title_uk}</h3>
-                  <p>{otherCase.summary_uk}</p>
-                </Link>
+                <CaseCard item={otherCase} key={otherCase.slug} variant="compact" />
               ))}
             </div>
           </details>

@@ -10,7 +10,7 @@ const dateFormat = new Intl.DateTimeFormat("uk-UA", {
   year: "numeric",
 });
 
-export type CaseCardVariant = "lead" | "supporting" | "list";
+export type CaseCardVariant = "lead" | "supporting" | "list" | "compact";
 
 export function CaseCard({
   item,
@@ -21,21 +21,28 @@ export function CaseCard({
 }) {
   return (
     <article className={`caseCard caseCard--${variant}`} data-case-variant={variant}>
-      {item.image_url ? (
-        <div className="caseCardImage">
-          <Image
-            alt=""
-            fill
-            sizes={
-              variant === "lead"
-                ? "(max-width: 800px) 100vw, 60vw"
-                : variant === "list"
-                  ? "(max-width: 800px) 100vw, 240px"
-                  : "(max-width: 800px) 100vw, 40vw"
-            }
-            src={item.image_url}
-            unoptimized
-          />
+      {item.image_url || variant === "compact" ? (
+        <div
+          aria-hidden={!item.image_url}
+          className={`caseCardImage${item.image_url ? "" : " caseCardImage--empty"}`}
+        >
+          {item.image_url ? (
+            <Image
+              alt=""
+              fill
+              sizes={
+                variant === "lead"
+                  ? "(max-width: 800px) 100vw, 60vw"
+                  : variant === "list"
+                    ? "(max-width: 800px) 100vw, 240px"
+                    : variant === "compact"
+                      ? "90px"
+                      : "(max-width: 800px) 100vw, 40vw"
+              }
+              src={item.image_url}
+              unoptimized
+            />
+          ) : null}
         </div>
       ) : null}
       <div className="caseCardBody">
