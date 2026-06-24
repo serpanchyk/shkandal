@@ -130,24 +130,34 @@ test("reader can inspect Case provenance and navigate to an Entity", async ({ pa
   await expect(page.getByRole("heading", { name: "Джерела справи" })).toBeVisible();
   await expect(page.getByTitle(/Українська правда/)).toBeVisible();
 
-  const timeline = page.locator(".sectionDisclosure").filter({ has: page.locator("#timeline-title") });
+  const timelineSection = page.locator("section").filter({ has: page.locator("#timeline-title") });
+  const timeline = timelineSection.locator(".sectionDisclosure");
+  await expect(timelineSection.locator(".sectionHeading + details > summary")).toHaveText("1 подія");
   await expect(timeline).toHaveAttribute("open", "");
   await expect(timeline.locator(".timelineEvent")).toBeVisible();
-  await timeline.getByText("Хронологія").click();
+  await timeline.locator("summary").click();
   await expect(timeline.locator(".timelineEvent")).toBeHidden();
-  await timeline.getByText("Хронологія").click();
+  await timeline.locator("summary").click();
 
   const articleArchive = page.locator(".articleArchive");
+  await expect(
+    page.locator("section").filter({ has: page.locator("#articles-title") })
+      .locator(".sectionHeading + details > summary"),
+  ).toHaveText("1 матеріал справи");
   await expect(articleArchive).not.toHaveAttribute("open", "");
   await expect(articleArchive.locator(".articleCard")).toBeHidden();
-  await articleArchive.getByText("Усі матеріали справи").click();
+  await articleArchive.locator("summary").click();
   await expect(articleArchive.locator(".articleCard")).toBeVisible();
 
   const otherCases = page.locator(".otherCasesArchive");
   await expect(otherCases.getByRole("link", { name: /Інша справа зі спільним матеріалом/ })).toBeVisible();
-  await otherCases.getByText("Інші справи").click();
+  await expect(
+    page.locator("section").filter({ has: page.locator("#other-cases-title") })
+      .locator(".sectionHeading + details > summary"),
+  ).toHaveText("1 інша справа");
+  await otherCases.locator("summary").click();
   await expect(otherCases.getByRole("link", { name: /Інша справа зі спільним матеріалом/ })).toBeHidden();
-  await otherCases.getByText("Інші справи").click();
+  await otherCases.locator("summary").click();
 
   await page.getByText("1 джерело події").click();
   await expect(
@@ -155,10 +165,14 @@ test("reader can inspect Case provenance and navigate to an Entity", async ({ pa
   ).toBeVisible();
 
   const entitiesArchive = page.locator(".entitiesArchive");
+  await expect(
+    page.locator("section").filter({ has: page.locator("#entities-title") })
+      .locator(".sectionHeading + details > summary"),
+  ).toHaveText("1 згадана особа або організація");
   await expect(entitiesArchive.getByRole("link", { name: /Тестова особа/ })).toBeVisible();
-  await entitiesArchive.getByText("Згадані особи та організації").click();
+  await entitiesArchive.locator("summary").click();
   await expect(entitiesArchive.getByRole("link", { name: /Тестова особа/ })).toBeHidden();
-  await entitiesArchive.getByText("Згадані особи та організації").click();
+  await entitiesArchive.locator("summary").click();
   await expect(entitiesArchive.getByRole("link", { name: /Тестова особа/ })).toBeVisible();
   await page.getByRole("link", { name: /Тестова особа/ }).click();
   await expect(page.getByRole("heading", { name: "Тестова особа" })).toBeVisible();

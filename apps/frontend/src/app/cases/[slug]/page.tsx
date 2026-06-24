@@ -67,15 +67,13 @@ export default async function CasePage({ params }: { params: Params }) {
       </section>
 
       <section aria-labelledby="timeline-title" className="dossierSection">
+        <div className="sectionHeading">
+          <p className="sectionCode">02 / timeline</p>
+          <h2 id="timeline-title">Хронологія</h2>
+        </div>
         <details className="sectionDisclosure" open>
           <summary className="sectionDisclosureSummary">
-            <div className="sectionHeading">
-              <p className="sectionCode">02 / timeline</p>
-              <div className="sectionTitle">
-                <h2 id="timeline-title">Хронологія</h2>
-                <span>{formatCount(dossier.events.length, ["подія", "події", "подій"])}</span>
-              </div>
-            </div>
+            {formatCount(dossier.events.length, ["подія", "події", "подій"])}
           </summary>
           <div className="timeline">
             {dossier.events.length ? dossier.events.map((event) => (
@@ -99,21 +97,17 @@ export default async function CasePage({ params }: { params: Params }) {
       </section>
 
       <section aria-labelledby="entities-title" className="dossierSection">
+        <div className="sectionHeading">
+          <p className="sectionCode">03 / mentions</p>
+          <h2 id="entities-title">Згадані особи та організації</h2>
+        </div>
         <details className="sectionDisclosure entitiesArchive" open>
           <summary className="sectionDisclosureSummary">
-            <div className="sectionHeading">
-              <p className="sectionCode">03 / mentions</p>
-              <div className="sectionTitle">
-                <h2 id="entities-title">Згадані особи та організації</h2>
-                <span>
-                  {formatCount(dossier.entities.length, [
-                    "згадана особа або організація",
-                    "згадані особи або організації",
-                    "згаданих осіб або організацій",
-                  ])}
-                </span>
-              </div>
-            </div>
+            {formatCount(dossier.entities.length, [
+              "згадана особа або організація",
+              "згадані особи або організації",
+              "згаданих осіб або організацій",
+            ])}
           </summary>
           <div className="entityGrid">
             {dossier.entities.map((entity) => (
@@ -129,21 +123,17 @@ export default async function CasePage({ params }: { params: Params }) {
 
       {dossier.other_cases.length ? (
         <section aria-labelledby="other-cases-title" className="dossierSection">
+          <div className="sectionHeading">
+            <p className="sectionCode">04 / links</p>
+            <h2 id="other-cases-title">Інші справи</h2>
+          </div>
           <details className="sectionDisclosure otherCasesArchive" open>
             <summary className="sectionDisclosureSummary">
-              <div className="sectionHeading">
-                <p className="sectionCode">04 / links</p>
-                <div className="sectionTitle">
-                  <h2 id="other-cases-title">Інші справи</h2>
-                  <span>
-                    {formatCount(dossier.other_cases.length, [
-                      "інша справа",
-                      "інші справи",
-                      "інших справ",
-                    ])}
-                  </span>
-                </div>
-              </div>
+              {formatCount(dossier.other_cases.length, [
+                "інша справа",
+                "інші справи",
+                "інших справ",
+              ])}
             </summary>
             <div className="relatedGrid">
               {dossier.other_cases.map((otherCase) => (
@@ -158,21 +148,17 @@ export default async function CasePage({ params }: { params: Params }) {
       ) : null}
 
       <section aria-labelledby="articles-title" className="dossierSection">
+        <div className="sectionHeading">
+          <p className="sectionCode">05 / evidence</p>
+          <h2 id="articles-title">Усі матеріали справи</h2>
+        </div>
         <details className="sectionDisclosure articleArchive">
           <summary className="sectionDisclosureSummary">
-            <div className="sectionHeading">
-              <p className="sectionCode">05 / evidence</p>
-              <div className="sectionTitle">
-                <h2 id="articles-title">Усі матеріали справи</h2>
-                <span>
-                  {formatCount(dossier.articles.length, [
-                    "матеріал справи",
-                    "матеріали справи",
-                    "матеріалів справи",
-                  ])}
-                </span>
-              </div>
-            </div>
+            {formatCount(dossier.articles.length, [
+              "матеріал справи",
+              "матеріали справи",
+              "матеріалів справи",
+            ])}
           </summary>
           <div className="articleList">
             {dossier.articles.map((article) => <ArticleCard article={article} key={article.url} />)}
