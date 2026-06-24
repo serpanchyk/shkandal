@@ -48,6 +48,9 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - Systemd timers schedule one-shot ingestion and ML worker containers on servers.
 - PostgreSQL is the source of truth and persists locally through the Compose
   `postgres-data` named volume.
+- Manual public-UI development uses an isolated `shkandal-demo` Compose project
+  with a persistent seeded PostgreSQL volume. Playwright uses a separate
+  disposable `shkandal-e2e` project and removes its database after each run.
 - Qdrant is rebuildable from PostgreSQL-backed data.
 - Redis is excluded from MVP.
 - One generic PostgreSQL `jobs` table with row locking is the MVP background-work mechanism. A job is one durable, retryable, typed pipeline work unit, not a worker process or domain object.
@@ -164,5 +167,3 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 ## Known Next Work
 
 - Implement Qdrant collections for case, entity, and event cards.
-- Provision an isolated local browser-test database workflow; CI already runs
-  browser-level public-reader coverage against deterministic seeded PostgreSQL.

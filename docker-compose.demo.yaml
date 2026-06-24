@@ -1,0 +1,62 @@
+services:
+  demo-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: shkandal_demo
+      POSTGRES_PASSWORD: shkandal_demo_password
+      POSTGRES_DB: shkandal_demo
+    volumes:
+      - demo-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shkandal_demo -d shkandal_demo"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  demo-migrate:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    environment:
+      POSTGRES_DATABASE_URL: postgresql://shkandal_demo:shkandal_demo_password@demo-postgres:5432/shkandal_demo
+    command: ["alembic", "-c", "/app/packages/database/alembic.ini", "upgrade", "head"]
+    depends_on:
+      demo-postgres:
+        condition: service_healthy
+    restart: "no"
+
+  demo-seed:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    environment:
+      POSTGRES_DATABASE_URL: postgresql://shkandal_demo:shkandal_demo_password@demo-postgres:5432/shkandal_demo
+    command: ["python", "-m", "shkandal_backend.seed_demo"]
+    depends_on:
+      demo-migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+  demo-backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    environment:
+      POSTGRES_DATABASE_URL: postgresql://shkandal_demo:shkandal_demo_password@demo-postgres:5432/shkandal_demo
+      PUBLIC_FRONTEND_ORIGIN: http://localhost:${DEMO_FRONTEND_PORT:-3000}
+      IMAGE_CHECK_TIMEOUT_SECONDS: "0.2"
+      IMAGE_CHECK_MAX_CANDIDATES: "1"
+      IMAGE_CHECK_CACHE_TTL_SECONDS: "0"
+    ports:
+      - "${DEMO_BACKEND_PORT:-18000}:8000"
+    depends_on:
+      demo-seed:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/healthz\", timeout=2)'"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  demo-postgres-data:
