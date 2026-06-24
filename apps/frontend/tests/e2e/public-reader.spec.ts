@@ -147,16 +147,34 @@ test("reader can inspect Case provenance and navigate to an Entity", async ({ pa
   await expect(articleArchive).not.toHaveAttribute("open", "");
   await expect(articleArchive.locator(".articleCard")).toBeHidden();
   await articleArchive.locator("summary").click();
-  await expect(articleArchive.locator(".articleCard")).toBeVisible();
+  const articleCard = articleArchive.locator(".articleCard");
+  await expect(articleCard).toBeVisible();
+  await expect(articleCard.locator(".articleCardImage--empty")).toBeVisible();
 
   const otherCases = page.locator(".otherCasesArchive");
   await expect(otherCases.getByRole("link", { name: /Інша справа зі спільним матеріалом/ })).toBeVisible();
-  const relatedCaseCard = otherCases.locator('[data-case-variant="list"]');
+  const relatedCaseCard = otherCases.locator('[data-case-variant="compact"]');
   await expect(relatedCaseCard).toHaveCount(1);
   await expect(relatedCaseCard.getByText("Досьє для перевірки похідної навігації між справами.")).toBeVisible();
   await expect(relatedCaseCard.getByText("1 матеріал")).toBeVisible();
   await expect(relatedCaseCard.getByText("0 переглядів")).toBeVisible();
   await expect(relatedCaseCard.getByText(/оновлено/)).toBeVisible();
+  const compactLayout = await page.evaluate(() => {
+    const article = document.querySelector<HTMLElement>(".articleArchive .articleCard");
+    const articleText = article?.querySelector<HTMLElement>("div:nth-child(2)");
+    const related = document.querySelector<HTMLElement>('[data-case-variant="compact"]');
+
+    if (!article || !articleText || !related) throw new Error("Compact cards are missing.");
+
+    return {
+      articleHeight: article.getBoundingClientRect().height,
+      articleTextLeft: articleText.getBoundingClientRect().left,
+      articleLeft: article.getBoundingClientRect().left,
+      relatedHeight: related.getBoundingClientRect().height,
+    };
+  });
+  expect(Math.abs(compactLayout.relatedHeight - compactLayout.articleHeight)).toBeLessThanOrEqual(8);
+  expect(compactLayout.articleTextLeft - compactLayout.articleLeft).toBeGreaterThan(90);
   await expect(
     page.locator("section").filter({ has: page.locator("#other-cases-title") })
       .locator(".sectionHeading + details > summary"),

@@ -138,7 +138,7 @@ export default async function CasePage({ params }: { params: Params }) {
             </summary>
             <div className="caseList">
               {dossier.other_cases.map((otherCase) => (
-                <CaseCard item={otherCase} key={otherCase.slug} variant="list" />
+                <CaseCard item={otherCase} key={otherCase.slug} variant="compact" />
               ))}
             </div>
           </details>
