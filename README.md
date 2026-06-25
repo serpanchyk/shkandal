@@ -285,7 +285,10 @@ PostgreSQL is the source of truth. Qdrant stores rebuildable vector indexes:
 - entity cards;
 - event cards.
 
-Generated fields are overwritten in place for MVP. Store enough run metadata to debug bad generations: LLM run, prompt name/version, model, status, and raw or repaired output.
+Generated fields are overwritten in place for MVP. Store enough run metadata
+to debug bad generations: LLM run, prompt name/version, provider-returned
+model, status, and raw or repaired output. The requested LiteLLM routing alias
+is not treated as the model identity.
 
 ## Data Model Direction
 

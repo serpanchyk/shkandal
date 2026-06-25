@@ -195,7 +195,7 @@ class LlmRun(Base):
     run_type: Mapped[str] = mapped_column(Text, nullable=False)
     prompt_name: Mapped[str] = mapped_column(Text, nullable=False)
     prompt_version: Mapped[str] = mapped_column(Text, nullable=False)
-    model_name: Mapped[str] = mapped_column(Text, nullable=False)
+    model_name: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, nullable=False)
     raw_output: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     repaired_output: Mapped[dict[str, Any] | None] = mapped_column(JSONB)

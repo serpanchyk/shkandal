@@ -12,7 +12,7 @@ from email.utils import parsedate_to_datetime
 from typing import Any, Literal, Protocol, TypeVar, cast
 from uuid import UUID
 
-from langchain_core.output_parsers import StrOutputParser
+from langchain_core.messages import BaseMessage
 from langchain_openai import ChatOpenAI
 from openai import RateLimitError
 from pydantic import BaseModel, SecretStr, ValidationError
@@ -60,6 +60,7 @@ class RepairAttempt:
     output: Any | None
     raw_text: str | None
     error: str | None
+    model_name: str | None = None
     schema_echo: bool = False
 
 
@@ -145,8 +146,7 @@ class LlmTaskRunner:
         repair_chain = cast(
             AsyncTextChain,
             registry.chat_prompt("repair")
-            | create_litellm_chat_model(settings=settings, model_name=aliases["repair"])
-            | StrOutputParser(),
+            | create_litellm_chat_model(settings=settings, model_name=aliases["repair"]),
         )
         return cls(
             prompt_registry=registry,
@@ -195,12 +195,12 @@ class LlmTaskRunner:
                 run_type=run_type,
                 prompt_name=prompt.name,
                 prompt_version=prompt.version,
-                model_name=model_name,
                 metadata=metadata,
             )
 
         raw_text = ""
         raw_json: Any = None
+        resolved_model_name: str | None = None
         normalized: NormalizationResult | None = None
         parse_repaired = False
         request_duration_seconds: float | None = None
@@ -213,7 +213,7 @@ class LlmTaskRunner:
             )
             request_duration_seconds = time.monotonic() - request_started_at
             await self._record_successful_request()
-            raw_text, parse_result = _coerce_provider_output(
+            raw_text, parse_result, resolved_model_name = _coerce_provider_output(
                 provider_output,
                 allow_array=task.allow_top_level_array,
             )
@@ -245,6 +245,7 @@ class LlmTaskRunner:
                     raw_text=raw_text,
                     raw_json=raw_json,
                     error=rate_limit_exc,
+                    model_name=resolved_model_name,
                     metadata=_timing_metadata(
                         metadata,
                         request_duration_seconds=request_duration_seconds,
@@ -278,6 +279,7 @@ class LlmTaskRunner:
                         await self._run_store.finish_run(
                             run_id=run_id,
                             status="repaired",
+                            model_name=resolved_model_name,
                             raw_output=_raw_provenance(raw_text, raw_json, parse_repaired),
                             repaired_output=fallback.model_dump(mode="json"),
                             metadata=fallback_metadata,
@@ -287,6 +289,7 @@ class LlmTaskRunner:
                     await self._run_store.finish_run(
                         run_id=run_id,
                         status="failed",
+                        model_name=resolved_model_name,
                         raw_output=_raw_provenance(raw_text, raw_json, parse_repaired),
                         error_message=repair_attempt.error or str(exc),
                         metadata=failure_metadata,
@@ -303,10 +306,14 @@ class LlmTaskRunner:
                 await self._run_store.finish_run(
                     run_id=run_id,
                     status="repaired",
+                    model_name=resolved_model_name,
                     raw_output=_raw_provenance(raw_text, raw_json, parse_repaired),
                     repaired_output=normalized.output,
                     metadata=_timing_metadata(
-                        _normalization_metadata(metadata, normalized.actions),
+                        _repair_model_metadata(
+                            _normalization_metadata(metadata, normalized.actions),
+                            repair_attempt.model_name,
+                        ),
                         request_duration_seconds=request_duration_seconds,
                         repair_duration_seconds=repair_duration_seconds,
                     ),
@@ -330,6 +337,7 @@ class LlmTaskRunner:
                 await self._run_store.finish_run(
                     run_id=run_id,
                     status="failed",
+                    model_name=resolved_model_name,
                     raw_output=_raw_provenance(raw_text, raw_json, parse_repaired),
                     error_message=str(exc),
                     metadata=failed_metadata,
@@ -350,6 +358,7 @@ class LlmTaskRunner:
             await self._run_store.finish_run(
                 run_id=run_id,
                 status="repaired" if was_repaired else "succeeded",
+                model_name=resolved_model_name,
                 raw_output=_raw_provenance(raw_text, raw_json, parse_repaired),
                 repaired_output=normalized.output if was_repaired else None,
                 metadata=_timing_metadata(
@@ -379,27 +388,29 @@ class LlmTaskRunner:
             return RepairAttempt(None, None, validation_error)
 
         repaired_text = ""
+        repair_model_name: str | None = None
         try:
-            repaired_text = str(
-                await invoke_chain(
-                    self._repair_chain,
-                    {
-                        "schema_json": runtime_schema_json(output_model),
-                        "validation_error": validation_error,
-                        "invalid_output": invalid_output,
-                    },
-                )
+            repair_output = await invoke_chain(
+                self._repair_chain,
+                {
+                    "schema_json": runtime_schema_json(output_model),
+                    "validation_error": validation_error,
+                    "invalid_output": invalid_output,
+                },
+            )
+            repaired_text, repaired_parse_result, repair_model_name = _coerce_provider_output(
+                repair_output,
+                allow_array=LLM_TASKS[run_type].allow_top_level_array,
             )
             await self._record_successful_request()
             task = LLM_TASKS[run_type]
-            repaired_json = parse_json_response(
-                repaired_text, allow_array=task.allow_top_level_array
-            )
+            repaired_json = repaired_parse_result.value
             if _is_schema_echo(repaired_json):
                 return RepairAttempt(
                     None,
                     repaired_text,
                     "repair response echoed JSON schema",
+                    model_name=repair_model_name,
                     schema_echo=True,
                 )
             normalized = task.normalize(
@@ -411,9 +422,9 @@ class LlmTaskRunner:
             _validate_resolution_coverage(
                 run_type=run_type, output=normalized.output, variables=variables
             )
-            return RepairAttempt(repaired_json, repaired_text, None)
+            return RepairAttempt(repaired_json, repaired_text, None, model_name=repair_model_name)
         except (ValueError, ValidationError) as exc:
-            return RepairAttempt(None, repaired_text, str(exc))
+            return RepairAttempt(None, repaired_text, str(exc), model_name=repair_model_name)
 
     async def _record_successful_request(self) -> None:
         if self._cooldown_observer is not None:
@@ -426,6 +437,7 @@ class LlmTaskRunner:
         raw_text: str,
         raw_json: dict[str, Any] | None,
         error: LlmRateLimitError,
+        model_name: str | None,
         metadata: dict[str, Any] | None,
     ) -> None:
         if self._run_store is None or run_id is None:
@@ -433,6 +445,7 @@ class LlmTaskRunner:
         await self._run_store.finish_run(
             run_id=run_id,
             status="failed",
+            model_name=model_name,
             raw_output=raw_json or {"text": raw_text},
             error_message=str(error),
             metadata={
@@ -472,7 +485,7 @@ def _task_chain(
 
     model = create_litellm_chat_model(settings=settings, model_name=model_name)
     if settings.llm_structured_output_mode == "disabled":
-        return cast(AsyncTextChain, registry.chat_prompt(prompt_name) | model | StrOutputParser())
+        return cast(AsyncTextChain, registry.chat_prompt(prompt_name) | model)
 
     task = LLM_TASKS[run_type]
     method: Literal["function_calling", "json_schema"] = (
@@ -480,7 +493,11 @@ def _task_chain(
         if settings.llm_structured_output_mode == "tool_calling"
         else "json_schema"
     )
-    structured_model = model.with_structured_output(task.output_model, method=method)
+    structured_model = model.with_structured_output(
+        task.output_model,
+        method=method,
+        include_raw=True,
+    )
     return cast(AsyncTextChain, registry.chat_prompt(prompt_name) | structured_model)
 
 
@@ -522,18 +539,46 @@ def _parse_json_response(text: str, *, allow_array: bool) -> JsonParseResult:
     return JsonParseResult(value, escaped_control_characters)
 
 
-def _coerce_provider_output(output: Any, *, allow_array: bool) -> tuple[str, JsonParseResult]:
+def _coerce_provider_output(
+    output: Any,
+    *,
+    allow_array: bool,
+) -> tuple[str, JsonParseResult, str | None]:
     """Accept text-mode JSON or already-validated structured model output."""
 
+    output, model_name = _unwrap_provider_output(output)
     if isinstance(output, BaseModel):
         value = output.model_dump(mode="json")
-        return json.dumps(value, ensure_ascii=False), JsonParseResult(value)
+        return json.dumps(value, ensure_ascii=False), JsonParseResult(value), model_name
     if isinstance(output, dict):
-        return json.dumps(output, ensure_ascii=False), JsonParseResult(output)
+        return json.dumps(output, ensure_ascii=False), JsonParseResult(output), model_name
     if allow_array and isinstance(output, list):
-        return json.dumps(output, ensure_ascii=False), JsonParseResult(output)
+        return json.dumps(output, ensure_ascii=False), JsonParseResult(output), model_name
     text = str(output)
-    return text, _parse_json_response(text, allow_array=allow_array)
+    return text, _parse_json_response(text, allow_array=allow_array), model_name
+
+
+def _unwrap_provider_output(output: Any) -> tuple[Any, str | None]:
+    """Return the task payload and resolved provider model from a LangChain response."""
+
+    if isinstance(output, BaseMessage):
+        return output.content, _resolved_model_name(output)
+    if (
+        isinstance(output, dict)
+        and isinstance(output.get("raw"), BaseMessage)
+        and {"parsed", "parsing_error"}.issubset(output)
+    ):
+        raw = cast(BaseMessage, output["raw"])
+        parsed = output.get("parsed")
+        return (parsed if parsed is not None else raw.content), _resolved_model_name(raw)
+    return output, None
+
+
+def _resolved_model_name(message: BaseMessage) -> str | None:
+    """Extract the provider-returned model identifier without normalizing it."""
+
+    value = message.response_metadata.get("model_name")
+    return value if isinstance(value, str) and value else None
 
 
 def _escape_control_characters_inside_json_strings(text: str) -> str:
@@ -587,7 +632,7 @@ def _repair_failure_metadata(
     repair_duration_seconds: float | None,
 ) -> dict[str, Any]:
     result = _timing_metadata(
-        metadata,
+        _repair_model_metadata(metadata, attempt.model_name),
         request_duration_seconds=request_duration_seconds,
         repair_duration_seconds=repair_duration_seconds,
     )
@@ -597,6 +642,18 @@ def _repair_failure_metadata(
         result["schema_echo"] = True
     if attempt.error:
         result["repair_failure_reason"] = attempt.error
+    return result
+
+
+def _repair_model_metadata(
+    metadata: dict[str, Any] | None,
+    repair_model_name: str | None,
+) -> dict[str, Any]:
+    """Attach the resolved repair model when the repair provider returned one."""
+
+    result = dict(metadata or {})
+    if repair_model_name is not None:
+        result["repair_model_name"] = repair_model_name
     return result
 
 

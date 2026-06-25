@@ -27,7 +27,6 @@ class LlmRunStore:
         run_type: LlmRunType,
         prompt_name: str,
         prompt_version: str,
-        model_name: str,
         metadata: dict[str, Any] | None = None,
         started_at: datetime | None = None,
     ) -> UUID:
@@ -38,7 +37,7 @@ class LlmRunStore:
                 run_type=run_type,
                 prompt_name=prompt_name,
                 prompt_version=prompt_version,
-                model_name=model_name,
+                model_name=None,
                 status="pending",
                 metadata_=metadata or {},
                 started_at=started_at or datetime.now(UTC),
@@ -52,6 +51,7 @@ class LlmRunStore:
         *,
         run_id: UUID,
         status: str,
+        model_name: str | None = None,
         raw_output: Any | None = None,
         repaired_output: Any | None = None,
         error_message: str | None = None,
@@ -62,6 +62,7 @@ class LlmRunStore:
 
         values: dict[str, Any] = {
             "status": status,
+            "model_name": model_name,
             "raw_output": raw_output,
             "repaired_output": repaired_output,
             "error_message": error_message,

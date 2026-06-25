@@ -44,7 +44,8 @@ Planned responsibilities:
 - resolve global strict real-world events from provisional article events;
 - assign resolved entities/events only to relevant linked cases;
 - materialize direct `case_entities` and `case_events` links;
-- record LLM run metadata, prompt name/version, model, status, raw output, and repair attempts.
+- record LLM run metadata, prompt name/version, resolved provider model, status,
+  raw output, and repair attempts.
 - audit accumulated Case evidence for mixed durable stories and publish safe
   Case splits atomically.
 
@@ -82,6 +83,11 @@ logical model aliases (`shkandal-article-card`, `shkandal-case-resolution`,
 `shkandal-repair`) through the proxy's OpenAI-compatible endpoint. Provider
 routing, provider credentials, throttling, and fallback policy belong to the
 proxy configuration, not to `worker-ml`.
+Pending runs and failures without a provider response keep
+`llm_runs.model_name` null. Completed calls store the model identifier returned
+by the provider rather than the requested `shkandal-*` routing alias. If a
+separate repair call is needed, the primary model remains in `model_name` and
+the repair provider model is recorded as `metadata.repair_model_name`.
 `llm_structured_output_mode` is available as a guarded rollout switch with
 `disabled`, `tool_calling`, and `json_schema` values. The tracked default is
 `disabled`, so production remains on the text JSON path unless LiteLLM and the
