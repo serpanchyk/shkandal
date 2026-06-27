@@ -15,9 +15,8 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from worker_ml.config import MlConfig
 from worker_ml.runtime.planning import CREATE_ARTICLE_CARD_JOB
-
-JOB_UPSERT_BATCH_SIZE = 1_000
 
 
 @dataclass(frozen=True)
@@ -35,13 +34,24 @@ async def reprocess_article_cards(
     session_factory: async_sessionmaker[AsyncSession],
     *,
     apply: bool,
-    max_attempts: int = 3,
+    max_attempts: int | None = None,
     limit: int | None = None,
+    job_upsert_batch_size: int | None = None,
 ) -> ArticleCardReprocessingStats:
     """Delete cards and queue fresh card jobs for all or the latest existing cards."""
 
+    settings = MlConfig()
+    resolved_max_attempts = settings.job_max_attempts if max_attempts is None else max_attempts
+    resolved_job_upsert_batch_size = (
+        settings.article_card_reprocess_job_upsert_batch_size
+        if job_upsert_batch_size is None
+        else job_upsert_batch_size
+    )
+
     if limit is not None and limit < 1:
         raise ValueError("limit must be greater than zero")
+    if resolved_job_upsert_batch_size < 1:
+        raise ValueError("job_upsert_batch_size must be greater than zero")
 
     async with session_factory() as session:
         if apply:
@@ -107,11 +117,11 @@ async def reprocess_article_cards(
             )
         await session.execute(delete_statement)
         reset_at = datetime.now(UTC)
-        for start in range(0, len(relevant_article_ids), JOB_UPSERT_BATCH_SIZE):
+        for start in range(0, len(relevant_article_ids), resolved_job_upsert_batch_size):
             await _upsert_article_card_jobs(
                 session,
-                article_ids=relevant_article_ids[start : start + JOB_UPSERT_BATCH_SIZE],
-                max_attempts=max_attempts,
+                article_ids=relevant_article_ids[start : start + resolved_job_upsert_batch_size],
+                max_attempts=resolved_max_attempts,
                 reset_at=reset_at,
             )
         await session.commit()
@@ -162,10 +172,13 @@ async def _upsert_article_card_jobs(
 async def _run(
     *,
     apply: bool,
-    max_attempts: int,
+    max_attempts: int | None,
     limit: int | None,
 ) -> ArticleCardReprocessingStats:
-    engine = create_async_engine_from_config(DatabaseConfig())
+    settings = MlConfig()
+    engine = create_async_engine_from_config(
+        DatabaseConfig(database_url=settings.postgres_database_url)
+    )
     try:
         return await reprocess_article_cards(
             create_async_sessionmaker(engine),
@@ -180,7 +193,7 @@ async def _run(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true")
-    parser.add_argument("--max-attempts", type=int, default=3)
+    parser.add_argument("--max-attempts", type=int)
     parser.add_argument(
         "--limit",
         type=int,

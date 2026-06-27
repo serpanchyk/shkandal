@@ -62,6 +62,7 @@ class ArticleCaseResolutionJobHandler:
         model_name: str,
         candidate_limit: int,
         link_audit_card_limit: int = 20,
+        representative_title_limit: int = 8,
     ) -> None:
         self._session_factory = session_factory
         self._job_store = job_store
@@ -70,6 +71,7 @@ class ArticleCaseResolutionJobHandler:
         self._model_name = model_name
         self._candidate_limit = candidate_limit
         self._link_audit_card_limit = link_audit_card_limit
+        self._representative_title_limit = representative_title_limit
 
     async def handle(self, job: ClaimedJob) -> CaseResolutionOutput | None:
         """Resolve and persist article-case identity under the global Case lock."""
@@ -181,6 +183,7 @@ class ArticleCaseResolutionJobHandler:
         evidence_titles = await _representative_article_titles_by_case(
             session,
             set(by_id),
+            limit=self._representative_title_limit,
         )
         return [
             {
@@ -594,6 +597,8 @@ def _validate_dropped_link_fallback_output(output: CaseResolutionOutput) -> None
 async def _representative_article_titles_by_case(
     session: AsyncSession,
     case_ids: set[UUID],
+    *,
+    limit: int,
 ) -> dict[UUID, list[str]]:
     if not case_ids:
         return {}
@@ -615,7 +620,7 @@ async def _representative_article_titles_by_case(
     rows = (
         await session.execute(
             select(ranked.c.case_id, ranked.c.title_uk)
-            .where(ranked.c.position <= 8)
+            .where(ranked.c.position <= limit)
             .order_by(ranked.c.case_id, ranked.c.position)
         )
     ).all()

@@ -58,13 +58,14 @@ class CaseCoherenceAuditJobHandler:
         job_store: ArticleJobStore | None = None,
         model_name: str,
         card_batch_size: int,
+        min_card_batch_size: int = 2,
     ) -> None:
         self._session_factory = session_factory
         self._runner = runner
         self._vector_index = vector_index
         self._job_store = job_store
         self._model_name = model_name
-        self._card_batch_size = max(2, card_batch_size)
+        self._card_batch_size = max(min_card_batch_size, card_batch_size)
 
     async def handle(self, job: ClaimedJob) -> CaseCoherenceAuditOutput | None:
         """Prepare an audit without locks, then publish it under the Case lock."""

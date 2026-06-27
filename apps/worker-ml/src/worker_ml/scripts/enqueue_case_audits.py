@@ -48,7 +48,7 @@ async def run(
                 )
             print(f"active Case public-interest reruns selected: {selected or 0}")
         else:
-            selected_limit = limit or 5
+            selected_limit = limit or settings.case_audit_manual_default_limit
             async with session_factory() as session:
                 due = await session.scalar(
                     select(func.count())
@@ -77,7 +77,7 @@ async def run(
             )
         else:
             stats = await planner.enqueue_due_case_audit_jobs(
-                limit=limit or 5,
+                limit=limit or settings.case_audit_manual_default_limit,
                 max_attempts=settings.job_max_attempts,
                 interval_days=settings.case_audit_interval_days,
             )

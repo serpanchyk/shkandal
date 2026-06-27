@@ -131,6 +131,7 @@ class _LazyJobHandlers(Mapping[str, JobHandler]):
             model_name=self._settings.llm_case_resolution_model,
             candidate_limit=self._settings.case_resolution_candidate_limit,
             link_audit_card_limit=self._settings.case_link_audit_card_limit,
+            representative_title_limit=(self._settings.case_resolution_representative_title_limit),
         )
 
     def _create_entity_resolution_handler(self) -> JobHandler:
@@ -168,6 +169,7 @@ class _LazyJobHandlers(Mapping[str, JobHandler]):
             job_store=self._job_store,
             model_name=self._settings.llm_case_coherence_audit_model,
             card_batch_size=self._settings.case_audit_card_batch_size,
+            min_card_batch_size=self._settings.case_audit_min_card_batch_size,
         )
 
     def _create_case_public_interest_audit_handler(self) -> JobHandler:

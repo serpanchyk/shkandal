@@ -15,6 +15,7 @@ class MlConfig(BaseServiceConfig):
     worker_concurrency: int = 4
     stale_job_timeout_seconds: int = 1800
     job_max_attempts: int = 3
+    transient_retry_delay_min_seconds: int = Field(default=10, gt=0)
     relevance_model_dir: str = "artifacts/models/relevance/tfidf_logistic_noise_assigned"
     relevance_threshold: float = 0.5
     embedding_model_dir: str = "artifacts/models/embeddings/multilingual_e5_small/model"
@@ -44,9 +45,15 @@ class MlConfig(BaseServiceConfig):
     case_audit_interval_days: int = 30
     case_audit_enqueue_batch_size: int = 20
     case_audit_card_batch_size: int = Field(default=20, gt=0)
+    case_audit_min_card_batch_size: int = Field(default=2, gt=0)
+    case_audit_manual_default_limit: int = Field(default=5, gt=0)
     case_link_audit_card_limit: int = Field(default=20, gt=0)
     case_review_card_limit: int = Field(default=40, gt=0)
     case_copy_card_limit: int = Field(default=40, gt=0)
+    case_resolution_representative_title_limit: int = Field(default=8, gt=0)
+    case_resolution_enqueue_batch_size: int = Field(default=5_000, gt=0)
+    article_card_reprocess_job_upsert_batch_size: int = Field(default=1_000, gt=0)
+    case_resolution_connectivity_example_limit: int = Field(default=20, gt=0)
     case_audit_automatic_enabled: bool = True
 
     @property

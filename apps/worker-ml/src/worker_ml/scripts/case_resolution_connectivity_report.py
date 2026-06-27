@@ -12,6 +12,7 @@ from worker_ml.cases.connectivity_report import (
     load_case_resolution_connectivity_report,
     render_case_resolution_connectivity_report,
 )
+from worker_ml.config import MlConfig
 
 
 def main() -> None:
@@ -23,7 +24,6 @@ def main() -> None:
     parser.add_argument(
         "--example-limit",
         type=int,
-        default=20,
         help="Maximum number of recent unconnected example articles to show.",
     )
     args = parser.parse_args()
@@ -31,12 +31,19 @@ def main() -> None:
     asyncio.run(_run(example_limit=args.example_limit))
 
 
-async def _run(*, example_limit: int) -> None:
-    engine = create_async_engine_from_config(DatabaseConfig())
+async def _run(*, example_limit: int | None) -> None:
+    settings = MlConfig()
+    engine = create_async_engine_from_config(
+        DatabaseConfig(database_url=settings.postgres_database_url)
+    )
     try:
         report = await load_case_resolution_connectivity_report(
             create_async_sessionmaker(engine),
-            example_limit=example_limit,
+            example_limit=(
+                settings.case_resolution_connectivity_example_limit
+                if example_limit is None
+                else example_limit
+            ),
         )
         print(render_case_resolution_connectivity_report(report), end="")
     finally:

@@ -230,7 +230,12 @@ async def test_run_cycle_defers_qdrant_unavailable_without_consuming_failure() -
     )
 
     result = await run_cycle(
-        settings=MlConfig(claim_batch_size=2, worker_concurrency=1, poll_interval_seconds=30),
+        settings=MlConfig(
+            claim_batch_size=2,
+            worker_concurrency=1,
+            poll_interval_seconds=5,
+            transient_retry_delay_min_seconds=45,
+        ),
         logger=Mock(),
         planner=planner,
         job_store=job_store,
@@ -241,6 +246,8 @@ async def test_run_cycle_defers_qdrant_unavailable_without_consuming_failure() -
     assert result["processed_jobs"] == 0
     assert result["failed_jobs"] == 0
     job_store.defer_job.assert_awaited_once()
+    run_after = job_store.defer_job.await_args.kwargs["run_after"]
+    assert (run_after - datetime.now(UTC)).total_seconds() > 40
     job_store.fail_job.assert_not_awaited()
     job_store.complete_job.assert_not_awaited()
 
@@ -1135,6 +1142,13 @@ def test_resolution_candidate_limit_defaults() -> None:
     assert config.case_link_audit_card_limit == 20
     assert config.case_review_card_limit == 40
     assert config.case_copy_card_limit == 40
+    assert config.transient_retry_delay_min_seconds == 10
+    assert config.case_audit_min_card_batch_size == 2
+    assert config.case_audit_manual_default_limit == 5
+    assert config.case_resolution_representative_title_limit == 8
+    assert config.case_resolution_enqueue_batch_size == 5_000
+    assert config.article_card_reprocess_job_upsert_batch_size == 1_000
+    assert config.case_resolution_connectivity_example_limit == 20
 
 
 @pytest.mark.parametrize(
@@ -1149,6 +1163,13 @@ def test_resolution_candidate_limit_defaults() -> None:
         "case_link_audit_card_limit",
         "case_review_card_limit",
         "case_copy_card_limit",
+        "transient_retry_delay_min_seconds",
+        "case_audit_min_card_batch_size",
+        "case_audit_manual_default_limit",
+        "case_resolution_representative_title_limit",
+        "case_resolution_enqueue_batch_size",
+        "article_card_reprocess_job_upsert_batch_size",
+        "case_resolution_connectivity_example_limit",
     ],
 )
 def test_resolution_candidate_limits_must_be_positive(field_name: str) -> None:

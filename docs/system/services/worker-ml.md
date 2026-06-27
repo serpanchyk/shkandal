@@ -103,6 +103,10 @@ counts in `llm_runs.metadata`. Evidence that can grow with article or Case
 history is selected deterministically: article text is capped, Case-copy and
 review audits use lifecycle samples, and link audits use compact first/latest
 Case evidence rather than the whole linked-article history.
+The tracked `apps/worker-ml/config.yaml` exposes these operational budgets,
+including article-card text length, Case-link audit card count, Case review and
+copy card counts, Case audit batch size and minimum batch floor, and the
+representative title count attached to retrieved Case candidates.
 
 When HTTP `429` still reaches the worker after LiteLLM routing, the
 worker persists a shared LLM cooldown, defers the rejected job without consuming
@@ -111,7 +115,9 @@ model loading or job claiming until the cooldown expires. The worker honors
 usable `Retry-After` values. A first ambiguous `429` creates a five-minute
 cooldown; a second within 15 minutes infers a one-hour cooldown. Other API
 errors and invalid output remain per-job failures, and each LLM request has a
-five-minute timeout.
+five-minute timeout. Transient dependency and mutation-lock deferrals use
+`transient_retry_delay_min_seconds` as their minimum retry delay, with polling
+intervals able to stretch dependency retries when they are longer.
 
 The current implementation supports a systemd-scheduled bounded pass that
 creates idempotent `classify_article` jobs for articles missing
@@ -170,10 +176,11 @@ Case resolution retrieves up to `case_resolution_candidate_limit` Case
 candidates per article. Entity and Event resolution retrieve up to
 `entity_resolution_candidate_limit` and `event_resolution_candidate_limit`
 candidates per provisional item. The tracked `config.yaml` defaults preserve
-the current limits of 12 Cases, 8 Entities, and 8 Events. LLM run metadata
-records the actual candidate counts returned after vector retrieval and
-PostgreSQL filtering. Identity resolution also records provisional item counts
-and prompt size for budget inspection.
+the current limits of 12 Cases, 8 Entities, and 8 Events, plus 8
+representative Article Card titles per retrieved Case. LLM run metadata records
+the actual candidate counts returned after vector retrieval and PostgreSQL
+filtering. Identity resolution also records provisional item counts and prompt
+size for budget inspection.
 
 Use the read-only connectivity report to inspect how many case-candidate
 articles completed Case resolution but still have no `case_articles` link:
@@ -185,7 +192,8 @@ uv run python -m worker_ml.scripts.case_resolution_connectivity_report --example
 
 The report counts succeeded `resolve_article_cases` jobs, linked articles,
 unconnected articles after succeeded resolution, failed jobs, unfinished jobs,
-and recent unconnected examples for audit.
+and recent unconnected examples for audit. Its default example count comes from
+`case_resolution_connectivity_example_limit`; `--example-limit` overrides it.
 
 To reprocess historical case-candidate articles that likely fell through after
 all provisional links were dropped by `case_link_audit`, use the dry-run reset
@@ -209,7 +217,9 @@ identity rows.
 After an article-card prompt or contract change, inspect and explicitly apply a
 full regeneration. Apply mode refuses to run while any article-card job is
 running, deletes current cards, and resets or creates card jobs for all
-classifier-positive articles while preserving historical `llm_runs`:
+classifier-positive articles while preserving historical `llm_runs`. Its
+default job attempts and upsert chunk size come from `job_max_attempts` and
+`article_card_reprocess_job_upsert_batch_size`:
 
 ```bash
 uv run python -m worker_ml.scripts.reprocess_article_cards
@@ -383,6 +393,8 @@ coherence job succeeded; `--apply` requests a fresh job revision for that
 selection. `worker_ml.scripts.enqueue_case_audits --rerun-public-interest` does the
 same for active Case public-interest audits regardless of the prior result, so
 prompt or contract tightening can be backfilled across the current active set.
+Without a `--limit`, manual due-audit enqueueing uses
+`case_audit_manual_default_limit`.
 Public-interest audits permanently hide routine incidents, isolated headlines,
 and broad topic umbrellas while preserving their complete internal dossiers.
 Routine `ДТП`, domestic violence, child abuse, and other local crime stories

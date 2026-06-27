@@ -259,7 +259,8 @@ class _CycleExecutor:
         except (CaseAuditSupersededError, CaseMutationBusyError, IdentityMutationBusyError) as exc:
             await self._job_store.defer_job(
                 job_id=job.id,
-                run_after=datetime.now(UTC) + timedelta(seconds=10),
+                run_after=datetime.now(UTC)
+                + timedelta(seconds=self._settings.transient_retry_delay_min_seconds),
                 reason=str(exc),
             )
         except VectorStoreUnavailableError as exc:
@@ -351,7 +352,10 @@ class _CycleExecutor:
     ) -> datetime:
         self._stop_claiming.set()
         resume_at = datetime.now(UTC) + timedelta(
-            seconds=max(10, self._settings.poll_interval_seconds)
+            seconds=max(
+                self._settings.transient_retry_delay_min_seconds,
+                self._settings.poll_interval_seconds,
+            )
         )
         await self._job_store.defer_job(
             job_id=job.id,

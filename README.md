@@ -351,8 +351,10 @@ in-memory cooldown; restarting `llm-proxy` clears it.
 `worker-ml` caps completion size with `llm_max_output_tokens` and bounds
 prompt evidence per task. Article-card input caps extracted text; Case link
 audits use compact earliest/latest linked evidence; Case copy and Case review
-audits use lifecycle samples. LLM run metadata records prompt size and
-original/included evidence counts where inputs can be truncated.
+audits use lifecycle samples. These operational budgets, retry deferral floors,
+and maintenance-script defaults are tracked in `apps/worker-ml/config.yaml`.
+LLM run metadata records prompt size and original/included evidence counts
+where inputs can be truncated.
 Provider HTTP `429` responses that still reach `worker-ml` after proxy routing
 create a durable shared LLM cooldown: the rejected job is deferred without
 consuming an attempt and the current ML pass exits.

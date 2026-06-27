@@ -14,6 +14,8 @@ from shkandal_database.session import create_async_engine_from_config, create_as
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from worker_ml.config import MlConfig
+
 
 @dataclass(frozen=True)
 class FailedJobRecoveryStats:
@@ -98,7 +100,10 @@ async def _run(
     error_contains: str | None,
     limit: int | None,
 ) -> FailedJobRecoveryStats:
-    engine = create_async_engine_from_config(DatabaseConfig())
+    settings = MlConfig()
+    engine = create_async_engine_from_config(
+        DatabaseConfig(database_url=settings.postgres_database_url)
+    )
     try:
         return await recover_failed_jobs(
             create_async_sessionmaker(engine),

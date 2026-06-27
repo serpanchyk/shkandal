@@ -90,6 +90,9 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - `worker-ml` uses weighted fair scheduling and four concurrent execution slots
   by default. Case, Entity, and Event mutation namespaces remain independently
   serialized, and stale pending LLM runs are failed during worker startup.
+- Worker-ML operational budgets and retry/script defaults live in
+  `apps/worker-ml/config.yaml`; schema contracts, prompt versions, advisory
+  locks, and algorithmic counters remain code invariants.
 - `llm_runs.model_name` records the provider-returned model identifier, not the
   requested `shkandal-*` LiteLLM routing alias. It remains null when no provider
   response identifies a model; repair model identity is stored in run metadata.

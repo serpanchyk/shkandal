@@ -16,6 +16,7 @@ from shkandal_database.session import create_async_engine_from_config, create_as
 from sqlalchemy import Text, cast, exists, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from worker_ml.config import MlConfig
 from worker_ml.runtime.planning import RESOLVE_ARTICLE_CASES_JOB
 
 
@@ -107,7 +108,10 @@ async def reset_unconnected_case_resolution_jobs(
 
 
 async def _run(*, apply: bool, limit: int | None) -> CaseResolutionResetStats:
-    engine = create_async_engine_from_config(DatabaseConfig())
+    settings = MlConfig()
+    engine = create_async_engine_from_config(
+        DatabaseConfig(database_url=settings.postgres_database_url)
+    )
     try:
         return await reset_unconnected_case_resolution_jobs(
             create_async_sessionmaker(engine),
@@ -144,7 +148,9 @@ def main() -> None:
 
 def _configured_database_target() -> tuple[str | None, int | None]:
     try:
-        parts = urlsplit(DatabaseConfig().async_database_url)
+        settings = MlConfig()
+        database_config = DatabaseConfig(database_url=settings.postgres_database_url)
+        parts = urlsplit(database_config.async_database_url)
         return parts.hostname, parts.port
     except ValueError:
         return None, None
