@@ -45,7 +45,8 @@ deployment settings from `.env.production` plus
 
 Local scheduled workers for the production database use
 `docker-compose.worker-remote.yaml`, `.env.worker-remote`, and an SSH tunnel to
-the Droplet. The Droplet does not run ingestion or ML workers.
+the Droplet. The Droplet does not run ingestion or ML workers; manual remote ML
+uses Docker Qdrant and LiteLLM from the remote-worker Compose file.
 
 An optional local `observability` Compose profile provides Grafana on port
 `3001`, Prometheus, Loki, Docker log collection, and a provisioned Shkandal

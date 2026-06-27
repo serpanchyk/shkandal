@@ -12,6 +12,7 @@ RUNNER = PROJECT_ROOT / "ops" / "run-scheduled-worker"
 REMOTE_RUNNER = PROJECT_ROOT / "ops" / "run-remote-worker"
 DB_TUNNEL = PROJECT_ROOT / "ops" / "run-db-tunnel"
 CLEANUP = PROJECT_ROOT / "ops" / "remove-orphaned-worker-oneoffs"
+REMOTE_COMPOSE = PROJECT_ROOT / "docker-compose.worker-remote.yaml"
 
 FAKE_DOCKER = """#!/usr/bin/env bash
 set -euo pipefail
@@ -202,6 +203,18 @@ def test_remote_runner_uses_remote_compose_file_and_env_file(tmp_path: Path) -> 
         "--profile jobs run --name shkandal-remote-scheduled-worker-ml worker-ml"
     ) in calls
     assert "compose --profile jobs run" not in calls
+
+
+def test_remote_worker_compose_adds_ml_dependencies_without_postgres() -> None:
+    compose_text = REMOTE_COMPOSE.read_text()
+
+    assert "  qdrant:" in compose_text
+    assert "  llm-proxy:" in compose_text
+    assert "      qdrant:" in compose_text
+    assert "        condition: service_healthy" in compose_text
+    assert "      llm-proxy:" in compose_text
+    assert "        condition: service_started" in compose_text
+    assert "  postgres:" not in compose_text
 
 
 def test_db_tunnel_requires_tunnel_env_vars(tmp_path: Path) -> None:

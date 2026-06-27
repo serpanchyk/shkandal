@@ -13,7 +13,8 @@ Remote production workers are intentionally local to this workstation, not
 installed on the production VM. `docker-compose.worker-remote.yaml` runs
 `worker-ingestion` or `worker-ml` against production PostgreSQL through
 `ops/run-db-tunnel`, with the container database URL pointing at
-`host.docker.internal:15433`.
+`host.docker.internal:15433`. Manual remote ML runs bring up Docker Qdrant and
+LiteLLM services in the same remote-worker Compose project.
 
 Production deploys run over SSH to the existing Droplet checkout. GitHub
 Actions validates the repo first, then runs `ops/deploy-production` in the

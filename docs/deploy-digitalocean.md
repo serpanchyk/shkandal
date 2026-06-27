@@ -108,8 +108,9 @@ key, then run:
 
 The installer enables the remote DB tunnel and the two-hourly ingestion timer.
 It installs `shkandal-remote-ml.service` for manual runs only; no ML timer is
-enabled. Before starting ML manually, keep local Qdrant and local LiteLLM
-available because the ML worker routes them through `host.docker.internal`.
+enabled. Manual ML uses Docker Qdrant and LiteLLM services from
+`docker-compose.worker-remote.yaml`; only PostgreSQL is reached through the SSH
+tunnel.
 
 ## 5. Update the deployment
 

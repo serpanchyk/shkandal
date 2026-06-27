@@ -41,8 +41,8 @@ Docker and reach production PostgreSQL through a local SSH tunnel.
 
 Remote-worker runtime files are separate from the normal local Compose stack:
 
-- `docker-compose.worker-remote.yaml` defines only `worker-ingestion` and
-  `worker-ml`.
+- `docker-compose.worker-remote.yaml` defines `worker-ingestion`, `worker-ml`,
+  and the Docker Qdrant/LiteLLM services required by manual ML runs.
 - The workers read `.env.worker-remote`.
 - The Compose file has no dependency on the local `postgres` service.
 - Docker containers reach the host tunnel through
@@ -72,15 +72,16 @@ The installer enables and starts only:
 - `shkandal-remote-db-tunnel.service`, a long-running SSH tunnel;
 - `shkandal-remote-ingestion.timer`, the two-hourly ingestion schedule.
 
-`shkandal-remote-ml.service` is installed for manual runs but has no timer:
+`shkandal-remote-ml.service` is installed for manual runs but has no timer. Its
+Compose run starts Docker Qdrant and LiteLLM dependencies before the worker:
 
 ```bash
 systemctl --user start shkandal-remote-ml.service
 ```
 
-Before running ML manually, ensure the local Qdrant and LiteLLM services are
-available on the host because the remote-worker env routes them through
-`host.docker.internal`.
+Remote ingestion remains database-only. Remote ML still uses production
+PostgreSQL through the SSH tunnel, while Qdrant and LiteLLM resolve through the
+remote Compose network as `qdrant` and `llm-proxy`.
 
 Verify scheduling and logs with:
 
