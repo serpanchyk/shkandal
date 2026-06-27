@@ -15,7 +15,7 @@ from worker_ml.cases.audits import CaseAuditSupersededError
 from worker_ml.cases.publication import CaseMutationBusyError
 from worker_ml.config import MlConfig
 from worker_ml.identities.resolution import IdentityMutationBusyError
-from worker_ml.llm.runner import LlmRateLimitError
+from worker_ml.llm.runner import LlmDependencyUnavailableError, LlmRateLimitError
 from worker_ml.llm.runs import LlmRunStore
 from worker_ml.runtime.assembly import create_handlers
 from worker_ml.runtime.execution import (
@@ -207,6 +207,23 @@ async def process_next_job(
                     "job_type": claimed_job.job_type,
                     "article_id": str(claimed_job.article_id),
                     "dependency": "qdrant",
+                },
+            )
+            return {"status": "deferred", "job_type": claimed_job.job_type}
+        except LlmDependencyUnavailableError as exc:
+            await job_store.defer_job(
+                job_id=claimed_job.id,
+                run_after=datetime.now(UTC)
+                + timedelta(seconds=max(10, settings.poll_interval_seconds)),
+                reason=str(exc),
+            )
+            logger.warning(
+                "worker_ml_dependency_unavailable",
+                extra={
+                    "job_id": str(claimed_job.id),
+                    "job_type": claimed_job.job_type,
+                    "article_id": str(claimed_job.article_id),
+                    "dependency": "litellm",
                 },
             )
             return {"status": "deferred", "job_type": claimed_job.job_type}

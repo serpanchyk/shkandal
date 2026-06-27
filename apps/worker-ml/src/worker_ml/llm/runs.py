@@ -52,6 +52,7 @@ class LlmRunStore:
         *,
         run_id: UUID,
         status: str,
+        model_name: str | None = None,
         raw_output: Any | None = None,
         repaired_output: Any | None = None,
         error_message: str | None = None,
@@ -62,6 +63,7 @@ class LlmRunStore:
 
         values: dict[str, Any] = {
             "status": status,
+            "model_name": model_name,
             "raw_output": raw_output,
             "repaired_output": repaired_output,
             "error_message": error_message,

@@ -11,6 +11,7 @@ from uuid import uuid4
 import httpx
 import openai
 import pytest
+from langchain_core.messages import AIMessage
 from pydantic import BaseModel
 from worker_ml.config import MlConfig
 from worker_ml.llm.contracts import (
@@ -27,6 +28,7 @@ from worker_ml.llm.contracts import (
 )
 from worker_ml.llm.prompts import PromptRegistry
 from worker_ml.llm.runner import (
+    LlmDependencyUnavailableError,
     LlmRateLimitError,
     LlmTaskRunner,
     create_litellm_chat_model,
@@ -93,6 +95,94 @@ async def test_runner_returns_persisted_run_provenance() -> None:
     assert result.run_id == run_id
     assert isinstance(result.output, ArticleCardOutput)
     run_store.finish_run.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_runner_persists_resolved_model_from_text_response() -> None:
+    run_id = uuid4()
+    run_store = Mock(spec=LlmRunStore)
+    run_store.create_run = AsyncMock(return_value=run_id)
+    run_store.finish_run = AsyncMock()
+    runner = LlmTaskRunner(
+        prompt_registry=PromptRegistry(),
+        run_store=run_store,
+        task_chains={
+            "article_card": FakeObjectChain(
+                AIMessage(
+                    content=(
+                        '{"title_uk":"Заголовок","summary_uk":"Опис",'
+                        '"is_case_candidate":false,"noise_reason":"generic_news",'
+                        '"main_event_title_uk":null,"entities":[],"events":[],'
+                        '"case_signature_terms":[]}'
+                    ),
+                    response_metadata={"model_name": "openai/MamayLM-Gemma-3-27B-IT-v2.0"},
+                )
+            )
+        },
+    )
+
+    await runner.run(
+        run_type="article_card",
+        model_name="shkandal-article-card",
+        variables={"article_json": "{}", "schema_json": "{}"},
+    )
+
+    assert run_store.create_run.await_args.kwargs["model_name"] == "shkandal-article-card"
+    assert (
+        run_store.finish_run.await_args.kwargs["model_name"] == "openai/MamayLM-Gemma-3-27B-IT-v2.0"
+    )
+
+
+@pytest.mark.asyncio
+async def test_runner_persists_resolved_model_from_structured_response() -> None:
+    run_id = uuid4()
+    run_store = Mock(spec=LlmRunStore)
+    run_store.create_run = AsyncMock(return_value=run_id)
+    run_store.finish_run = AsyncMock()
+    parsed = ArticleCardOutput.model_validate(
+        {
+            "title_uk": "Заголовок",
+            "summary_uk": "Опис",
+            "case_diagnosis": {
+                "ukraine_nexus_uk": None,
+                "concrete_story_core_uk": None,
+                "public_accountability_anchor_uk": None,
+                "continuation_potential_uk": None,
+                "noise_signals_uk": [],
+            },
+            "is_case_candidate": False,
+            "noise_reason": "generic_news",
+            "main_event_title_uk": None,
+            "entities": [],
+            "events": [],
+            "case_signature_terms": [],
+        }
+    )
+    runner = LlmTaskRunner(
+        prompt_registry=PromptRegistry(),
+        run_store=run_store,
+        task_chains={
+            "article_card": FakeObjectChain(
+                {
+                    "raw": AIMessage(
+                        content="",
+                        response_metadata={"model_name": "MamayLLM"},
+                    ),
+                    "parsed": parsed,
+                    "parsing_error": None,
+                }
+            )
+        },
+    )
+
+    result = await runner.run(
+        run_type="article_card",
+        model_name="shkandal-article-card",
+        variables={"article_json": "{}", "schema_json": "{}"},
+    )
+
+    assert result == parsed
+    assert run_store.finish_run.await_args.kwargs["model_name"] == "MamayLLM"
 
 
 @pytest.mark.asyncio
@@ -655,6 +745,47 @@ async def test_runner_truncates_overlong_case_resolution_fields_after_repair() -
 
 
 @pytest.mark.asyncio
+async def test_runner_records_primary_and_repair_models_separately() -> None:
+    run_id = uuid4()
+    run_store = Mock(spec=LlmRunStore)
+    run_store.create_run = AsyncMock(return_value=run_id)
+    run_store.finish_run = AsyncMock()
+    runner = LlmTaskRunner(
+        prompt_registry=PromptRegistry(),
+        run_store=run_store,
+        task_chains={
+            "article_card": FakeObjectChain(
+                AIMessage(
+                    content='{"title_uk":"Без обовязкових полів"}',
+                    response_metadata={"model_name": "MamayLLM"},
+                )
+            )
+        },
+        repair_chain=FakeObjectChain(
+            AIMessage(
+                content=(
+                    '{"title_uk":"Виправлено","summary_uk":"Опис",'
+                    '"is_case_candidate":false,"noise_reason":"generic_news",'
+                    '"main_event_title_uk":null,"entities":[],"events":[],'
+                    '"case_signature_terms":[]}'
+                ),
+                response_metadata={"model_name": "RepairLLM"},
+            )
+        ),
+    )
+
+    await runner.run(
+        run_type="article_card",
+        model_name="shkandal-article-card",
+        variables={"article_json": "{}", "schema_json": "{}"},
+    )
+
+    call = run_store.finish_run.await_args.kwargs
+    assert call["model_name"] == "MamayLLM"
+    assert call["metadata"]["repair_model_name"] == "RepairLLM"
+
+
+@pytest.mark.asyncio
 async def test_runner_fails_after_invalid_repair() -> None:
     runner = LlmTaskRunner(
         prompt_registry=PromptRegistry(),
@@ -846,6 +977,31 @@ async def test_runner_persists_unexpected_call_failure() -> None:
 
     assert run_store.finish_run.await_args.kwargs["status"] == "failed"
     assert run_store.finish_run.await_args.kwargs["error_message"] == "provider unavailable"
+    assert run_store.finish_run.await_args.kwargs["model_name"] == "shkandal-article-card"
+
+
+@pytest.mark.asyncio
+async def test_runner_normalizes_litellm_connection_failure() -> None:
+    run_id = uuid4()
+    run_store = Mock(spec=LlmRunStore)
+    run_store.create_run = AsyncMock(return_value=run_id)
+    run_store.finish_run = AsyncMock()
+    runner = LlmTaskRunner(
+        prompt_registry=PromptRegistry(),
+        run_store=run_store,
+        task_chains={"article_card": ConnectionErrorChain()},
+    )
+
+    with pytest.raises(LlmDependencyUnavailableError, match="LiteLLM proxy unavailable"):
+        await runner.run(
+            run_type="article_card",
+            model_name="shkandal-article-card",
+            variables={"article_json": "{}", "schema_json": "{}"},
+        )
+
+    assert run_store.finish_run.await_args.kwargs["status"] == "failed"
+    assert run_store.finish_run.await_args.kwargs["error_message"] == "LiteLLM proxy unavailable"
+    assert run_store.finish_run.await_args.kwargs["model_name"] == "shkandal-article-card"
 
 
 def test_parse_json_object_accepts_markdown_json_fence() -> None:
@@ -967,6 +1123,12 @@ class FakeObjectChain:
 class FailingChain:
     async def ainvoke(self, input: Mapping[str, Any]) -> str:
         raise RuntimeError("provider unavailable")
+
+
+class ConnectionErrorChain:
+    async def ainvoke(self, input: Mapping[str, Any]) -> str:
+        request = httpx.Request("POST", "http://litellm:4000/v1/chat/completions")
+        raise openai.APIConnectionError(request=request)
 
 
 class RateLimitedChain:

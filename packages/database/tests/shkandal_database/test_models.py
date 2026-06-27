@@ -72,6 +72,10 @@ def test_key_indexes_are_registered() -> None:
     assert "ix_events_location_uk_trgm" in index_names("events")
 
 
+def test_llm_run_model_name_allows_unknown_resolved_model() -> None:
+    assert Base.metadata.tables["llm_runs"].c.model_name.nullable is True
+
+
 def test_foreign_keys_are_registered() -> None:
     assert any(
         isinstance(constraint, ForeignKeyConstraint)

@@ -25,7 +25,8 @@ Implemented MVP data areas:
 - article-event links;
 - article-event-case scoped relevance links;
 - materialized case-event links;
-- LLM runs, prompt versions, model names, statuses, raw output, and repair attempts;
+- LLM runs, prompt versions, resolved provider model names, statuses, raw
+  output, and repair attempts;
 - one generic jobs table for Postgres-backed background work;
 - anonymous aggregate case view counters.
 

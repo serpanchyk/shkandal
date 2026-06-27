@@ -85,6 +85,9 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - `worker-ml` uses weighted fair scheduling and four concurrent execution slots
   by default. Case, Entity, and Event mutation namespaces remain independently
   serialized, and stale pending LLM runs are failed during worker startup.
+- `llm_runs.model_name` records the provider-returned model identifier, not the
+  requested `shkandal-*` LiteLLM routing alias. It remains null when no provider
+  response identifies a model; repair model identity is stored in run metadata.
 - `worker-ml` accepts repeatable `--job-type` filters in one-shot, loop, and
   backfill modes. Enabled classification and article-card stages discover
   missing durable jobs; filtered backfills drain and report only selected job

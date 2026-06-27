@@ -15,7 +15,7 @@ from shkandal_vector_store import VectorStoreUnavailableError
 from worker_ml.articles.cards import ArticleCardJobHandler
 from worker_ml.articles.relevance import ClassificationJobHandler, RelevanceModel
 from worker_ml.config import MlConfig
-from worker_ml.llm.runner import LlmRateLimitError
+from worker_ml.llm.runner import LlmDependencyUnavailableError, LlmRateLimitError
 from worker_ml.retrieval.embeddings import E5Embedder
 from worker_ml.runtime.execution import drain_backfill, run_cycle
 from worker_ml.runtime.planning import EnqueueStats, MlJobPlanner
@@ -241,6 +241,49 @@ async def test_run_cycle_defers_qdrant_unavailable_without_consuming_failure() -
     assert result["processed_jobs"] == 0
     assert result["failed_jobs"] == 0
     job_store.defer_job.assert_awaited_once()
+    job_store.fail_job.assert_not_awaited()
+    job_store.complete_job.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_cycle_defers_litellm_unavailable_without_consuming_failure() -> None:
+    planner = Mock(spec=MlJobPlanner)
+    planner.enqueue_missing_classification_jobs = AsyncMock(
+        return_value=EnqueueStats(0, 0, 0, 0, 0)
+    )
+    planner.enqueue_missing_article_card_jobs = AsyncMock(return_value=EnqueueStats(0, 0, 0, 0, 0))
+    job = SimpleNamespace(
+        id="card-job",
+        article_id="card-article",
+        job_type="create_article_card",
+        attempt_count=1,
+        max_attempts=3,
+    )
+    job_store = Mock(spec=ArticleJobStore)
+    job_store.claim_next_job = AsyncMock(return_value=job)
+    job_store.complete_job = AsyncMock()
+    job_store.fail_job = AsyncMock()
+    job_store.defer_job = AsyncMock()
+    cooldown_store = Mock(spec=LlmCooldownStore)
+    cooldown_store.active_resume_at = AsyncMock(return_value=None)
+    handler = Mock()
+    handler.handle = AsyncMock(
+        side_effect=LlmDependencyUnavailableError("LiteLLM proxy unavailable")
+    )
+
+    result = await run_cycle(
+        settings=MlConfig(claim_batch_size=2, worker_concurrency=1, poll_interval_seconds=30),
+        logger=Mock(),
+        planner=planner,
+        job_store=job_store,
+        cooldown_store=cooldown_store,
+        handlers={"create_article_card": handler},
+    )
+
+    assert result["processed_jobs"] == 0
+    assert result["failed_jobs"] == 0
+    job_store.defer_job.assert_awaited_once()
+    assert job_store.defer_job.await_args.kwargs["reason"] == "LiteLLM proxy unavailable"
     job_store.fail_job.assert_not_awaited()
     job_store.complete_job.assert_not_awaited()
 
