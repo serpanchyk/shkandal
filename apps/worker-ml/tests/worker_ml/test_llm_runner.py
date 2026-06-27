@@ -28,6 +28,7 @@ from worker_ml.llm.contracts import (
 )
 from worker_ml.llm.prompts import PromptRegistry
 from worker_ml.llm.runner import (
+    LlmDependencyUnavailableError,
     LlmRateLimitError,
     LlmTaskRunner,
     create_litellm_chat_model,
@@ -126,7 +127,7 @@ async def test_runner_persists_resolved_model_from_text_response() -> None:
         variables={"article_json": "{}", "schema_json": "{}"},
     )
 
-    assert "model_name" not in run_store.create_run.await_args.kwargs
+    assert run_store.create_run.await_args.kwargs["model_name"] == "shkandal-article-card"
     assert (
         run_store.finish_run.await_args.kwargs["model_name"] == "openai/MamayLM-Gemma-3-27B-IT-v2.0"
     )
@@ -976,7 +977,31 @@ async def test_runner_persists_unexpected_call_failure() -> None:
 
     assert run_store.finish_run.await_args.kwargs["status"] == "failed"
     assert run_store.finish_run.await_args.kwargs["error_message"] == "provider unavailable"
-    assert run_store.finish_run.await_args.kwargs["model_name"] is None
+    assert run_store.finish_run.await_args.kwargs["model_name"] == "shkandal-article-card"
+
+
+@pytest.mark.asyncio
+async def test_runner_normalizes_litellm_connection_failure() -> None:
+    run_id = uuid4()
+    run_store = Mock(spec=LlmRunStore)
+    run_store.create_run = AsyncMock(return_value=run_id)
+    run_store.finish_run = AsyncMock()
+    runner = LlmTaskRunner(
+        prompt_registry=PromptRegistry(),
+        run_store=run_store,
+        task_chains={"article_card": ConnectionErrorChain()},
+    )
+
+    with pytest.raises(LlmDependencyUnavailableError, match="LiteLLM proxy unavailable"):
+        await runner.run(
+            run_type="article_card",
+            model_name="shkandal-article-card",
+            variables={"article_json": "{}", "schema_json": "{}"},
+        )
+
+    assert run_store.finish_run.await_args.kwargs["status"] == "failed"
+    assert run_store.finish_run.await_args.kwargs["error_message"] == "LiteLLM proxy unavailable"
+    assert run_store.finish_run.await_args.kwargs["model_name"] == "shkandal-article-card"
 
 
 def test_parse_json_object_accepts_markdown_json_fence() -> None:
@@ -1098,6 +1123,12 @@ class FakeObjectChain:
 class FailingChain:
     async def ainvoke(self, input: Mapping[str, Any]) -> str:
         raise RuntimeError("provider unavailable")
+
+
+class ConnectionErrorChain:
+    async def ainvoke(self, input: Mapping[str, Any]) -> str:
+        request = httpx.Request("POST", "http://litellm:4000/v1/chat/completions")
+        raise openai.APIConnectionError(request=request)
 
 
 class RateLimitedChain:

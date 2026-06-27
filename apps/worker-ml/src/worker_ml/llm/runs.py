@@ -27,6 +27,7 @@ class LlmRunStore:
         run_type: LlmRunType,
         prompt_name: str,
         prompt_version: str,
+        model_name: str,
         metadata: dict[str, Any] | None = None,
         started_at: datetime | None = None,
     ) -> UUID:
@@ -37,7 +38,7 @@ class LlmRunStore:
                 run_type=run_type,
                 prompt_name=prompt_name,
                 prompt_version=prompt_version,
-                model_name=None,
+                model_name=model_name,
                 status="pending",
                 metadata_=metadata or {},
                 started_at=started_at or datetime.now(UTC),

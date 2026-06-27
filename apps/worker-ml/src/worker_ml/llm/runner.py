@@ -14,7 +14,7 @@ from uuid import UUID
 
 from langchain_core.messages import BaseMessage
 from langchain_openai import ChatOpenAI
-from openai import RateLimitError
+from openai import APIConnectionError, APITimeoutError, RateLimitError
 from pydantic import BaseModel, SecretStr, ValidationError
 
 from worker_ml.config import MlConfig
@@ -35,6 +35,10 @@ class LlmRateLimitError(RuntimeError):
     def __init__(self, message: str, *, retry_after_seconds: int | None) -> None:
         super().__init__(message)
         self.retry_after_seconds = retry_after_seconds
+
+
+class LlmDependencyUnavailableError(RuntimeError):
+    """Raised when the configured LiteLLM proxy cannot be reached."""
 
 
 @dataclass(frozen=True)
@@ -195,6 +199,7 @@ class LlmTaskRunner:
                 run_type=run_type,
                 prompt_name=prompt.name,
                 prompt_version=prompt.version,
+                model_name=model_name,
                 metadata=metadata,
             )
 
@@ -245,7 +250,7 @@ class LlmTaskRunner:
                     raw_text=raw_text,
                     raw_json=raw_json,
                     error=rate_limit_exc,
-                    model_name=resolved_model_name,
+                    model_name=resolved_model_name or model_name,
                     metadata=_timing_metadata(
                         metadata,
                         request_duration_seconds=request_duration_seconds,
@@ -279,7 +284,7 @@ class LlmTaskRunner:
                         await self._run_store.finish_run(
                             run_id=run_id,
                             status="repaired",
-                            model_name=resolved_model_name,
+                            model_name=resolved_model_name or model_name,
                             raw_output=_raw_provenance(raw_text, raw_json, parse_repaired),
                             repaired_output=fallback.model_dump(mode="json"),
                             metadata=fallback_metadata,
@@ -289,7 +294,7 @@ class LlmTaskRunner:
                     await self._run_store.finish_run(
                         run_id=run_id,
                         status="failed",
-                        model_name=resolved_model_name,
+                        model_name=resolved_model_name or model_name,
                         raw_output=_raw_provenance(raw_text, raw_json, parse_repaired),
                         error_message=repair_attempt.error or str(exc),
                         metadata=failure_metadata,
@@ -306,7 +311,7 @@ class LlmTaskRunner:
                 await self._run_store.finish_run(
                     run_id=run_id,
                     status="repaired",
-                    model_name=resolved_model_name,
+                    model_name=resolved_model_name or model_name,
                     raw_output=_raw_provenance(raw_text, raw_json, parse_repaired),
                     repaired_output=normalized.output,
                     metadata=_timing_metadata(
@@ -337,7 +342,7 @@ class LlmTaskRunner:
                 await self._run_store.finish_run(
                     run_id=run_id,
                     status="failed",
-                    model_name=resolved_model_name,
+                    model_name=resolved_model_name or model_name,
                     raw_output=_raw_provenance(raw_text, raw_json, parse_repaired),
                     error_message=str(exc),
                     metadata=failed_metadata,
@@ -358,7 +363,7 @@ class LlmTaskRunner:
             await self._run_store.finish_run(
                 run_id=run_id,
                 status="repaired" if was_repaired else "succeeded",
-                model_name=resolved_model_name,
+                model_name=resolved_model_name or model_name,
                 raw_output=_raw_provenance(raw_text, raw_json, parse_repaired),
                 repaired_output=normalized.output if was_repaired else None,
                 metadata=_timing_metadata(
@@ -749,7 +754,7 @@ def _normalization_metadata(
 
 
 async def invoke_chain(chain: AsyncTextChain, variables: Mapping[str, Any]) -> Any:
-    """Invoke an LLM chain and normalize provider rate-limit failures."""
+    """Invoke an LLM chain and normalize provider dependency failures."""
 
     try:
         return await chain.ainvoke(variables)
@@ -758,6 +763,8 @@ async def invoke_chain(chain: AsyncTextChain, variables: Mapping[str, Any]) -> A
             str(exc),
             retry_after_seconds=parse_retry_after_seconds(exc),
         ) from exc
+    except (APIConnectionError, APITimeoutError) as exc:
+        raise LlmDependencyUnavailableError("LiteLLM proxy unavailable") from exc
 
 
 def parse_retry_after_seconds(error: RateLimitError) -> int | None:

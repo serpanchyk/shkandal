@@ -15,7 +15,7 @@ from worker_ml.cases.audits import CaseAuditSupersededError
 from worker_ml.cases.publication import CaseMutationBusyError
 from worker_ml.config import MlConfig
 from worker_ml.identities.resolution import IdentityMutationBusyError
-from worker_ml.llm.runner import LlmRateLimitError
+from worker_ml.llm.runner import LlmDependencyUnavailableError, LlmRateLimitError
 from worker_ml.llm.runs import LlmRunStore
 from worker_ml.runtime.planning import (
     AUDIT_CASE_COHERENCE_JOB,
@@ -271,6 +271,19 @@ class _CycleExecutor:
                     "job_type": job.job_type,
                     "article_id": str(job.article_id),
                     "dependency": "qdrant",
+                    "resume_at": resume_at.isoformat(),
+                    "duration_seconds": round(time.monotonic() - started_at, 6),
+                },
+            )
+        except LlmDependencyUnavailableError as exc:
+            resume_at = await self._defer_transient_dependency_job(job, exc)
+            self._logger.warning(
+                "worker_ml_dependency_unavailable",
+                extra={
+                    "job_id": str(job.id),
+                    "job_type": job.job_type,
+                    "article_id": str(job.article_id),
+                    "dependency": "litellm",
                     "resume_at": resume_at.isoformat(),
                     "duration_seconds": round(time.monotonic() - started_at, 6),
                 },
