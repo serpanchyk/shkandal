@@ -90,6 +90,7 @@ def create_litellm_chat_model(*, settings: MlConfig, model_name: str) -> ChatOpe
         api_key=SecretStr(settings.llm_api_key),
         base_url=settings.llm_api_base,
         temperature=0,
+        max_completion_tokens=settings.llm_max_output_tokens,
         max_retries=0,
         timeout=settings.llm_request_timeout_seconds,
     )

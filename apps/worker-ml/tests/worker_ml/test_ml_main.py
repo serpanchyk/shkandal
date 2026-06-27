@@ -1130,6 +1130,11 @@ def test_resolution_candidate_limit_defaults() -> None:
     assert config.case_resolution_candidate_limit == 12
     assert config.entity_resolution_candidate_limit == 8
     assert config.event_resolution_candidate_limit == 8
+    assert config.article_card_text_max_chars == 20_000
+    assert config.llm_max_output_tokens == 4_096
+    assert config.case_link_audit_card_limit == 20
+    assert config.case_review_card_limit == 40
+    assert config.case_copy_card_limit == 40
 
 
 @pytest.mark.parametrize(
@@ -1138,6 +1143,12 @@ def test_resolution_candidate_limit_defaults() -> None:
         "case_resolution_candidate_limit",
         "entity_resolution_candidate_limit",
         "event_resolution_candidate_limit",
+        "article_card_text_max_chars",
+        "llm_max_output_tokens",
+        "case_audit_card_batch_size",
+        "case_link_audit_card_limit",
+        "case_review_card_limit",
+        "case_copy_card_limit",
     ],
 )
 def test_resolution_candidate_limits_must_be_positive(field_name: str) -> None:

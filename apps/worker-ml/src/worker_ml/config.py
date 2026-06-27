@@ -22,6 +22,8 @@ class MlConfig(BaseServiceConfig):
     case_resolution_candidate_limit: int = Field(default=12, gt=0)
     entity_resolution_candidate_limit: int = Field(default=8, gt=0)
     event_resolution_candidate_limit: int = Field(default=8, gt=0)
+    article_card_text_max_chars: int = Field(default=20_000, gt=0)
+    llm_max_output_tokens: int = Field(default=4_096, gt=0)
     postgres_database_url: str = (
         "postgresql://shkandal:shkandal_dev_password@postgres:5432/shkandal"
     )
@@ -41,7 +43,10 @@ class MlConfig(BaseServiceConfig):
     llm_structured_output_mode: Literal["disabled", "tool_calling", "json_schema"] = "disabled"
     case_audit_interval_days: int = 30
     case_audit_enqueue_batch_size: int = 20
-    case_audit_card_batch_size: int = 20
+    case_audit_card_batch_size: int = Field(default=20, gt=0)
+    case_link_audit_card_limit: int = Field(default=20, gt=0)
+    case_review_card_limit: int = Field(default=40, gt=0)
+    case_copy_card_limit: int = Field(default=40, gt=0)
     case_audit_automatic_enabled: bool = True
 
     @property

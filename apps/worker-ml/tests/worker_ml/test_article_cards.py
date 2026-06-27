@@ -113,6 +113,11 @@ async def test_handler_creates_article_card_from_valid_llm_output() -> None:
     assert call["run_type"] == "article_card"
     assert call["model_name"] == "shkandal-article-card"
     assert json.loads(call["variables"]["schema_json"]) == prompt_schema(ArticleCardOutput)
+    assert article.extracted_text is not None
+    assert call["metadata"]["article_text_chars"] == len(article.extracted_text)
+    assert call["metadata"]["included_article_text_chars"] == len(article.extracted_text)
+    assert call["metadata"]["input_truncated"] is False
+    assert call["metadata"]["prompt_size_chars"] > 0
     insert_statement = write_session.execute.await_args.args[0]
     params = insert_statement.compile().params
     assert params["article_id"] == article.id

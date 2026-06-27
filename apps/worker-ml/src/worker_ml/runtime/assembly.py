@@ -119,6 +119,7 @@ class _LazyJobHandlers(Mapping[str, JobHandler]):
             self._runner,
             self._job_store,
             model_name=self._settings.llm_article_card_model,
+            text_max_chars=self._settings.article_card_text_max_chars,
         )
 
     def _create_case_resolution_handler(self) -> JobHandler:
@@ -129,6 +130,7 @@ class _LazyJobHandlers(Mapping[str, JobHandler]):
             self._get_vector_index(),
             model_name=self._settings.llm_case_resolution_model,
             candidate_limit=self._settings.case_resolution_candidate_limit,
+            link_audit_card_limit=self._settings.case_link_audit_card_limit,
         )
 
     def _create_entity_resolution_handler(self) -> JobHandler:
@@ -155,6 +157,7 @@ class _LazyJobHandlers(Mapping[str, JobHandler]):
             self._runner,
             self._get_vector_index(),
             model_name=self._settings.llm_case_copy_update_model,
+            card_limit=self._settings.case_copy_card_limit,
         )
 
     def _create_case_coherence_audit_handler(self) -> JobHandler:
@@ -174,6 +177,7 @@ class _LazyJobHandlers(Mapping[str, JobHandler]):
             self._get_vector_index(),
             self._job_store,
             model_name=self._settings.llm_case_public_interest_audit_model,
+            card_limit=self._settings.case_review_card_limit,
         )
 
     def _create_case_duplicate_audit_handler(self) -> JobHandler:
@@ -183,6 +187,7 @@ class _LazyJobHandlers(Mapping[str, JobHandler]):
             self._get_vector_index(),
             self._job_store,
             model_name=self._settings.llm_case_duplicate_audit_model,
+            card_limit=self._settings.case_review_card_limit,
         )
 
 

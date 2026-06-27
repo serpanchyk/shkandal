@@ -348,6 +348,11 @@ entry is retained but is not configured as a fallback. Timeout and
 internal-server failures are retried once; request errors and rate limits are
 not retried. Four Lapathoniia failures within one hour start a shared one-hour
 in-memory cooldown; restarting `llm-proxy` clears it.
+`worker-ml` caps completion size with `llm_max_output_tokens` and bounds
+prompt evidence per task. Article-card input caps extracted text; Case link
+audits use compact earliest/latest linked evidence; Case copy and Case review
+audits use lifecycle samples. LLM run metadata records prompt size and
+original/included evidence counts where inputs can be truncated.
 Provider HTTP `429` responses that still reach `worker-ml` after proxy routing
 create a durable shared LLM cooldown: the rejected job is deferred without
 consuming an attempt and the current ML pass exits.

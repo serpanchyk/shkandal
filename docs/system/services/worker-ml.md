@@ -96,6 +96,14 @@ method. When enabled, task chains ask LangChain/OpenAI for the task Pydantic
 contract directly and the runner still applies deterministic normalization and
 provenance handling to the returned object.
 
+LLM requests use explicit prompt budgets instead of relying on provider
+defaults. `llm_max_output_tokens` caps completion size for every task, and
+payload builders record `prompt_size_chars` plus original/included evidence
+counts in `llm_runs.metadata`. Evidence that can grow with article or Case
+history is selected deterministically: article text is capped, Case-copy and
+review audits use lifecycle samples, and link audits use compact first/latest
+Case evidence rather than the whole linked-article history.
+
 When HTTP `429` still reaches the worker after LiteLLM routing, the
 worker persists a shared LLM cooldown, defers the rejected job without consuming
 a job attempt, and ends the current pass. Later scheduled passes exit before
@@ -111,7 +119,8 @@ creates idempotent `classify_article` jobs for articles missing
 results enqueue `create_article_card`; the worker sends compact article evidence
 through the `article_card` prompt, validates `ArticleCardOutput`, and stores the
 result in `article_cards` with `llm_runs` provenance. Article text sent to the
-LLM is capped at 20,000 characters. The table stores an indexed
+LLM is capped by `article_card_text_max_chars`, defaulting to 20,000 characters.
+The table stores an indexed
 `is_case_candidate` column so later resolution stages can select only trackable
 cases; the gate is omitted from `card_json` to avoid duplicating it. An explicit
 continuous polling mode remains available for direct use. It also includes an
@@ -148,6 +157,9 @@ links survive and no new Case remains, the final result is rewritten to
 `llm_runs`, and enqueue no Entity or Event jobs. After every new
 article-case link, a unique case-scoped job regenerates summary copy and
 reviews whether the stable title materially needs replacement.
+The second-pass `case_link_audit` receives at most
+`case_link_audit_card_limit` compact linked Article Cards, preserving earliest
+and latest evidence and recording whether evidence was truncated.
 
 Resolved Case output enqueues separate article-scoped Entity and Event jobs.
 Each stage retrieves candidates independently for every provisional item, then
@@ -160,7 +172,8 @@ candidates per article. Entity and Event resolution retrieve up to
 candidates per provisional item. The tracked `config.yaml` defaults preserve
 the current limits of 12 Cases, 8 Entities, and 8 Events. LLM run metadata
 records the actual candidate counts returned after vector retrieval and
-PostgreSQL filtering.
+PostgreSQL filtering. Identity resolution also records provisional item counts
+and prompt size for budget inspection.
 
 Use the read-only connectivity report to inspect how many case-candidate
 articles completed Case resolution but still have no `case_articles` link:

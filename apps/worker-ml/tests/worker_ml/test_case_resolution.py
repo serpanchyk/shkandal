@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, Mock
 from uuid import UUID, uuid4
@@ -153,6 +154,92 @@ def test_lifecycle_sample_preserves_first_last_and_full_span() -> None:
     assert sample[0] == {"position": 0}
     assert sample[-1] == {"position": 99}
     assert [card["position"] for card in sample] == sorted(card["position"] for card in sample)
+
+
+@pytest.mark.asyncio
+async def test_case_link_audit_uses_bounded_compact_case_evidence() -> None:
+    article = Article(
+        id=uuid4(),
+        source_id=uuid4(),
+        url="https://example.com/article",
+        identity_url="https://example.com/article",
+        title="Заголовок",
+        published_at=datetime(2026, 6, 15, tzinfo=UTC),
+        fetch_status="succeeded",
+    )
+    card = ArticleCard(
+        article_id=article.id,
+        title_uk="Поточна стаття",
+        summary_uk="Короткий опис.",
+        is_case_candidate=True,
+        card_json={"entities": [{"name_uk": "Зайве поле"}]},
+    )
+    case = Case(
+        id=uuid4(),
+        slug="case-test",
+        title_uk="Справа",
+        summary_uk="Опис справи.",
+        status="active",
+        article_count=30,
+    )
+    output = _link_audit_output(outcome="connect")
+    runner = Mock(spec=LlmTaskRunner)
+    runner.run_with_provenance = AsyncMock(
+        return_value=LlmTaskResult(output=output, run_id=uuid4())
+    )
+    handler = ArticleCaseResolutionJobHandler(
+        Mock(),
+        Mock(spec=ArticleJobStore),
+        runner,
+        Mock(spec=VectorIndexService),
+        model_name="shkandal-case-resolution",
+        candidate_limit=12,
+        link_audit_card_limit=6,
+    )
+    linked_cards = [
+        {
+            "article_id": f"article-{index}",
+            "published_at": f"2026-06-{index + 1:02d}",
+            "title_uk": f"Назва {index}",
+            "summary_uk": f"Опис {index}",
+            "entities": [{"name_uk": "Зайве поле"}],
+        }
+        for index in range(12)
+    ]
+
+    result = await handler._run_case_link_audit(
+        job=ClaimedJob(
+            id=uuid4(),
+            job_type="resolve_article_cases",
+            article_id=article.id,
+            payload={},
+            attempt_count=1,
+            max_attempts=3,
+        ),
+        article=article,
+        card=card,
+        case=case,
+        candidate={"score": 0.8, "evidence_titles": ["Доказ"]},
+        linked_cards=linked_cards,
+    )
+
+    assert result == output
+    call = runner.run_with_provenance.await_args.kwargs
+    case_json = call["variables"]["case_json"]
+    article_cards = json.loads(case_json)["case"]["article_cards"]
+    assert all("entities" not in item for item in article_cards)
+    assert [item["article_id"] for item in article_cards] == [
+        "article-0",
+        "article-1",
+        "article-2",
+        "article-9",
+        "article-10",
+        "article-11",
+    ]
+    assert call["metadata"]["linked_article_count"] == 12
+    assert call["metadata"]["included_linked_article_count"] == 6
+    assert call["metadata"]["input_truncated"] is True
+    assert call["metadata"]["prompt_size_chars"] > 0
 
 
 @pytest.mark.asyncio

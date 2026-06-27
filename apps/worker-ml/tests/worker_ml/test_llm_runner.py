@@ -1157,11 +1157,12 @@ async def test_non_rate_limit_api_errors_are_not_normalized(status_code: int) ->
 
 def test_chat_model_uses_five_minute_request_timeout() -> None:
     model = create_litellm_chat_model(
-        settings=MlConfig(llm_request_timeout_seconds=300),
+        settings=MlConfig(llm_request_timeout_seconds=300, llm_max_output_tokens=1234),
         model_name="shkandal-article-card",
     )
 
     assert model.request_timeout == 300
+    assert model.max_tokens == 1234
 
 
 class FakeChain:

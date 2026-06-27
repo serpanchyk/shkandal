@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import time
 from dataclasses import dataclass
 from decimal import Decimal
@@ -21,6 +20,13 @@ from worker_ml.cases.publication import (
     CaseMutationBusyError,
     case_vector_payload,
     try_case_mutation_lock,
+)
+from worker_ml.llm.budgeting import (
+    compact_article_cards,
+    count_metadata,
+    first_latest_sample,
+    json_dumps_compact,
+    prompt_size_chars,
 )
 from worker_ml.llm.contracts import CaseLinkAuditOutput, CaseResolutionOutput
 from worker_ml.llm.runner import LlmTaskRunner
@@ -55,6 +61,7 @@ class ArticleCaseResolutionJobHandler:
         *,
         model_name: str,
         candidate_limit: int,
+        link_audit_card_limit: int = 20,
     ) -> None:
         self._session_factory = session_factory
         self._job_store = job_store
@@ -62,6 +69,7 @@ class ArticleCaseResolutionJobHandler:
         self._vector_index = vector_index
         self._model_name = model_name
         self._candidate_limit = candidate_limit
+        self._link_audit_card_limit = link_audit_card_limit
 
     async def handle(self, job: ClaimedJob) -> CaseResolutionOutput | None:
         """Resolve and persist article-case identity under the global Case lock."""
@@ -99,18 +107,21 @@ class ArticleCaseResolutionJobHandler:
             retrieval_started_at = time.monotonic()
             candidates = await self._load_candidates(session, card)
             retrieval_duration_seconds = time.monotonic() - retrieval_started_at
+            resolution_json = _resolution_json(article, source, card, candidates)
+            schema_json = prompt_schema_json(CaseResolutionOutput)
             result = await self._runner.run_with_provenance(
                 run_type="case_resolution",
                 model_name=self._model_name,
                 variables={
-                    "resolution_json": _resolution_json(article, source, card, candidates),
-                    "schema_json": prompt_schema_json(CaseResolutionOutput),
+                    "resolution_json": resolution_json,
+                    "schema_json": schema_json,
                 },
                 metadata={
                     "article_id": str(job.article_id),
                     "job_id": str(job.id),
                     "retrieval_duration_seconds": round(retrieval_duration_seconds, 6),
                     "retrieved_candidate_count": len(candidates),
+                    "prompt_size_chars": prompt_size_chars(resolution_json, schema_json),
                 },
             )
             output = cast(CaseResolutionOutput, result.output)
@@ -294,26 +305,29 @@ class ArticleCaseResolutionJobHandler:
         candidates: list[dict[str, Any]],
         dropped_link_audits: list[dict[str, Any]],
     ) -> RecheckedCaseResolution:
+        resolution_json = _dropped_link_fallback_json(
+            article=article,
+            source=source,
+            card=card,
+            original_output=output,
+            candidates=candidates,
+            dropped_link_audits=dropped_link_audits,
+        )
+        schema_json = prompt_schema_json(CaseResolutionOutput)
         result = await self._runner.run_with_provenance(
             run_type="case_resolution",
             prompt_name=CASE_CREATION_AFTER_DROPPED_LINKS_PROMPT,
             model_name=self._model_name,
             variables={
-                "resolution_json": _dropped_link_fallback_json(
-                    article=article,
-                    source=source,
-                    card=card,
-                    original_output=output,
-                    candidates=candidates,
-                    dropped_link_audits=dropped_link_audits,
-                ),
-                "schema_json": prompt_schema_json(CaseResolutionOutput),
+                "resolution_json": resolution_json,
+                "schema_json": schema_json,
             },
             metadata={
                 "article_id": str(article.id),
                 "job_id": str(job.id),
                 "fallback_reason": "all_existing_case_links_dropped",
                 "dropped_existing_link_count": len(dropped_link_audits),
+                "prompt_size_chars": prompt_size_chars(resolution_json, schema_json),
             },
         )
         fallback_output = cast(CaseResolutionOutput, result.output)
@@ -330,7 +344,11 @@ class ArticleCaseResolutionJobHandler:
         candidate: dict[str, Any],
         linked_cards: list[dict[str, Any]],
     ) -> CaseLinkAuditOutput:
-        case_json = json.dumps(
+        audited_cards = first_latest_sample(
+            compact_article_cards(linked_cards),
+            limit=self._link_audit_card_limit,
+        )
+        case_json = json_dumps_compact(
             {
                 "article": {
                     "article_id": str(article.id),
@@ -349,24 +367,28 @@ class ArticleCaseResolutionJobHandler:
                     "summary_uk": case.summary_uk,
                     "candidate_score": candidate["score"],
                     "evidence_titles": candidate["evidence_titles"],
-                    "article_cards": linked_cards,
+                    "article_cards": audited_cards,
                 },
-            },
-            ensure_ascii=False,
-            separators=(",", ":"),
+            }
         )
+        schema_json = prompt_schema_json(CaseLinkAuditOutput)
         result = await self._runner.run_with_provenance(
             run_type="case_link_audit",
             model_name=self._model_name,
             variables={
                 "case_json": case_json,
-                "schema_json": prompt_schema_json(CaseLinkAuditOutput),
+                "schema_json": schema_json,
             },
             metadata={
                 "article_id": str(article.id),
                 "case_id": str(case.id),
                 "job_id": str(job.id),
-                "linked_article_count": len(linked_cards),
+                **count_metadata(
+                    prefix="linked_article",
+                    original_count=len(linked_cards),
+                    included_count=len(audited_cards),
+                ),
+                "prompt_size_chars": prompt_size_chars(case_json, schema_json),
             },
         )
         return cast(CaseLinkAuditOutput, result.output)
@@ -500,7 +522,7 @@ def _article_card_query(card: ArticleCard) -> str:
 def _resolution_json(
     article: Article, source: Source, card: ArticleCard, candidates: list[dict[str, Any]]
 ) -> str:
-    return json.dumps(
+    return json_dumps_compact(
         {
             "article": {
                 "article_id": str(article.id),
@@ -514,9 +536,7 @@ def _resolution_json(
                 },
             },
             "candidate_cases": candidates,
-        },
-        ensure_ascii=False,
-        separators=(",", ":"),
+        }
     )
 
 
@@ -529,7 +549,7 @@ def _dropped_link_fallback_json(
     candidates: list[dict[str, Any]],
     dropped_link_audits: list[dict[str, Any]],
 ) -> str:
-    return json.dumps(
+    return json_dumps_compact(
         {
             "article": {
                 "article_id": str(article.id),
@@ -560,9 +580,7 @@ def _dropped_link_fallback_json(
                 "All proposed existing links were dropped by case_link_audit. "
                 "Create only genuinely new cases, or reject."
             ),
-        },
-        ensure_ascii=False,
-        separators=(",", ":"),
+        }
     )
 
 

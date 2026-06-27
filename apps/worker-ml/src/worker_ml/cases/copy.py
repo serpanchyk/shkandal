@@ -1,6 +1,5 @@
 """Reader-facing Case copy regeneration."""
 
-import json
 import time
 from collections.abc import Sequence
 from typing import Any, cast
@@ -15,6 +14,14 @@ from worker_ml.cases.publication import (
     CaseMutationBusyError,
     case_vector_payload,
     try_case_mutation_lock,
+)
+from worker_ml.llm.budgeting import (
+    count_metadata,
+    json_dumps_compact,
+    prompt_size_chars,
+)
+from worker_ml.llm.budgeting import (
+    lifecycle_sample as budget_lifecycle_sample,
 )
 from worker_ml.llm.contracts import CaseCopyUpdateOutput
 from worker_ml.llm.runner import LlmTaskRunner
@@ -34,11 +41,13 @@ class CaseCopyUpdateJobHandler:
         vector_index: VectorIndexService,
         *,
         model_name: str,
+        card_limit: int = MAX_CASE_EVIDENCE_CARDS,
     ) -> None:
         self._session_factory = session_factory
         self._runner = runner
         self._vector_index = vector_index
         self._model_name = model_name
+        self._card_limit = card_limit
 
     async def handle(self, job: ClaimedJob) -> CaseCopyUpdateOutput | None:
         """Update one Case and its vector under the global Case lock."""
@@ -54,25 +63,32 @@ class CaseCopyUpdateJobHandler:
             retrieval_started_at = time.monotonic()
             cards = await _case_article_cards(session, case.id)
             retrieval_duration_seconds = time.monotonic() - retrieval_started_at
+            sampled_cards = lifecycle_sample(cards, self._card_limit)
+            case_json = json_dumps_compact(
+                {
+                    "current_title_uk": case.title_uk,
+                    "current_summary_uk": case.summary_uk,
+                    "article_cards": sampled_cards,
+                }
+            )
+            schema_json = prompt_schema_json(CaseCopyUpdateOutput)
             result = await self._runner.run_with_provenance(
                 run_type="case_copy_update",
                 model_name=self._model_name,
                 variables={
-                    "case_json": json.dumps(
-                        {
-                            "current_title_uk": case.title_uk,
-                            "current_summary_uk": case.summary_uk,
-                            "article_cards": lifecycle_sample(cards, MAX_CASE_EVIDENCE_CARDS),
-                        },
-                        ensure_ascii=False,
-                        separators=(",", ":"),
-                    ),
-                    "schema_json": prompt_schema_json(CaseCopyUpdateOutput),
+                    "case_json": case_json,
+                    "schema_json": schema_json,
                 },
                 metadata={
                     "case_id": str(case.id),
                     "job_id": str(job.id),
                     "retrieval_duration_seconds": round(retrieval_duration_seconds, 6),
+                    **count_metadata(
+                        prefix="article_card",
+                        original_count=len(cards),
+                        included_count=len(sampled_cards),
+                    ),
+                    "prompt_size_chars": prompt_size_chars(case_json, schema_json),
                 },
             )
             output = cast(CaseCopyUpdateOutput, result.output)
@@ -107,9 +123,4 @@ async def _case_article_cards(session: AsyncSession, case_id: UUID) -> list[dict
 def lifecycle_sample(cards: Sequence[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
     """Sample a Case lifecycle while preserving its first and latest evidence."""
 
-    if len(cards) <= limit:
-        return list(cards)
-    selected = {0, len(cards) - 1}
-    for index in range(1, limit - 1):
-        selected.add(round(index * (len(cards) - 1) / (limit - 1)))
-    return [cards[index] for index in sorted(selected)]
+    return budget_lifecycle_sample(cards, limit=limit)

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any, cast
 from uuid import UUID
 
@@ -13,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from worker_ml.llm.budgeting import budget_text, json_dumps_compact, prompt_size_chars
 from worker_ml.llm.contracts import ArticleCardOutput
 from worker_ml.llm.runner import LlmTaskRunner
 from worker_ml.llm.schema import prompt_schema_json
@@ -49,11 +49,13 @@ class ArticleCardJobHandler:
         job_store: ArticleJobStore | None = None,
         *,
         model_name: str,
+        text_max_chars: int = MAX_ARTICLE_TEXT_CHARACTERS,
     ) -> None:
         self._session_factory = session_factory
         self._runner = runner
         self._job_store = job_store
         self._model_name = model_name
+        self._text_max_chars = text_max_chars
 
     async def handle(self, job: ClaimedJob) -> ArticleCardOutput | None:
         """Generate a card for a relevant article unless one already exists."""
@@ -80,16 +82,26 @@ class ArticleCardJobHandler:
         if not is_relevant or article_card_id is not None:
             return None
 
+        article_json, budget = build_article_json_with_budget(
+            article=article,
+            source=source,
+            text_max_chars=self._text_max_chars,
+        )
+        schema_json = prompt_schema_json(ArticleCardOutput)
         result = await self._runner.run_with_provenance(
             run_type="article_card",
             model_name=self._model_name,
             variables={
-                "article_json": build_article_json(article=article, source=source),
-                "schema_json": prompt_schema_json(ArticleCardOutput),
+                "article_json": article_json,
+                "schema_json": schema_json,
             },
             metadata={
                 "article_id": str(job.article_id),
                 "job_id": str(job.id),
+                "article_text_chars": budget.original_chars,
+                "included_article_text_chars": budget.included_chars,
+                "input_truncated": budget.truncated,
+                "prompt_size_chars": prompt_size_chars(article_json, schema_json),
             },
         )
         output = cast(ArticleCardOutput, result.output)
@@ -123,6 +135,22 @@ class ArticleCardJobHandler:
 def build_article_json(*, article: Article, source: Source) -> str:
     """Serialize compact source evidence for the article-card prompt."""
 
+    return build_article_json_with_budget(
+        article=article,
+        source=source,
+        text_max_chars=MAX_ARTICLE_TEXT_CHARACTERS,
+    )[0]
+
+
+def build_article_json_with_budget(
+    *,
+    article: Article,
+    source: Source,
+    text_max_chars: int,
+) -> tuple[str, Any]:
+    """Serialize article evidence and return text-budget provenance."""
+
+    budget = budget_text(article.extracted_text, limit=text_max_chars)
     payload: dict[str, Any] = {
         "title": article.title,
         "lead": article.lead,
@@ -133,6 +161,6 @@ def build_article_json(*, article: Article, source: Source) -> str:
             "slug": source.slug,
             "source_type": source.source_type,
         },
-        "extracted_text": (article.extracted_text or "")[:MAX_ARTICLE_TEXT_CHARACTERS],
+        "extracted_text": budget.text,
     }
-    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    return json_dumps_compact(payload), budget
