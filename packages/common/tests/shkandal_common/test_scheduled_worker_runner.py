@@ -206,6 +206,34 @@ def test_remote_runner_uses_remote_compose_file_and_env_file(tmp_path: Path) -> 
     assert "compose --profile jobs run" not in calls
 
 
+def test_remote_runner_passes_worker_flags(tmp_path: Path) -> None:
+    with _listening_socket() as listener:
+        _write_remote_env(tmp_path, port=listener.getsockname()[1])
+        fake_bin, log_path = _fake_bin_with_docker(tmp_path)
+
+        result = subprocess.run(
+            [str(REMOTE_RUNNER), "worker-ml", "--backfill"],
+            cwd=tmp_path,
+            env={
+                **os.environ,
+                "PATH": f"{fake_bin}:{os.environ['PATH']}",
+                "FAKE_DOCKER_LOG": str(log_path),
+                "FAKE_CONTAINER_STATE": "false",
+            },
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+    calls = log_path.read_text()
+    assert result.returncode == 0
+    assert (
+        "compose -f docker-compose.worker-remote.yaml --env-file .env.worker-remote "
+        "--profile jobs run --name shkandal-remote-scheduled-worker-ml worker-ml "
+        "python -m worker_ml.main --backfill"
+    ) in calls
+
+
 def test_remote_worker_compose_adds_ml_dependencies_without_postgres() -> None:
     compose_text = REMOTE_COMPOSE.read_text()
 
