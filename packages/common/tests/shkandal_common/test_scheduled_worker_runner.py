@@ -74,6 +74,7 @@ def _write_remote_env(tmp_path: Path, *, port: int) -> None:
         "\n".join(
             [
                 "SSH_TUNNEL_TARGET=root@161.35.207.41",
+                "SSH_TUNNEL_BIND_HOST=0.0.0.0",
                 f"SSH_TUNNEL_LOCAL_PORT={port}",
                 "SSH_TUNNEL_REMOTE_HOST=127.0.0.1",
                 "SSH_TUNNEL_REMOTE_PORT=5432",
@@ -261,8 +262,8 @@ def test_db_tunnel_builds_expected_ssh_command(tmp_path: Path) -> None:
 
     assert result.returncode == 0
     assert (
-        "-N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 "
-        "-o ServerAliveCountMax=3 -L 127.0.0.1:15433:127.0.0.1:5432 "
+        "-N -g -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 "
+        "-o ServerAliveCountMax=3 -L 0.0.0.0:15433:127.0.0.1:5432 "
         "root@161.35.207.41"
     ) in log_path.read_text()
 

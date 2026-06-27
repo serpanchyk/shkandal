@@ -32,10 +32,19 @@ if (( ${#missing[@]} > 0 )); then
     exit 78
 fi
 
+ssh_tunnel_bind_host="${SSH_TUNNEL_BIND_HOST:-127.0.0.1}"
+if [[ -n "${SSH_TUNNEL_AUTH_SOCK:-}" ]]; then
+    export SSH_AUTH_SOCK="${SSH_TUNNEL_AUTH_SOCK}"
+elif [[ -S "${HOME}/.ssh/custom_agent.sock" ]]; then
+    export SSH_AUTH_SOCK="${HOME}/.ssh/custom_agent.sock"
+fi
+
 exec ssh \
     -N \
+    -g \
+    -o BatchMode=yes \
     -o ExitOnForwardFailure=yes \
     -o ServerAliveInterval=30 \
     -o ServerAliveCountMax=3 \
-    -L "127.0.0.1:${SSH_TUNNEL_LOCAL_PORT}:${SSH_TUNNEL_REMOTE_HOST}:${SSH_TUNNEL_REMOTE_PORT}" \
+    -L "${ssh_tunnel_bind_host}:${SSH_TUNNEL_LOCAL_PORT}:${SSH_TUNNEL_REMOTE_HOST}:${SSH_TUNNEL_REMOTE_PORT}" \
     "${SSH_TUNNEL_TARGET}"
