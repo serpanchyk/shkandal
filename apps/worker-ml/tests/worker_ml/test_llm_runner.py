@@ -786,6 +786,47 @@ async def test_runner_records_primary_and_repair_models_separately() -> None:
 
 
 @pytest.mark.asyncio
+async def test_runner_preserves_primary_model_when_text_parse_fails() -> None:
+    run_id = uuid4()
+    run_store = Mock(spec=LlmRunStore)
+    run_store.create_run = AsyncMock(return_value=run_id)
+    run_store.finish_run = AsyncMock()
+    runner = LlmTaskRunner(
+        prompt_registry=PromptRegistry(),
+        run_store=run_store,
+        task_chains={
+            "article_card": FakeObjectChain(
+                AIMessage(
+                    content="not json",
+                    response_metadata={"model_name": "MamayLLM"},
+                )
+            )
+        },
+        repair_chain=FakeObjectChain(
+            AIMessage(
+                content=(
+                    '{"title_uk":"Виправлено","summary_uk":"Опис",'
+                    '"is_case_candidate":false,"noise_reason":"generic_news",'
+                    '"main_event_title_uk":null,"entities":[],"events":[],'
+                    '"case_signature_terms":[]}'
+                ),
+                response_metadata={"model_name": "RepairLLM"},
+            )
+        ),
+    )
+
+    await runner.run(
+        run_type="article_card",
+        model_name="shkandal-article-card",
+        variables={"article_json": "{}", "schema_json": "{}"},
+    )
+
+    call = run_store.finish_run.await_args.kwargs
+    assert call["model_name"] == "MamayLLM"
+    assert call["metadata"]["repair_model_name"] == "RepairLLM"
+
+
+@pytest.mark.asyncio
 async def test_runner_fails_after_invalid_repair() -> None:
     runner = LlmTaskRunner(
         prompt_registry=PromptRegistry(),
@@ -1004,6 +1045,29 @@ async def test_runner_normalizes_litellm_connection_failure() -> None:
     assert run_store.finish_run.await_args.kwargs["model_name"] == "shkandal-article-card"
 
 
+@pytest.mark.asyncio
+async def test_runner_does_not_normalize_litellm_prompt_timeout() -> None:
+    run_id = uuid4()
+    run_store = Mock(spec=LlmRunStore)
+    run_store.create_run = AsyncMock(return_value=run_id)
+    run_store.finish_run = AsyncMock()
+    runner = LlmTaskRunner(
+        prompt_registry=PromptRegistry(),
+        run_store=run_store,
+        task_chains={"article_card": TimeoutChain()},
+    )
+
+    with pytest.raises(openai.APITimeoutError):
+        await runner.run(
+            run_type="article_card",
+            model_name="shkandal-article-card",
+            variables={"article_json": "{}", "schema_json": "{}"},
+        )
+
+    assert run_store.finish_run.await_args.kwargs["status"] == "failed"
+    assert run_store.finish_run.await_args.kwargs["model_name"] == "shkandal-article-card"
+
+
 def test_parse_json_object_accepts_markdown_json_fence() -> None:
     assert parse_json_object('```json\n{"ok": true}\n```') == {"ok": True}
 
@@ -1129,6 +1193,12 @@ class ConnectionErrorChain:
     async def ainvoke(self, input: Mapping[str, Any]) -> str:
         request = httpx.Request("POST", "http://litellm:4000/v1/chat/completions")
         raise openai.APIConnectionError(request=request)
+
+
+class TimeoutChain:
+    async def ainvoke(self, input: Mapping[str, Any]) -> str:
+        request = httpx.Request("POST", "http://litellm:4000/v1/chat/completions")
+        raise openai.APITimeoutError(request=request)
 
 
 class RateLimitedChain:
