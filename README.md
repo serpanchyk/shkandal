@@ -43,6 +43,10 @@ service, publishes only ports `80` and `443` through Caddy, and reads
 deployment settings from `.env.production` plus
 `infra/postgres/.env.production`. See `docs/deploy-digitalocean.md`.
 
+Local scheduled workers for the production database use
+`docker-compose.worker-remote.yaml`, `.env.worker-remote`, and an SSH tunnel to
+the Droplet. The Droplet does not run ingestion or ML workers.
+
 An optional local `observability` Compose profile provides Grafana on port
 `3001`, Prometheus, Loki, Docker log collection, and a provisioned Shkandal
 overview dashboard.

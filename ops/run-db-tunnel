@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+env_file=".env.worker-remote"
+if [[ ! -f "${env_file}" ]]; then
+    echo "missing ${env_file}; copy .env.worker-remote.example and fill real values" >&2
+    exit 78
+fi
+
+set -a
+# shellcheck source=/dev/null
+source "${env_file}"
+set +a
+
+required_vars=(
+    SSH_TUNNEL_TARGET
+    SSH_TUNNEL_LOCAL_PORT
+    SSH_TUNNEL_REMOTE_HOST
+    SSH_TUNNEL_REMOTE_PORT
+)
+
+missing=()
+for var_name in "${required_vars[@]}"; do
+    if [[ -z "${!var_name:-}" ]]; then
+        missing+=("${var_name}")
+    fi
+done
+
+if (( ${#missing[@]} > 0 )); then
+    printf 'missing required tunnel env vars in %s: %s\n' \
+        "${env_file}" "${missing[*]}" >&2
+    exit 78
+fi
+
+exec ssh \
+    -N \
+    -o ExitOnForwardFailure=yes \
+    -o ServerAliveInterval=30 \
+    -o ServerAliveCountMax=3 \
+    -L "127.0.0.1:${SSH_TUNNEL_LOCAL_PORT}:${SSH_TUNNEL_REMOTE_HOST}:${SSH_TUNNEL_REMOTE_PORT}" \
+    "${SSH_TUNNEL_TARGET}"

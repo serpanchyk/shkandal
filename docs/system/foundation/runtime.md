@@ -9,6 +9,12 @@ For the public web, the repo also ships a separate
 network ports, exposing `80` and `443`; backend, frontend, and PostgreSQL stay
 on the internal Compose network.
 
+Remote production workers are intentionally local to this workstation, not
+installed on the production VM. `docker-compose.worker-remote.yaml` runs
+`worker-ingestion` or `worker-ml` against production PostgreSQL through
+`ops/run-db-tunnel`, with the container database URL pointing at
+`host.docker.internal:15433`.
+
 Production deploys run over SSH to the existing Droplet checkout. GitHub
 Actions validates the repo first, then runs `ops/deploy-production` in the
 server repository. Production env files remain on the Droplet and are not copied

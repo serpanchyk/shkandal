@@ -1,0 +1,10 @@
+[Unit]
+Description=Run one Shkandal remote ingestion pass
+Requires=shkandal-remote-db-tunnel.service
+After=shkandal-remote-db-tunnel.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/shkandal
+ExecStart=/usr/bin/env bash ops/run-remote-worker worker-ingestion
+TimeoutStartSec=45min

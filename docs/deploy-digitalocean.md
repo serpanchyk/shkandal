@@ -3,6 +3,10 @@
 This is the minimal public-web deployment for Shkandal. It runs only `caddy`,
 `frontend`, `backend`, `postgres`, and the one-shot `migrate` job.
 
+Ingestion and ML workers are not installed on the Droplet. Local scheduled
+workers run from the workstation with `docker-compose.worker-remote.yaml` and
+reach the Droplet's PostgreSQL through an SSH tunnel.
+
 ## 1. Prepare the server
 
 Create an Ubuntu Droplet, point a firewall at it, and allow inbound `80` and
@@ -93,6 +97,19 @@ The production deploy script also includes `docker-compose.prod.tunnel.yaml`
 when that file is present. This binds Postgres to `127.0.0.1:5432` on the
 Droplet only, so local workers can reach production Postgres through an SSH
 tunnel without exposing port `5432` publicly.
+
+For local worker setup, copy `.env.worker-remote.example` to
+`.env.worker-remote`, fill the production database password and local LiteLLM
+key, then run:
+
+```bash
+./ops/install-remote-worker-user-systemd.sh
+```
+
+The installer enables the remote DB tunnel and the two-hourly ingestion timer.
+It installs `shkandal-remote-ml.service` for manual runs only; no ML timer is
+enabled. Before starting ML manually, keep local Qdrant and local LiteLLM
+available because the ML worker routes them through `host.docker.internal`.
 
 ## 5. Update the deployment
 

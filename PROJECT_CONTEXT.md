@@ -46,6 +46,11 @@ review and correction tooling are later quality layers, not blocking MVP stages.
   Grafana, Prometheus, Loki, Alloy log collection, and real service health
   probes. It does not change production scheduling or worker lifetimes.
 - Systemd timers schedule one-shot ingestion and ML worker containers on servers.
+- Local remote-database worker scheduling is separate from the public-web
+  Droplet runtime: this workstation can run `worker-ingestion` on a user-systemd
+  timer against production PostgreSQL through an SSH tunnel, and can run
+  `worker-ml` manually through the same tunnel. The production VM does not run
+  these workers.
 - PostgreSQL is the source of truth and persists locally through the Compose
   `postgres-data` named volume.
 - Manual public-UI development uses an isolated `shkandal-demo` Compose project
@@ -110,6 +115,9 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - A separate `docker-compose.prod.yaml` provides the minimal public-web server
   deployment. It runs only `caddy`, `frontend`, `backend`, `postgres`, and a
   one-shot `migrate` job; only Caddy publishes ports `80` and `443`.
+- `docker-compose.worker-remote.yaml` defines only the two worker containers for
+  local remote-database runs and intentionally has no dependency on local
+  Compose PostgreSQL.
 - Production runtime configuration uses root `.env.production` for public-web
   settings and `infra/postgres/.env.production` for PostgreSQL bootstrap
   credentials. Caddy serves `:80` when `PUBLIC_HOSTNAME` is empty and switches

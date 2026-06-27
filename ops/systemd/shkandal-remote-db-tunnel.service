@@ -1,0 +1,14 @@
+[Unit]
+Description=Keep Shkandal remote PostgreSQL SSH tunnel open
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/shkandal
+ExecStart=/usr/bin/env bash ops/run-db-tunnel
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target
