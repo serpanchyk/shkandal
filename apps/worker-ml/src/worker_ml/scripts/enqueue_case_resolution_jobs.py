@@ -10,14 +10,13 @@ from itertools import islice
 
 from shkandal_database.config import DatabaseConfig
 from shkandal_database.jobs import ArticleJobStore
-from shkandal_database.models import ArticleCard, Job
+from shkandal_database.models import ArticleCard, ArticleGateDecision, Job
 from shkandal_database.session import create_async_engine_from_config, create_async_sessionmaker
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from worker_ml.config import MlConfig
 from worker_ml.runtime.planning import RESOLVE_ARTICLE_CASES_JOB
-
-DEFAULT_ENQUEUE_BATCH_SIZE = 5_000
 
 
 def batched[T](items: Iterable[T], size: int) -> Iterator[list[T]]:
@@ -53,22 +52,29 @@ async def enqueue_case_resolution_jobs(
     session_factory: async_sessionmaker[AsyncSession],
     *,
     apply: bool,
-    max_attempts: int = 3,
+    max_attempts: int | None = None,
     limit: int | None = None,
-    batch_size: int = DEFAULT_ENQUEUE_BATCH_SIZE,
+    batch_size: int | None = None,
 ) -> CaseResolutionEnqueueStats:
     """Queue one Case-resolution job for each case-candidate Article Card."""
+
+    settings = MlConfig()
+    resolved_max_attempts = settings.job_max_attempts if max_attempts is None else max_attempts
+    resolved_batch_size = (
+        settings.case_resolution_enqueue_batch_size if batch_size is None else batch_size
+    )
 
     if limit is not None and limit < 1:
         raise ValueError("limit must be greater than zero")
 
-    if batch_size < 1:
+    if resolved_batch_size < 1:
         raise ValueError("batch_size must be greater than zero")
 
     async with session_factory() as session:
         query = (
             select(ArticleCard.article_id)
-            .where(ArticleCard.is_case_candidate.is_(True))
+            .join(ArticleGateDecision, ArticleGateDecision.article_id == ArticleCard.article_id)
+            .where(ArticleGateDecision.is_case_candidate.is_(True))
             .order_by(ArticleCard.created_at.asc(), ArticleCard.article_id.asc())
         )
 
@@ -89,7 +95,7 @@ async def enqueue_case_resolution_jobs(
         if not apply:
             existing_jobs = 0
 
-            for article_id_batch in batched(article_ids, batch_size):
+            for article_id_batch in batched(article_ids, resolved_batch_size):
                 existing_jobs += int(
                     await session.scalar(
                         select(func.count())
@@ -116,11 +122,11 @@ async def enqueue_case_resolution_jobs(
     requeued_jobs = 0
     existing_jobs = 0
 
-    for article_id_batch in batched(article_ids, batch_size):
+    for article_id_batch in batched(article_ids, resolved_batch_size):
         result = await job_store.enqueue_article_jobs(
             job_type=RESOLVE_ARTICLE_CASES_JOB,
             article_ids=article_id_batch,
-            max_attempts=max_attempts,
+            max_attempts=resolved_max_attempts,
         )
 
         inserted_jobs += result.inserted_jobs
@@ -139,11 +145,14 @@ async def enqueue_case_resolution_jobs(
 async def _run(
     *,
     apply: bool,
-    max_attempts: int,
+    max_attempts: int | None,
     limit: int | None,
-    batch_size: int,
+    batch_size: int | None,
 ) -> CaseResolutionEnqueueStats:
-    engine = create_async_engine_from_config(DatabaseConfig())
+    settings = MlConfig()
+    engine = create_async_engine_from_config(
+        DatabaseConfig(database_url=settings.postgres_database_url)
+    )
 
     try:
         return await enqueue_case_resolution_jobs(
@@ -162,9 +171,9 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true")
-    parser.add_argument("--max-attempts", type=int, default=3)
+    parser.add_argument("--max-attempts", type=int)
     parser.add_argument("--limit", type=int)
-    parser.add_argument("--batch-size", type=int, default=DEFAULT_ENQUEUE_BATCH_SIZE)
+    parser.add_argument("--batch-size", type=int)
 
     args = parser.parse_args()
 

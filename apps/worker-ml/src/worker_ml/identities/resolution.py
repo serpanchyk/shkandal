@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import time
 from datetime import datetime
 from decimal import Decimal
@@ -50,6 +49,7 @@ from worker_ml.identities.payloads import (
     event_query,
     event_vector_payload,
 )
+from worker_ml.llm.budgeting import json_dumps_compact, prompt_size_chars
 from worker_ml.llm.contracts import (
     EntityResolutionDecision,
     EntityResolutionOutput,
@@ -99,12 +99,14 @@ class ArticleEntityResolutionJobHandler:
             retrieval_started_at = time.monotonic()
             candidates = await self._load_candidates(session, provisional)
             retrieval_duration_seconds = time.monotonic() - retrieval_started_at
+            resolution_json = _resolution_json(provisional, candidates, cases)
+            schema_json = prompt_schema_json(EntityResolutionOutput)
             result = await self._runner.run_with_provenance(
                 run_type="entity_resolution",
                 model_name=self._model_name,
                 variables={
-                    "resolution_json": _resolution_json(provisional, candidates, cases),
-                    "schema_json": prompt_schema_json(EntityResolutionOutput),
+                    "resolution_json": resolution_json,
+                    "schema_json": schema_json,
                 },
                 metadata={
                     "article_id": str(job.article_id),
@@ -112,6 +114,8 @@ class ArticleEntityResolutionJobHandler:
                     "retrieval_duration_seconds": round(retrieval_duration_seconds, 6),
                     "retrieved_candidate_count": sum(map(len, candidates)),
                     "retrieved_candidate_counts": list(map(len, candidates)),
+                    "provisional_item_count": len(provisional),
+                    "prompt_size_chars": prompt_size_chars(resolution_json, schema_json),
                 },
             )
             output = cast(EntityResolutionOutput, result.output)
@@ -197,12 +201,14 @@ class ArticleEventResolutionJobHandler:
             retrieval_started_at = time.monotonic()
             candidates = await self._load_candidates(session, provisional)
             retrieval_duration_seconds = time.monotonic() - retrieval_started_at
+            resolution_json = _resolution_json(provisional, candidates, cases)
+            schema_json = prompt_schema_json(EventResolutionOutput)
             result = await self._runner.run_with_provenance(
                 run_type="event_resolution",
                 model_name=self._model_name,
                 variables={
-                    "resolution_json": _resolution_json(provisional, candidates, cases),
-                    "schema_json": prompt_schema_json(EventResolutionOutput),
+                    "resolution_json": resolution_json,
+                    "schema_json": schema_json,
                     "current_date_kyiv": datetime.now(ZoneInfo("Europe/Kyiv")).date().isoformat(),
                 },
                 metadata={
@@ -211,6 +217,8 @@ class ArticleEventResolutionJobHandler:
                     "retrieval_duration_seconds": round(retrieval_duration_seconds, 6),
                     "retrieved_candidate_count": sum(map(len, candidates)),
                     "retrieved_candidate_counts": list(map(len, candidates)),
+                    "provisional_item_count": len(provisional),
+                    "prompt_size_chars": prompt_size_chars(resolution_json, schema_json),
                 },
             )
             output = cast(EventResolutionOutput, result.output)
@@ -475,4 +483,4 @@ def _resolution_json(
             for case in sorted(cases, key=lambda item: item.id)
         ],
     }
-    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    return json_dumps_compact(payload)

@@ -46,7 +46,7 @@ async def test_reset_unconnected_case_resolution_jobs_is_dry_run_by_default() ->
     assert query.compile().params["job_type_1"] == "resolve_article_cases"
     assert query.compile().params["run_type_1"] == "case_link_audit"
     assert "jobs.status =" in query_text
-    assert "article_cards.is_case_candidate IS true" in query_text
+    assert "article_gate_decisions.is_case_candidate IS true" in query_text
     assert "case_articles" in query_text
 
 

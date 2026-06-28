@@ -90,6 +90,7 @@ def create_litellm_chat_model(*, settings: MlConfig, model_name: str) -> ChatOpe
         api_key=SecretStr(settings.llm_api_key),
         base_url=settings.llm_api_base,
         temperature=0,
+        max_completion_tokens=settings.llm_max_output_tokens,
         max_retries=0,
         timeout=settings.llm_request_timeout_seconds,
     )
@@ -218,10 +219,12 @@ class LlmTaskRunner:
             )
             request_duration_seconds = time.monotonic() - request_started_at
             await self._record_successful_request()
-            raw_text, parse_result, resolved_model_name = _coerce_provider_output(
+            resolved_model_name = _provider_output_model_name(provider_output)
+            raw_text, parse_result, parsed_model_name = _coerce_provider_output(
                 provider_output,
                 allow_array=task.allow_top_level_array,
             )
+            resolved_model_name = parsed_model_name or resolved_model_name
             raw_json = parse_result.value
             parse_repaired = parse_result.escaped_control_characters
             normalized = task.normalize(
@@ -465,6 +468,7 @@ def model_aliases(settings: MlConfig) -> dict[str, str]:
     """Return logical LiteLLM aliases by task name."""
 
     return {
+        "article_gate": settings.llm_article_gate_model,
         "article_card": settings.llm_article_card_model,
         "case_resolution": settings.llm_case_resolution_model,
         "case_link_audit": settings.llm_case_coherence_audit_model,
@@ -577,6 +581,12 @@ def _unwrap_provider_output(output: Any) -> tuple[Any, str | None]:
         parsed = output.get("parsed")
         return (parsed if parsed is not None else raw.content), _resolved_model_name(raw)
     return output, None
+
+
+def _provider_output_model_name(output: Any) -> str | None:
+    """Return provider model metadata before parsing can fail."""
+
+    return _unwrap_provider_output(output)[1]
 
 
 def _resolved_model_name(message: BaseMessage) -> str | None:
@@ -763,7 +773,9 @@ async def invoke_chain(chain: AsyncTextChain, variables: Mapping[str, Any]) -> A
             str(exc),
             retry_after_seconds=parse_retry_after_seconds(exc),
         ) from exc
-    except (APIConnectionError, APITimeoutError) as exc:
+    except APITimeoutError:
+        raise
+    except APIConnectionError as exc:
         raise LlmDependencyUnavailableError("LiteLLM proxy unavailable") from exc
 
 

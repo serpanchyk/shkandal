@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, Mock
 from uuid import UUID, uuid4
@@ -156,6 +157,91 @@ def test_lifecycle_sample_preserves_first_last_and_full_span() -> None:
 
 
 @pytest.mark.asyncio
+async def test_case_link_audit_uses_bounded_compact_case_evidence() -> None:
+    article = Article(
+        id=uuid4(),
+        source_id=uuid4(),
+        url="https://example.com/article",
+        identity_url="https://example.com/article",
+        title="Заголовок",
+        published_at=datetime(2026, 6, 15, tzinfo=UTC),
+        fetch_status="succeeded",
+    )
+    card = ArticleCard(
+        article_id=article.id,
+        title_uk="Поточна стаття",
+        summary_uk="Короткий опис.",
+        card_json={"entities": [{"name_uk": "Зайве поле"}]},
+    )
+    case = Case(
+        id=uuid4(),
+        slug="case-test",
+        title_uk="Справа",
+        summary_uk="Опис справи.",
+        status="active",
+        article_count=30,
+    )
+    output = _link_audit_output(outcome="connect")
+    runner = Mock(spec=LlmTaskRunner)
+    runner.run_with_provenance = AsyncMock(
+        return_value=LlmTaskResult(output=output, run_id=uuid4())
+    )
+    handler = ArticleCaseResolutionJobHandler(
+        Mock(),
+        Mock(spec=ArticleJobStore),
+        runner,
+        Mock(spec=VectorIndexService),
+        model_name="shkandal-case-resolution",
+        candidate_limit=12,
+        link_audit_card_limit=6,
+    )
+    linked_cards = [
+        {
+            "article_id": f"article-{index}",
+            "published_at": f"2026-06-{index + 1:02d}",
+            "title_uk": f"Назва {index}",
+            "summary_uk": f"Опис {index}",
+            "entities": [{"name_uk": "Зайве поле"}],
+        }
+        for index in range(12)
+    ]
+
+    result = await handler._run_case_link_audit(
+        job=ClaimedJob(
+            id=uuid4(),
+            job_type="resolve_article_cases",
+            article_id=article.id,
+            payload={},
+            attempt_count=1,
+            max_attempts=3,
+        ),
+        article=article,
+        card=card,
+        case=case,
+        candidate={"score": 0.8, "evidence_titles": ["Доказ"]},
+        linked_cards=linked_cards,
+    )
+
+    assert result == output
+    call = runner.run_with_provenance.await_args.kwargs
+    case_json = call["variables"]["case_json"]
+    article_cards = json.loads(case_json)["case"]["article_cards"]
+    assert all("entities" not in item for item in article_cards)
+    assert [item["article_id"] for item in article_cards] == [
+        "article-0",
+        "article-1",
+        "article-2",
+        "article-9",
+        "article-10",
+        "article-11",
+    ]
+    assert call["metadata"]["linked_article_count"] == 12
+    assert call["metadata"]["included_linked_article_count"] == 6
+    assert call["metadata"]["input_truncated"] is True
+    assert call["metadata"]["prompt_size_chars"] > 0
+
+
+@pytest.mark.asyncio
 async def test_handler_stops_after_explicit_case_rejection() -> None:
     source = Source(
         id=uuid4(),
@@ -177,7 +263,6 @@ async def test_handler_stops_after_explicit_case_rejection() -> None:
         article_id=article.id,
         title_uk="Заголовок",
         summary_uk="Короткий опис.",
-        is_case_candidate=True,
         card_json={},
     )
     session = MagicMock()
@@ -267,7 +352,6 @@ async def test_handler_runs_new_case_fallback_after_all_existing_links_drop() ->
         article_id=article.id,
         title_uk="Заголовок",
         summary_uk="Короткий опис.",
-        is_case_candidate=True,
         card_json={"case_signature_terms": ["закупівля"]},
     )
     candidate_case = Case(
@@ -395,7 +479,6 @@ async def test_handler_does_not_persist_or_enqueue_when_dropped_link_fallback_re
         article_id=article.id,
         title_uk="Заголовок",
         summary_uk="Короткий опис.",
-        is_case_candidate=True,
         card_json={},
     )
     candidate_case = Case(
@@ -493,7 +576,6 @@ async def test_case_candidate_limit_is_forwarded_to_vector_search() -> None:
         article_id=uuid4(),
         title_uk="Заголовок",
         summary_uk="Короткий опис.",
-        is_case_candidate=True,
         card_json={},
     )
 
@@ -597,7 +679,6 @@ async def test_link_recheck_keeps_only_connecting_existing_cases() -> None:
         article_id=article.id,
         title_uk="Заголовок",
         summary_uk="Короткий опис.",
-        is_case_candidate=True,
         card_json={},
     )
     keep_case = Case(
@@ -716,7 +797,6 @@ async def test_link_recheck_turns_resolution_into_rejection_when_all_existing_ca
         article_id=article.id,
         title_uk="Заголовок",
         summary_uk="Короткий опис.",
-        is_case_candidate=True,
         card_json={},
     )
     case = Case(
@@ -819,7 +899,6 @@ async def test_link_recheck_does_not_trigger_fallback_when_original_output_has_n
         article_id=article.id,
         title_uk="Заголовок",
         summary_uk="Короткий опис.",
-        is_case_candidate=True,
         card_json={},
     )
     case = Case(
@@ -906,7 +985,6 @@ async def test_dropped_link_fallback_rejects_existing_links_defensively() -> Non
         article_id=article.id,
         title_uk="Заголовок",
         summary_uk="Короткий опис.",
-        is_case_candidate=True,
         card_json={},
     )
     existing_id = uuid4()

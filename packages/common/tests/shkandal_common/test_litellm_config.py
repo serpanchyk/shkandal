@@ -5,6 +5,7 @@ import yaml
 PROJECT_ROOT = Path(__file__).parents[4]
 CONFIG_PATH = PROJECT_ROOT / "infra" / "litellm" / "config.yaml.example"
 PUBLIC_ALIASES = {
+    "shkandal-article-gate",
     "shkandal-article-card",
     "shkandal-case-resolution",
     "shkandal-entity-resolution",

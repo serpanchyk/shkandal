@@ -54,7 +54,7 @@ INSUFFICIENT_IDENTITY_REASON_UK = (
 )
 TRAILING_TRUNCATION_CHARS = " \t\r\n,;:.-"
 SHORT_TEXT_LIMITS: dict[LlmRunType, dict[str, int]] = {
-    "article_card": {
+    "article_gate": {
         "case_diagnosis.ukraine_nexus_uk": 240,
         "case_diagnosis.concrete_story_core_uk": 240,
         "case_diagnosis.public_accountability_anchor_uk": 240,
@@ -134,7 +134,11 @@ def normalize_llm_output(
 
     normalized = copy.deepcopy(output)
     actions: list[str] = []
-    if run_type == "article_card":
+    if run_type == "article_gate":
+        if not isinstance(normalized, dict):
+            raise ValueError("article gate output must be a JSON object")
+        _normalize_article_gate(normalized, actions)
+    elif run_type == "article_card":
         if not isinstance(normalized, dict):
             raise ValueError("article card output must be a JSON object")
         _normalize_article_card(normalized, actions)
@@ -171,7 +175,7 @@ def normalize_llm_output(
     return NormalizationResult(output=normalized, actions=actions)
 
 
-def _normalize_article_card(output: dict[str, Any], actions: list[str]) -> None:
+def _normalize_article_gate(output: dict[str, Any], actions: list[str]) -> None:
     if not isinstance(output.get("case_diagnosis"), dict):
         _set(
             output,
@@ -189,14 +193,13 @@ def _normalize_article_card(output: dict[str, Any], actions: list[str]) -> None:
     if output.get("is_case_candidate") is False:
         if output.get("noise_reason") not in NOISE_REASONS:
             _set(output, "noise_reason", "generic_news", actions, "default non-case noise reason")
-        _set(output, "main_event_title_uk", None, actions, "clear non-case main event")
-        _set(output, "entities", [], actions, "clear non-case entities")
-        _set(output, "events", [], actions, "clear non-case events")
-        _set(output, "case_signature_terms", [], actions, "clear non-case signature terms")
         return
 
     if output.get("is_case_candidate") is True:
         _set(output, "noise_reason", None, actions, "clear case-candidate noise reason")
+
+
+def _normalize_article_card(output: dict[str, Any], actions: list[str]) -> None:
     _trim_list(output, "entities", 8, actions)
     _trim_list(output, "events", 3, actions)
     _trim_list(output, "case_signature_terms", 8, actions)

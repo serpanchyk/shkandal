@@ -13,6 +13,7 @@ from worker_ml.runtime.planning import (
     AUDIT_CASE_PUBLIC_INTEREST_JOB,
     CLASSIFY_ARTICLE_JOB,
     CREATE_ARTICLE_CARD_JOB,
+    GATE_ARTICLE_JOB,
     EnqueueStats,
     MlJobPlanner,
 )
@@ -20,6 +21,7 @@ from worker_ml.runtime.planning import (
 
 def test_classify_article_job_type_is_stable() -> None:
     assert CLASSIFY_ARTICLE_JOB == "classify_article"
+    assert GATE_ARTICLE_JOB == "gate_article"
     assert CREATE_ARTICLE_CARD_JOB == "create_article_card"
 
 
@@ -107,6 +109,44 @@ async def test_job_planner_enqueues_missing_article_cards() -> None:
 
 
 @pytest.mark.asyncio
+async def test_job_planner_enqueues_missing_article_gates() -> None:
+    article_ids = [uuid4(), uuid4()]
+    session = MagicMock()
+    session.scalars = AsyncMock(return_value=SimpleNamespace(all=lambda: article_ids))
+    session_context = MagicMock()
+    session_context.__aenter__ = AsyncMock(return_value=session)
+    session_context.__aexit__ = AsyncMock(return_value=None)
+    session_factory = Mock(return_value=session_context)
+    job_store = Mock()
+    job_store.enqueue_article_jobs = AsyncMock(
+        return_value=BulkEnqueueJobResult(
+            inserted_jobs=1,
+            requeued_jobs=0,
+            existing_jobs=1,
+        )
+    )
+
+    stats = await MlJobPlanner(session_factory, job_store).enqueue_missing_article_gate_jobs(
+        limit=2,
+        max_attempts=4,
+        requeue_failed=False,
+    )
+
+    assert stats == EnqueueStats(
+        scanned_articles=2,
+        ensured_jobs=1,
+        inserted_jobs=1,
+        existing_jobs=1,
+    )
+    assert job_store.enqueue_article_jobs.await_args.kwargs == {
+        "job_type": GATE_ARTICLE_JOB,
+        "article_ids": article_ids,
+        "max_attempts": 4,
+        "requeue_failed": False,
+    }
+
+
+@pytest.mark.asyncio
 async def test_job_planner_can_preserve_exhausted_jobs_for_backfill() -> None:
     article_id = uuid4()
     session = MagicMock()
@@ -142,8 +182,15 @@ def test_job_planner_only_selects_successfully_fetched_articles() -> None:
 def test_missing_card_query_selects_only_relevant_articles_without_cards() -> None:
     query = str(MlJobPlanner._articles_missing_card_query(limit=10))
 
-    assert "article_relevance.is_relevant IS true" in query
+    assert "article_gate_decisions.is_case_candidate IS true" in query
     assert "article_cards.id IS NULL" in query
+
+
+def test_missing_gate_query_selects_only_relevant_articles_without_gate() -> None:
+    query = str(MlJobPlanner._articles_missing_gate_query(limit=10))
+
+    assert "article_relevance.is_relevant IS true" in query
+    assert "article_gate_decisions.id IS NULL" in query
 
 
 @pytest.mark.asyncio

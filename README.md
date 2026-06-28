@@ -43,6 +43,11 @@ service, publishes only ports `80` and `443` through Caddy, and reads
 deployment settings from `.env.production` plus
 `infra/postgres/.env.production`. See `docs/deploy-digitalocean.md`.
 
+Local scheduled workers for the production database use
+`docker-compose.worker-remote.yaml`, `.env.worker-remote`, and an SSH tunnel to
+the Droplet. The Droplet does not run ingestion or ML workers; manual remote ML
+uses Docker Qdrant and LiteLLM from the remote-worker Compose file.
+
 An optional local `observability` Compose profile provides Grafana on port
 `3001`, Prometheus, Loki, Docker log collection, and a provisioned Shkandal
 overview dashboard.
@@ -211,33 +216,39 @@ Git history.
 
 Irrelevant articles remain stored with `is_relevant=false` for debugging, evaluation, and future reprocessing.
 
-### 4. Create Provisional Article Card
+### 4. Gate Article Candidates
 
-For classifier-positive articles, the LLM creates a compact Ukrainian article
-card with structured JSON validated by Pydantic. The LLM applies a stricter
-`is_case_candidate` gate. It accepts concrete, trackable accountability,
-criminal, procurement, institutional, government, parliamentary, international
-Ukraine, and public-conflict processes. Rankings, explainers, statistics, PR,
-human-interest stories, routine legislation, routine war chronology, generic
-news, and similar material remain available as summaries without producing case
-events or entities. Assessments, interviews, columns, and expert discussions
-may remain case material when they add substantial context to a named trackable
-process or conflict.
+For classifier-positive articles, an LLM Second-Layer Relevance Gate decides
+whether the article is a concrete Case candidate. It accepts concrete,
+trackable accountability, criminal, procurement, institutional, government,
+parliamentary, international Ukraine, and public-conflict processes. Rankings,
+explainers, statistics, PR, human-interest stories, routine legislation,
+routine war chronology, generic news, and similar material stop at the gate.
+Assessments, interviews, columns, and expert discussions may remain case
+material when they add substantial context to a named trackable process or
+conflict.
+
+Gate decisions are stored in `article_gate_decisions` with their `llm_runs`
+provenance. Existing processed articles are migrated structurally into this
+table; they are not automatically reprocessed.
+
+### 5. Create Provisional Article Card
+
+For accepted gate decisions, the LLM creates a compact Ukrainian article card
+with structured JSON validated by Pydantic.
 
 The card contains:
 
 - Ukrainian title or cleaned title;
 - short Ukrainian summary;
-- case-candidate decision and fixed noise reason;
-- main event title for case candidates;
+- main event title;
 - up to eight case-relevant normalized entities;
 - one to three provisional normalized events;
 - up to eight case-signature terms.
 
 The provisional entities and events are not final global identities yet.
-Non-case cards have empty event, entity, and case-signature lists.
 
-### 5. Resolve Cases
+### 6. Resolve Cases
 
 The article card is embedded and used to retrieve candidate cases from Qdrant. The LLM then resolves article-case relationships:
 
@@ -300,6 +311,7 @@ Important MVP tables and relationships:
 - `sources`;
 - `articles`;
 - `article_relevance`;
+- `article_gate_decisions`;
 - `article_cards`;
 - `cases`;
 - `case_articles`;
@@ -335,14 +347,22 @@ be repaired once with a schema-only repair prompt. If repair fails, mark the LLM
 task failed and keep it eligible for later reprocessing.
 
 All runtime LLM calls go through the LiteLLM proxy. `worker-ml` requests logical
-per-stage aliases such as `shkandal-article-card` and `shkandal-repair`; the
-proxy owns provider credentials, throttling, and routing policy. The tracked
+per-stage aliases such as `shkandal-article-gate`, `shkandal-article-card`, and
+`shkandal-repair`; the proxy owns provider credentials, throttling, and routing
+policy. The tracked
 proxy configuration maps all aliases to one shared MamayLM deployment through
 Lapathoniia with a combined 60 RPM limit. The Amazon Bedrock Gemma 3 27B model
 entry is retained but is not configured as a fallback. Timeout and
 internal-server failures are retried once; request errors and rate limits are
 not retried. Four Lapathoniia failures within one hour start a shared one-hour
 in-memory cooldown; restarting `llm-proxy` clears it.
+`worker-ml` caps completion size with `llm_max_output_tokens` and bounds
+prompt evidence per task. Article-card input caps extracted text; Case link
+audits use compact earliest/latest linked evidence; Case copy and Case review
+audits use lifecycle samples. These operational budgets, retry deferral floors,
+and maintenance-script defaults are tracked in `apps/worker-ml/config.yaml`.
+LLM run metadata records prompt size and original/included evidence counts
+where inputs can be truncated.
 Provider HTTP `429` responses that still reach `worker-ml` after proxy routing
 create a durable shared LLM cooldown: the rejected job is deferred without
 consuming an attempt and the current ML pass exits.
@@ -354,8 +374,8 @@ For the initial historical run, `worker-ml --backfill` drains all supported ML
 jobs and waits through deferred retries or provider cooldowns. It preserves
 exhausted failed jobs for inspection and exits nonzero when any remain.
 Repeatable `--job-type` flags restrict one-shot, loop, or backfill execution to
-selected stages. Enabled article-card runs discover relevant articles missing
-cards; downstream jobs they create remain queued unless also selected.
+selected stages. Enabled gate and article-card runs discover their own missing
+durable outputs; downstream jobs they create remain queued unless also selected.
 The worker uses four concurrent execution slots and weighted fair scheduling by
 default, while Case, Entity, and Event mutation namespaces remain independently
 serialized.

@@ -1,0 +1,62 @@
+services:
+  worker-ingestion:
+    profiles: ["jobs"]
+    build:
+      context: .
+      dockerfile: apps/worker-ingestion/Dockerfile
+    env_file:
+      - ./.env.worker-remote
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["python", "-m", "worker_ingestion.main"]
+    restart: "no"
+
+  worker-ml:
+    profiles: ["jobs"]
+    build:
+      context: .
+      dockerfile: apps/worker-ml/Dockerfile
+    env_file:
+      - ./.env.worker-remote
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      llm-proxy:
+        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["python", "-m", "worker_ml.main"]
+    restart: "no"
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.6
+    ports:
+      - "${QDRANT_PORT:-6333}:6333"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 524288
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 2 bash -c '</dev/tcp/127.0.0.1/6333'"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  llm-proxy:
+    image: docker.litellm.ai/berriai/litellm@sha256:7c311546c25e7bb6e8cafede9fcd3d0d622ac636b5c9418befaa32e85dfb0186
+    command: ["--config", "/app/config.yaml"]
+    env_file:
+      - ./infra/litellm/.env
+    environment:
+      LITELLM_MASTER_KEY: "${LLM_API_KEY:?Set LLM_API_KEY in .env.worker-remote}"
+    ports:
+      - "${LITELLM_PROXY_PORT:-4000}:4000"
+    volumes:
+      - ./infra/litellm/config.yaml.example:/app/config.yaml:ro
+    restart: unless-stopped
+
+volumes:
+  qdrant-data:

@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+worker="${1:-}"
+case "${worker}" in
+    worker-ingestion|worker-ml) ;;
+    *)
+        echo "usage: $0 {worker-ingestion|worker-ml} [worker flags...]" >&2
+        exit 64
+        ;;
+esac
+shift
+
+worker_command=()
+if [[ "$#" -gt 0 ]]; then
+    case "${worker}" in
+        worker-ingestion)
+            worker_command=(python -m worker_ingestion.main "$@")
+            ;;
+        worker-ml)
+            worker_command=(python -m worker_ml.main "$@")
+            ;;
+    esac
+fi
+
+env_file=".env.worker-remote"
+if [[ ! -f "${env_file}" ]]; then
+    echo "missing ${env_file}; copy .env.worker-remote.example and fill real values" >&2
+    exit 78
+fi
+
+set -a
+# shellcheck source=/dev/null
+source "${env_file}"
+set +a
+
+if [[ -z "${SSH_TUNNEL_LOCAL_PORT:-}" ]]; then
+    echo "missing required tunnel env var in ${env_file}: SSH_TUNNEL_LOCAL_PORT" >&2
+    exit 78
+fi
+
+if ! exec 3<>"/dev/tcp/127.0.0.1/${SSH_TUNNEL_LOCAL_PORT}" 2>/dev/null; then
+    echo "remote DB tunnel is unreachable at 127.0.0.1:${SSH_TUNNEL_LOCAL_PORT}" >&2
+    echo "start it with: systemctl --user start shkandal-remote-db-tunnel.service" >&2
+    exit 69
+fi
+exec 3>&-
+
+container_name="shkandal-remote-scheduled-${worker}"
+
+cleanup() {
+    docker rm -f "${container_name}" >/dev/null 2>&1 || true
+}
+
+handle_signal() {
+    cleanup
+    exit 143
+}
+
+if docker container inspect "${container_name}" >/dev/null 2>&1; then
+    running_state="$(docker container inspect --format '{{.State.Running}}' "${container_name}")"
+    if [[ "${running_state}" == "true" ]]; then
+        echo "remote scheduled worker already running: ${container_name}" >&2
+        exit 75
+    fi
+    cleanup
+fi
+
+trap cleanup EXIT
+trap handle_signal INT TERM
+
+docker compose \
+    -f docker-compose.worker-remote.yaml \
+    --env-file "${env_file}" \
+    --profile jobs \
+    run \
+    --name "${container_name}" \
+    "${worker}" \
+    "${worker_command[@]}"

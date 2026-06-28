@@ -9,15 +9,14 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from shkandal_database.config import DatabaseConfig
-from shkandal_database.models import ArticleCard, ArticleRelevance, Job
+from shkandal_database.models import ArticleCard, ArticleGateDecision, Job
 from shkandal_database.session import create_async_engine_from_config, create_async_sessionmaker
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from worker_ml.config import MlConfig
 from worker_ml.runtime.planning import CREATE_ARTICLE_CARD_JOB
-
-JOB_UPSERT_BATCH_SIZE = 1_000
 
 
 @dataclass(frozen=True)
@@ -25,7 +24,7 @@ class ArticleCardReprocessingStats:
     """Counts for an article-card regeneration pass."""
 
     cards_to_delete: int
-    relevant_articles: int
+    accepted_gate_articles: int
     jobs_to_reset: int
     jobs_to_create: int
     applied: bool
@@ -35,13 +34,24 @@ async def reprocess_article_cards(
     session_factory: async_sessionmaker[AsyncSession],
     *,
     apply: bool,
-    max_attempts: int = 3,
+    max_attempts: int | None = None,
     limit: int | None = None,
+    job_upsert_batch_size: int | None = None,
 ) -> ArticleCardReprocessingStats:
     """Delete cards and queue fresh card jobs for all or the latest existing cards."""
 
+    settings = MlConfig()
+    resolved_max_attempts = settings.job_max_attempts if max_attempts is None else max_attempts
+    resolved_job_upsert_batch_size = (
+        settings.article_card_reprocess_job_upsert_batch_size
+        if job_upsert_batch_size is None
+        else job_upsert_batch_size
+    )
+
     if limit is not None and limit < 1:
         raise ValueError("limit must be greater than zero")
+    if resolved_job_upsert_batch_size < 1:
+        raise ValueError("job_upsert_batch_size must be greater than zero")
 
     async with session_factory() as session:
         if apply:
@@ -64,11 +74,11 @@ async def reprocess_article_cards(
             )
 
         if limit is None:
-            relevant_article_ids = tuple(
+            accepted_article_ids = tuple(
                 (
                     await session.scalars(
-                        select(ArticleRelevance.article_id).where(
-                            ArticleRelevance.is_relevant.is_(True)
+                        select(ArticleGateDecision.article_id).where(
+                            ArticleGateDecision.is_case_candidate.is_(True)
                         )
                     )
                 ).all()
@@ -77,7 +87,7 @@ async def reprocess_article_cards(
                 await session.scalar(select(func.count()).select_from(ArticleCard)) or 0
             )
         else:
-            relevant_article_ids = tuple(
+            accepted_article_ids = tuple(
                 (
                     await session.scalars(
                         select(ArticleCard.article_id)
@@ -86,13 +96,13 @@ async def reprocess_article_cards(
                     )
                 ).all()
             )
-            cards_to_delete = len(relevant_article_ids)
-        relevant_id_set = set(relevant_article_ids)
-        existing_jobs = {job.article_id: job for job in jobs if job.article_id in relevant_id_set}
-        missing_job_ids = relevant_id_set - existing_jobs.keys()
+            cards_to_delete = len(accepted_article_ids)
+        accepted_id_set = set(accepted_article_ids)
+        existing_jobs = {job.article_id: job for job in jobs if job.article_id in accepted_id_set}
+        missing_job_ids = accepted_id_set - existing_jobs.keys()
         stats = ArticleCardReprocessingStats(
             cards_to_delete=cards_to_delete,
-            relevant_articles=len(relevant_article_ids),
+            accepted_gate_articles=len(accepted_article_ids),
             jobs_to_reset=len(existing_jobs),
             jobs_to_create=len(missing_job_ids),
             applied=apply,
@@ -103,15 +113,15 @@ async def reprocess_article_cards(
         delete_statement = delete(ArticleCard)
         if limit is not None:
             delete_statement = delete_statement.where(
-                ArticleCard.article_id.in_(relevant_article_ids)
+                ArticleCard.article_id.in_(accepted_article_ids)
             )
         await session.execute(delete_statement)
         reset_at = datetime.now(UTC)
-        for start in range(0, len(relevant_article_ids), JOB_UPSERT_BATCH_SIZE):
+        for start in range(0, len(accepted_article_ids), resolved_job_upsert_batch_size):
             await _upsert_article_card_jobs(
                 session,
-                article_ids=relevant_article_ids[start : start + JOB_UPSERT_BATCH_SIZE],
-                max_attempts=max_attempts,
+                article_ids=accepted_article_ids[start : start + resolved_job_upsert_batch_size],
+                max_attempts=resolved_max_attempts,
                 reset_at=reset_at,
             )
         await session.commit()
@@ -162,10 +172,13 @@ async def _upsert_article_card_jobs(
 async def _run(
     *,
     apply: bool,
-    max_attempts: int,
+    max_attempts: int | None,
     limit: int | None,
 ) -> ArticleCardReprocessingStats:
-    engine = create_async_engine_from_config(DatabaseConfig())
+    settings = MlConfig()
+    engine = create_async_engine_from_config(
+        DatabaseConfig(database_url=settings.postgres_database_url)
+    )
     try:
         return await reprocess_article_cards(
             create_async_sessionmaker(engine),
@@ -180,7 +193,7 @@ async def _run(
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true")
-    parser.add_argument("--max-attempts", type=int, default=3)
+    parser.add_argument("--max-attempts", type=int)
     parser.add_argument(
         "--limit",
         type=int,
@@ -196,7 +209,7 @@ def main() -> None:
     )
     action = "regenerated queue for" if stats.applied else "would regenerate queue for"
     print(
-        f"{action} {stats.relevant_articles} relevant articles: "
+        f"{action} {stats.accepted_gate_articles} accepted gate articles: "
         f"delete {stats.cards_to_delete} cards, reset {stats.jobs_to_reset} jobs, "
         f"create {stats.jobs_to_create} jobs"
     )

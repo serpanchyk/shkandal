@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import pytest
 from shkandal_database.models import Job
-from worker_ml.scripts.reprocess_article_cards import JOB_UPSERT_BATCH_SIZE, reprocess_article_cards
+from worker_ml.scripts.reprocess_article_cards import reprocess_article_cards
 
 
 def _session_context(session: MagicMock) -> MagicMock:
@@ -112,7 +112,7 @@ async def test_reprocess_article_cards_applies_reset_and_creates_missing_job() -
 
 @pytest.mark.asyncio
 async def test_reprocess_article_cards_batches_large_job_upserts() -> None:
-    article_ids = [uuid4() for _ in range(JOB_UPSERT_BATCH_SIZE + 1)]
+    article_ids = [uuid4() for _ in range(3)]
     session = MagicMock()
     session.scalars = AsyncMock(
         side_effect=[
@@ -127,6 +127,7 @@ async def test_reprocess_article_cards_batches_large_job_upserts() -> None:
     await reprocess_article_cards(
         Mock(return_value=_session_context(session)),
         apply=True,
+        job_upsert_batch_size=2,
     )
 
     assert session.execute.await_count == 3
@@ -155,7 +156,7 @@ async def test_reprocess_article_cards_targets_latest_existing_cards() -> None:
     )
 
     assert stats.cards_to_delete == 2
-    assert stats.relevant_articles == 2
+    assert stats.accepted_gate_articles == 2
     assert stats.jobs_to_reset == 2
     delete_statement = session.execute.await_args_list[0].args[0]
     delete_params = delete_statement.compile().params

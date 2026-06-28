@@ -11,11 +11,12 @@ from urllib.parse import urlsplit
 from uuid import UUID
 
 from shkandal_database.config import DatabaseConfig
-from shkandal_database.models import ArticleCard, CaseArticle, Job, LlmRun
+from shkandal_database.models import ArticleCard, ArticleGateDecision, CaseArticle, Job, LlmRun
 from shkandal_database.session import create_async_engine_from_config, create_async_sessionmaker
 from sqlalchemy import Text, cast, exists, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from worker_ml.config import MlConfig
 from worker_ml.runtime.planning import RESOLVE_ARTICLE_CASES_JOB
 
 
@@ -56,11 +57,12 @@ async def reset_unconnected_case_resolution_jobs(
         query = (
             select(Job.id, Job.article_id)
             .join(ArticleCard, ArticleCard.article_id == Job.article_id)
+            .join(ArticleGateDecision, ArticleGateDecision.article_id == Job.article_id)
             .where(
                 Job.job_type == RESOLVE_ARTICLE_CASES_JOB,
                 Job.status == "succeeded",
                 Job.article_id.is_not(None),
-                ArticleCard.is_case_candidate.is_(True),
+                ArticleGateDecision.is_case_candidate.is_(True),
                 ~exists().where(CaseArticle.article_id == Job.article_id).correlate(Job),
                 exists()
                 .where(
@@ -107,7 +109,10 @@ async def reset_unconnected_case_resolution_jobs(
 
 
 async def _run(*, apply: bool, limit: int | None) -> CaseResolutionResetStats:
-    engine = create_async_engine_from_config(DatabaseConfig())
+    settings = MlConfig()
+    engine = create_async_engine_from_config(
+        DatabaseConfig(database_url=settings.postgres_database_url)
+    )
     try:
         return await reset_unconnected_case_resolution_jobs(
             create_async_sessionmaker(engine),
@@ -144,7 +149,9 @@ def main() -> None:
 
 def _configured_database_target() -> tuple[str | None, int | None]:
     try:
-        parts = urlsplit(DatabaseConfig().async_database_url)
+        settings = MlConfig()
+        database_config = DatabaseConfig(database_url=settings.postgres_database_url)
+        parts = urlsplit(database_config.async_database_url)
         return parts.hostname, parts.port
     except ValueError:
         return None, None

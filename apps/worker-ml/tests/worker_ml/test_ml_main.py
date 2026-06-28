@@ -33,6 +33,7 @@ async def testrun_cycle_enqueues_and_processes_bounded_batch() -> None:
             existing_jobs=6,
         )
     )
+    planner.enqueue_missing_article_gate_jobs = AsyncMock(return_value=EnqueueStats(0, 0, 0, 0, 0))
     planner.enqueue_missing_article_card_jobs = AsyncMock(return_value=EnqueueStats(0, 0, 0, 0, 0))
     claimed_jobs = [
         SimpleNamespace(
@@ -230,7 +231,12 @@ async def test_run_cycle_defers_qdrant_unavailable_without_consuming_failure() -
     )
 
     result = await run_cycle(
-        settings=MlConfig(claim_batch_size=2, worker_concurrency=1, poll_interval_seconds=30),
+        settings=MlConfig(
+            claim_batch_size=2,
+            worker_concurrency=1,
+            poll_interval_seconds=5,
+            transient_retry_delay_min_seconds=45,
+        ),
         logger=Mock(),
         planner=planner,
         job_store=job_store,
@@ -241,6 +247,8 @@ async def test_run_cycle_defers_qdrant_unavailable_without_consuming_failure() -
     assert result["processed_jobs"] == 0
     assert result["failed_jobs"] == 0
     job_store.defer_job.assert_awaited_once()
+    run_after = job_store.defer_job.await_args.kwargs["run_after"]
+    assert (run_after - datetime.now(UTC)).total_seconds() > 40
     job_store.fail_job.assert_not_awaited()
     job_store.complete_job.assert_not_awaited()
 
@@ -678,6 +686,7 @@ def test_no_args_dispatches_one_cycle(monkeypatch: pytest.MonkeyPatch) -> None:
 
     run_once.assert_awaited_once_with(
         job_types=(
+            "gate_article",
             "create_article_card",
             "update_case_copy",
             "audit_case_coherence",
@@ -700,6 +709,7 @@ def test_loop_flag_dispatches_worker_loop(monkeypatch: pytest.MonkeyPatch) -> No
 
     run_worker.assert_awaited_once_with(
         job_types=(
+            "gate_article",
             "create_article_card",
             "update_case_copy",
             "audit_case_coherence",
@@ -761,6 +771,7 @@ def test_backfill_flag_dispatches_successful_backfill(monkeypatch: pytest.Monkey
 
     run_backfill.assert_awaited_once_with(
         job_types=(
+            "gate_article",
             "create_article_card",
             "update_case_copy",
             "audit_case_coherence",
@@ -1130,6 +1141,18 @@ def test_resolution_candidate_limit_defaults() -> None:
     assert config.case_resolution_candidate_limit == 12
     assert config.entity_resolution_candidate_limit == 8
     assert config.event_resolution_candidate_limit == 8
+    assert config.article_card_text_max_chars == 20_000
+    assert config.llm_max_output_tokens == 4_096
+    assert config.case_link_audit_card_limit == 20
+    assert config.case_review_card_limit == 40
+    assert config.case_copy_card_limit == 40
+    assert config.transient_retry_delay_min_seconds == 10
+    assert config.case_audit_min_card_batch_size == 2
+    assert config.case_audit_manual_default_limit == 5
+    assert config.case_resolution_representative_title_limit == 8
+    assert config.case_resolution_enqueue_batch_size == 5_000
+    assert config.article_card_reprocess_job_upsert_batch_size == 1_000
+    assert config.case_resolution_connectivity_example_limit == 20
 
 
 @pytest.mark.parametrize(
@@ -1138,6 +1161,19 @@ def test_resolution_candidate_limit_defaults() -> None:
         "case_resolution_candidate_limit",
         "entity_resolution_candidate_limit",
         "event_resolution_candidate_limit",
+        "article_card_text_max_chars",
+        "llm_max_output_tokens",
+        "case_audit_card_batch_size",
+        "case_link_audit_card_limit",
+        "case_review_card_limit",
+        "case_copy_card_limit",
+        "transient_retry_delay_min_seconds",
+        "case_audit_min_card_batch_size",
+        "case_audit_manual_default_limit",
+        "case_resolution_representative_title_limit",
+        "case_resolution_enqueue_batch_size",
+        "article_card_reprocess_job_upsert_batch_size",
+        "case_resolution_connectivity_example_limit",
     ],
 )
 def test_resolution_candidate_limits_must_be_positive(field_name: str) -> None:
@@ -1150,6 +1186,7 @@ def test_llm_config_defaults_to_litellm_proxy_aliases() -> None:
 
     assert fields["llm_api_base"].default == "http://llm-proxy:4000/v1"
     assert fields["case_audit_card_batch_size"].default == 20
+    assert fields["llm_article_gate_model"].default == "shkandal-article-gate"
     assert fields["llm_article_card_model"].default == "shkandal-article-card"
     assert fields["llm_case_resolution_model"].default == "shkandal-case-resolution"
     assert fields["llm_entity_resolution_model"].default == "shkandal-entity-resolution"

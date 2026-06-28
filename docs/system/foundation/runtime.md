@@ -9,6 +9,13 @@ For the public web, the repo also ships a separate
 network ports, exposing `80` and `443`; backend, frontend, and PostgreSQL stay
 on the internal Compose network.
 
+Remote production workers are intentionally local to this workstation, not
+installed on the production VM. `docker-compose.worker-remote.yaml` runs
+`worker-ingestion` or `worker-ml` against production PostgreSQL through
+`ops/run-db-tunnel`, with the container database URL pointing at
+`host.docker.internal:15433`. Manual remote ML runs bring up Docker Qdrant and
+LiteLLM services in the same remote-worker Compose project.
+
 Production deploys run over SSH to the existing Droplet checkout. GitHub
 Actions validates the repo first, then runs `ops/deploy-production` in the
 server repository. Production env files remain on the Droplet and are not copied
@@ -39,8 +46,8 @@ LLM calls are routed through the LiteLLM proxy service in Compose. The proxy is
 infrastructure for provider access, throttling, and routing; PostgreSQL remains
 the source of truth for run history and generated data.
 Initial job types are expected to cover downstream article processing, such as
-relevance classification, article-card creation, case resolution, entity
-resolution, and event resolution.
+relevance classification, article gating, article-card creation, case
+resolution, entity resolution, and event resolution.
 
 Article jobs form a gated chain. Each job should enqueue the next job only after
 its own durable output exists. `classify_article` succeeds by writing

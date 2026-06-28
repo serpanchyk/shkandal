@@ -41,15 +41,28 @@ configured for the proxy rather than application packages.
 - `RELEVANCE_THRESHOLD`: positive-class probability threshold for accepting an
   article as a relevance candidate.
 - `STALE_JOB_TIMEOUT_SECONDS`, `JOB_MAX_ATTEMPTS`, `ENQUEUE_BATCH_SIZE`,
-  `CLAIM_BATCH_SIZE`, and `WORKER_CONCURRENCY`: job-store runtime controls for
-  typed-subject ML jobs. The worker defaults to four concurrent jobs while
-  serializing Case, Entity, and Event mutation namespaces independently.
+  `CLAIM_BATCH_SIZE`, `WORKER_CONCURRENCY`, and
+  `TRANSIENT_RETRY_DELAY_MIN_SECONDS`: job-store runtime controls for
+  typed-subject ML jobs and dependency retry deferrals. The worker defaults to
+  four concurrent jobs while serializing Case, Entity, and Event mutation
+  namespaces independently.
+- `CASE_RESOLUTION_CANDIDATE_LIMIT`,
+  `CASE_RESOLUTION_REPRESENTATIVE_TITLE_LIMIT`,
+  `ENTITY_RESOLUTION_CANDIDATE_LIMIT`, `EVENT_RESOLUTION_CANDIDATE_LIMIT`,
+  `ARTICLE_CARD_TEXT_MAX_CHARS`, `CASE_LINK_AUDIT_CARD_LIMIT`,
+  `CASE_REVIEW_CARD_LIMIT`, `CASE_COPY_CARD_LIMIT`,
+  `CASE_AUDIT_CARD_BATCH_SIZE`, and `CASE_AUDIT_MIN_CARD_BATCH_SIZE`: prompt
+  evidence and retrieval budgets.
+- `CASE_AUDIT_MANUAL_DEFAULT_LIMIT`, `CASE_RESOLUTION_ENQUEUE_BATCH_SIZE`,
+  `ARTICLE_CARD_REPROCESS_JOB_UPSERT_BATCH_SIZE`, and
+  `CASE_RESOLUTION_CONNECTIVITY_EXAMPLE_LIMIT`: defaults for worker-ml
+  maintenance scripts when the CLI caller does not pass an explicit override.
 Runtime settings should select model endpoints and secrets through environment
 variables or file secrets, never committed values. `worker-ml` uses
 `LLM_API_BASE`, `LLM_API_KEY`, the five-minute default
 `LLM_REQUEST_TIMEOUT_SECONDS`, and logical model aliases such as
-`LLM_ARTICLE_CARD_MODEL` and `LLM_CASE_COPY_UPDATE_MODEL`; the LiteLLM proxy
-consumes provider credentials such
+`LLM_ARTICLE_GATE_MODEL`, `LLM_ARTICLE_CARD_MODEL`, and
+`LLM_CASE_COPY_UPDATE_MODEL`; the LiteLLM proxy consumes provider credentials such
 as `LAPATONIA_API_KEY`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and
 `AWS_REGION`. The tracked proxy configuration routes every logical alias
 through one shared Lapathoniia deployment with a combined 60 RPM limit and falls

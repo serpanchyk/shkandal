@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any, cast
@@ -33,6 +32,13 @@ from worker_ml.cases.publication import (
     try_case_mutation_lock,
     try_mutation_lock,
 )
+from worker_ml.llm.budgeting import (
+    compact_article_cards,
+    count_metadata,
+    json_dumps_compact,
+    lifecycle_sample,
+    prompt_size_chars,
+)
 from worker_ml.llm.contracts import CaseDuplicateAuditOutput, CasePublicInterestAuditOutput
 from worker_ml.llm.runner import LlmTaskRunner
 from worker_ml.llm.schema import prompt_schema_json
@@ -40,6 +46,7 @@ from worker_ml.retrieval.vector_index import VectorIndexService
 
 AUDIT_CASE_DUPLICATES_JOB = "audit_case_duplicates"
 UPDATE_CASE_COPY_JOB = "update_case_copy"
+MAX_REVIEW_EVIDENCE_CARDS = 40
 
 
 class CasePublicInterestAuditJobHandler:
@@ -53,12 +60,14 @@ class CasePublicInterestAuditJobHandler:
         job_store: ArticleJobStore,
         *,
         model_name: str,
+        card_limit: int = MAX_REVIEW_EVIDENCE_CARDS,
     ) -> None:
         self._session_factory = session_factory
         self._runner = runner
         self._vector_index = vector_index
         self._job_store = job_store
         self._model_name = model_name
+        self._card_limit = card_limit
 
     async def handle(self, job: ClaimedJob) -> CasePublicInterestAuditOutput | None:
         if job.case_id is None:
@@ -68,10 +77,10 @@ class CasePublicInterestAuditJobHandler:
             if case is None or case.status != "active":
                 return None
             revision = case.evidence_revision
-            payload = _case_payload(
-                case, _compact_cards(await load_case_article_cards(session, case.id))
-            )
-        case_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+            cards = await load_case_article_cards(session, case.id)
+            included_cards = _review_cards(cards, self._card_limit)
+            payload = _case_payload(case, included_cards)
+        case_json = json_dumps_compact(payload)
         schema_json = prompt_schema_json(CasePublicInterestAuditOutput)
         result = await self._runner.run_with_provenance(
             run_type="case_public_interest_audit",
@@ -84,7 +93,11 @@ class CasePublicInterestAuditJobHandler:
                 "case_id": str(job.case_id),
                 "job_id": str(job.id),
                 "phase": "final",
-                "card_count": len(payload["article_cards"]),
+                **count_metadata(
+                    prefix="article_card",
+                    original_count=len(cards),
+                    included_count=len(included_cards),
+                ),
                 "prompt_size_chars": len(case_json) + len(schema_json),
             },
         )
@@ -140,12 +153,14 @@ class CaseDuplicateAuditJobHandler:
         job_store: ArticleJobStore,
         *,
         model_name: str,
+        card_limit: int = MAX_REVIEW_EVIDENCE_CARDS,
     ) -> None:
         self._session_factory = session_factory
         self._runner = runner
         self._vector_index = vector_index
         self._job_store = job_store
         self._model_name = model_name
+        self._card_limit = card_limit
 
     async def handle(self, job: ClaimedJob) -> list[CaseDuplicateAuditOutput] | None:
         if job.case_id is None:
@@ -177,15 +192,15 @@ class CaseDuplicateAuditJobHandler:
                 return None
             case_a, case_b = cast(tuple[Case, Case], tuple(cases))
             revisions = (case_a.evidence_revision, case_b.evidence_revision)
+            cards_a = await load_case_article_cards(session, case_a.id)
+            cards_b = await load_case_article_cards(session, case_b.id)
+            included_a = _review_cards(cards_a, self._card_limit)
+            included_b = _review_cards(cards_b, self._card_limit)
             payload = {
-                "case_a": _case_payload(
-                    case_a, _compact_cards(await load_case_article_cards(session, case_a.id))
-                ),
-                "case_b": _case_payload(
-                    case_b, _compact_cards(await load_case_article_cards(session, case_b.id))
-                ),
+                "case_a": _case_payload(case_a, included_a),
+                "case_b": _case_payload(case_b, included_b),
             }
-        cases_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        cases_json = json_dumps_compact(payload)
         schema_json = prompt_schema_json(CaseDuplicateAuditOutput)
         result = await self._runner.run_with_provenance(
             run_type="case_duplicate_audit",
@@ -199,10 +214,10 @@ class CaseDuplicateAuditJobHandler:
                 "candidate_case_id": str(candidate_id),
                 "job_id": str(job.id),
                 "phase": "pair",
-                "card_count": sum(
-                    len(case_payload["article_cards"]) for case_payload in payload.values()
-                ),
-                "prompt_size_chars": len(cases_json) + len(schema_json),
+                "article_card_count": len(cards_a) + len(cards_b),
+                "included_article_card_count": len(included_a) + len(included_b),
+                "input_truncated": len(included_a) < len(cards_a) or len(included_b) < len(cards_b),
+                "prompt_size_chars": prompt_size_chars(cases_json, schema_json),
             },
         )
         output = cast(CaseDuplicateAuditOutput, result.output)
@@ -271,15 +286,13 @@ def _case_payload(case: Case, cards: list[dict[str, Any]]) -> dict[str, Any]:
 def _compact_cards(cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Keep audit evidence bounded while preserving the factual article summaries."""
 
-    return [
-        {
-            "article_id": card["article_id"],
-            "published_at": card.get("published_at"),
-            "title_uk": card.get("title_uk"),
-            "summary_uk": card.get("summary_uk"),
-        }
-        for card in cards
-    ]
+    return compact_article_cards(cards)
+
+
+def _review_cards(cards: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+    """Return compact lifecycle evidence for public-interest and duplicate audits."""
+
+    return lifecycle_sample(_compact_cards(cards), limit=limit)
 
 
 async def _duplicate_candidate_ids(session: AsyncSession, current: Case) -> list[UUID]:

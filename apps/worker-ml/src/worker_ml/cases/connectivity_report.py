@@ -7,8 +7,15 @@ from datetime import datetime
 from uuid import UUID
 
 from shkandal_database.jobs import JOB_STATUS_FAILED, JOB_STATUS_SUCCEEDED
-from shkandal_database.models import Article, ArticleCard, CaseArticle, Job, Source
-from sqlalchemy import Select, func, select
+from shkandal_database.models import (
+    Article,
+    ArticleCard,
+    ArticleGateDecision,
+    CaseArticle,
+    Job,
+    Source,
+)
+from sqlalchemy import Select, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -179,7 +186,14 @@ def render_case_resolution_connectivity_report(
 
 
 def _case_candidate_filter() -> ColumnElement[bool]:
-    return ArticleCard.is_case_candidate.is_(True)
+    return (
+        exists()
+        .where(
+            ArticleGateDecision.article_id == ArticleCard.article_id,
+            ArticleGateDecision.is_case_candidate.is_(True),
+        )
+        .correlate(ArticleCard)
+    )
 
 
 def _resolution_job_filter(status: str = JOB_STATUS_SUCCEEDED) -> ColumnElement[bool]:

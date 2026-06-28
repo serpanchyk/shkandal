@@ -189,7 +189,8 @@ async def process_next_job(
         except (CaseAuditSupersededError, CaseMutationBusyError, IdentityMutationBusyError) as exc:
             await job_store.defer_job(
                 job_id=claimed_job.id,
-                run_after=datetime.now(UTC) + timedelta(seconds=10),
+                run_after=datetime.now(UTC)
+                + timedelta(seconds=settings.transient_retry_delay_min_seconds),
                 reason=str(exc),
             )
             return {"status": "deferred", "job_type": claimed_job.job_type}
@@ -197,7 +198,12 @@ async def process_next_job(
             await job_store.defer_job(
                 job_id=claimed_job.id,
                 run_after=datetime.now(UTC)
-                + timedelta(seconds=max(10, settings.poll_interval_seconds)),
+                + timedelta(
+                    seconds=max(
+                        settings.transient_retry_delay_min_seconds,
+                        settings.poll_interval_seconds,
+                    )
+                ),
                 reason=str(exc),
             )
             logger.warning(
@@ -214,7 +220,12 @@ async def process_next_job(
             await job_store.defer_job(
                 job_id=claimed_job.id,
                 run_after=datetime.now(UTC)
-                + timedelta(seconds=max(10, settings.poll_interval_seconds)),
+                + timedelta(
+                    seconds=max(
+                        settings.transient_retry_delay_min_seconds,
+                        settings.poll_interval_seconds,
+                    )
+                ),
                 reason=str(exc),
             )
             logger.warning(

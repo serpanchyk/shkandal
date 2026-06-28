@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any, cast
 from uuid import UUID
 
 from shkandal_database.jobs import ArticleJobStore, ClaimedJob
-from shkandal_database.models import Article, ArticleCard, ArticleRelevance, Source
+from shkandal_database.models import Article, ArticleCard, ArticleGateDecision, Source
 from shkandal_database.session import async_session_scope
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from worker_ml.llm.budgeting import budget_text, json_dumps_compact, prompt_size_chars
 from worker_ml.llm.contracts import ArticleCardOutput
 from worker_ml.llm.runner import LlmTaskRunner
 from worker_ml.llm.schema import prompt_schema_json
@@ -33,7 +33,12 @@ async def get_case_candidate_card(
         await session.scalar(
             select(ArticleCard).where(
                 ArticleCard.article_id == article_id,
-                ArticleCard.is_case_candidate.is_(True),
+                select(ArticleGateDecision.id)
+                .where(
+                    ArticleGateDecision.article_id == ArticleCard.article_id,
+                    ArticleGateDecision.is_case_candidate.is_(True),
+                )
+                .exists(),
             )
         ),
     )
@@ -49,11 +54,13 @@ class ArticleCardJobHandler:
         job_store: ArticleJobStore | None = None,
         *,
         model_name: str,
+        text_max_chars: int = MAX_ARTICLE_TEXT_CHARACTERS,
     ) -> None:
         self._session_factory = session_factory
         self._runner = runner
         self._job_store = job_store
         self._model_name = model_name
+        self._text_max_chars = text_max_chars
 
     async def handle(self, job: ClaimedJob) -> ArticleCardOutput | None:
         """Generate a card for a relevant article unless one already exists."""
@@ -63,12 +70,14 @@ class ArticleCardJobHandler:
         async with self._session_factory() as session:
             row = (
                 await session.execute(
-                    select(Article, Source, ArticleRelevance.is_relevant, ArticleCard.id)
-                    .join(Source, Source.id == Article.source_id)
-                    .outerjoin(
-                        ArticleRelevance,
-                        ArticleRelevance.article_id == Article.id,
+                    select(
+                        Article,
+                        Source,
+                        ArticleGateDecision.is_case_candidate,
+                        ArticleCard.id,
                     )
+                    .join(Source, Source.id == Article.source_id)
+                    .outerjoin(ArticleGateDecision, ArticleGateDecision.article_id == Article.id)
                     .outerjoin(ArticleCard, ArticleCard.article_id == Article.id)
                     .where(Article.id == job.article_id)
                 )
@@ -76,20 +85,30 @@ class ArticleCardJobHandler:
 
         if row is None:
             raise ValueError(f"article not found for job {job.id}")
-        article, source, is_relevant, article_card_id = row
-        if not is_relevant or article_card_id is not None:
+        article, source, is_case_candidate, article_card_id = row
+        if not is_case_candidate or article_card_id is not None:
             return None
 
+        article_json, budget = build_article_json_with_budget(
+            article=article,
+            source=source,
+            text_max_chars=self._text_max_chars,
+        )
+        schema_json = prompt_schema_json(ArticleCardOutput)
         result = await self._runner.run_with_provenance(
             run_type="article_card",
             model_name=self._model_name,
             variables={
-                "article_json": build_article_json(article=article, source=source),
-                "schema_json": prompt_schema_json(ArticleCardOutput),
+                "article_json": article_json,
+                "schema_json": schema_json,
             },
             metadata={
                 "article_id": str(job.article_id),
                 "job_id": str(job.id),
+                "article_text_chars": budget.original_chars,
+                "included_article_text_chars": budget.included_chars,
+                "input_truncated": budget.truncated,
+                "prompt_size_chars": prompt_size_chars(article_json, schema_json),
             },
         )
         output = cast(ArticleCardOutput, result.output)
@@ -102,15 +121,11 @@ class ArticleCardJobHandler:
                     llm_run_id=result.run_id,
                     title_uk=output.title_uk,
                     summary_uk=output.summary_uk,
-                    is_case_candidate=output.is_case_candidate,
-                    card_json=output.model_dump(
-                        mode="json",
-                        exclude={"is_case_candidate"},
-                    ),
+                    card_json=output.model_dump(mode="json"),
                 )
                 .on_conflict_do_nothing(index_elements=[ArticleCard.article_id])
             )
-        if output.is_case_candidate and self._job_store is not None:
+        if self._job_store is not None:
             await self._job_store.enqueue_article_job(
                 job_type=RESOLVE_ARTICLE_CASES_JOB,
                 article_id=job.article_id,
@@ -123,6 +138,22 @@ class ArticleCardJobHandler:
 def build_article_json(*, article: Article, source: Source) -> str:
     """Serialize compact source evidence for the article-card prompt."""
 
+    return build_article_json_with_budget(
+        article=article,
+        source=source,
+        text_max_chars=MAX_ARTICLE_TEXT_CHARACTERS,
+    )[0]
+
+
+def build_article_json_with_budget(
+    *,
+    article: Article,
+    source: Source,
+    text_max_chars: int,
+) -> tuple[str, Any]:
+    """Serialize article evidence and return text-budget provenance."""
+
+    budget = budget_text(article.extracted_text, limit=text_max_chars)
     payload: dict[str, Any] = {
         "title": article.title,
         "lead": article.lead,
@@ -133,6 +164,6 @@ def build_article_json(*, article: Article, source: Source) -> str:
             "slug": source.slug,
             "source_type": source.source_type,
         },
-        "extracted_text": (article.extracted_text or "")[:MAX_ARTICLE_TEXT_CHARACTERS],
+        "extracted_text": budget.text,
     }
-    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    return json_dumps_compact(payload), budget

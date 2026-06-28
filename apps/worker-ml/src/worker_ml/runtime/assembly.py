@@ -9,6 +9,7 @@ from shkandal_vector_store import VectorStoreConfig, create_qdrant_client
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from worker_ml.articles.cards import ArticleCardJobHandler
+from worker_ml.articles.gates import ArticleGateJobHandler
 from worker_ml.articles.relevance import ClassificationJobHandler, RelevanceModel
 from worker_ml.cases.audits import CaseCoherenceAuditJobHandler
 from worker_ml.cases.copy import CaseCopyUpdateJobHandler
@@ -29,6 +30,7 @@ from worker_ml.runtime.planning import (
     AUDIT_CASE_PUBLIC_INTEREST_JOB,
     CLASSIFY_ARTICLE_JOB,
     CREATE_ARTICLE_CARD_JOB,
+    GATE_ARTICLE_JOB,
     RESOLVE_ARTICLE_CASES_JOB,
     RESOLVE_ARTICLE_ENTITIES_JOB,
     RESOLVE_ARTICLE_EVENTS_JOB,
@@ -68,6 +70,7 @@ class _LazyJobHandlers(Mapping[str, JobHandler]):
         self._handlers: dict[str, JobHandler] = {}
         self._factories: dict[str, Callable[[], JobHandler]] = {
             CLASSIFY_ARTICLE_JOB: self._create_classification_handler,
+            GATE_ARTICLE_JOB: self._create_article_gate_handler,
             CREATE_ARTICLE_CARD_JOB: self._create_article_card_handler,
             RESOLVE_ARTICLE_CASES_JOB: self._create_case_resolution_handler,
             RESOLVE_ARTICLE_ENTITIES_JOB: self._create_entity_resolution_handler,
@@ -113,12 +116,22 @@ class _LazyJobHandlers(Mapping[str, JobHandler]):
     def _create_classification_handler(self) -> JobHandler:
         return ClassificationJobHandler(self._session_factory, self._job_store, self._model)
 
+    def _create_article_gate_handler(self) -> JobHandler:
+        return ArticleGateJobHandler(
+            self._session_factory,
+            self._runner,
+            self._job_store,
+            model_name=self._settings.llm_article_gate_model,
+            text_max_chars=self._settings.article_card_text_max_chars,
+        )
+
     def _create_article_card_handler(self) -> JobHandler:
         return ArticleCardJobHandler(
             self._session_factory,
             self._runner,
             self._job_store,
             model_name=self._settings.llm_article_card_model,
+            text_max_chars=self._settings.article_card_text_max_chars,
         )
 
     def _create_case_resolution_handler(self) -> JobHandler:
@@ -129,6 +142,8 @@ class _LazyJobHandlers(Mapping[str, JobHandler]):
             self._get_vector_index(),
             model_name=self._settings.llm_case_resolution_model,
             candidate_limit=self._settings.case_resolution_candidate_limit,
+            link_audit_card_limit=self._settings.case_link_audit_card_limit,
+            representative_title_limit=(self._settings.case_resolution_representative_title_limit),
         )
 
     def _create_entity_resolution_handler(self) -> JobHandler:
@@ -155,6 +170,7 @@ class _LazyJobHandlers(Mapping[str, JobHandler]):
             self._runner,
             self._get_vector_index(),
             model_name=self._settings.llm_case_copy_update_model,
+            card_limit=self._settings.case_copy_card_limit,
         )
 
     def _create_case_coherence_audit_handler(self) -> JobHandler:
@@ -165,6 +181,7 @@ class _LazyJobHandlers(Mapping[str, JobHandler]):
             job_store=self._job_store,
             model_name=self._settings.llm_case_coherence_audit_model,
             card_batch_size=self._settings.case_audit_card_batch_size,
+            min_card_batch_size=self._settings.case_audit_min_card_batch_size,
         )
 
     def _create_case_public_interest_audit_handler(self) -> JobHandler:
@@ -174,6 +191,7 @@ class _LazyJobHandlers(Mapping[str, JobHandler]):
             self._get_vector_index(),
             self._job_store,
             model_name=self._settings.llm_case_public_interest_audit_model,
+            card_limit=self._settings.case_review_card_limit,
         )
 
     def _create_case_duplicate_audit_handler(self) -> JobHandler:
@@ -183,6 +201,7 @@ class _LazyJobHandlers(Mapping[str, JobHandler]):
             self._get_vector_index(),
             self._job_store,
             model_name=self._settings.llm_case_duplicate_audit_model,
+            card_limit=self._settings.case_review_card_limit,
         )
 
 

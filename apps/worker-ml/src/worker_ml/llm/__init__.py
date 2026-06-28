@@ -2,6 +2,7 @@
 
 from worker_ml.llm.contracts import (
     ArticleCardOutput,
+    ArticleGateOutput,
     CaseCopyUpdateOutput,
     CaseResolutionOutput,
     EntityResolutionOutput,
@@ -14,6 +15,7 @@ from worker_ml.llm.runs import LlmRunStore
 
 __all__ = [
     "ArticleCardOutput",
+    "ArticleGateOutput",
     "CaseCopyUpdateOutput",
     "CaseResolutionOutput",
     "EntityResolutionOutput",

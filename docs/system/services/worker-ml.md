@@ -35,7 +35,9 @@ Planned responsibilities:
 - preserve negative classifier decisions for future contextual reprocessing
   when a known case/entity match or newer classifier version justifies revisiting
   skipped articles;
-- create provisional Ukrainian article cards with Pydantic-validated LLM JSON;
+- run a Second-Layer Relevance Gate for classifier-positive articles;
+- create provisional Ukrainian article cards for accepted gate decisions with
+  Pydantic-validated LLM JSON;
 - embed article, case, entity, and event cards;
 - query Qdrant case, entity, and event collections;
 - resolve article-case relationships;
@@ -78,11 +80,11 @@ cleared Case assignments, and a Ukrainian rejection signal. Persistence keeps
 the same candidate guards as a defensive boundary.
 
 All runtime LLM traffic goes through the LiteLLM proxy. `worker-ml` requests
-logical model aliases (`shkandal-article-card`, `shkandal-case-resolution`,
-`shkandal-entity-resolution`, `shkandal-event-resolution`, and
-`shkandal-repair`) through the proxy's OpenAI-compatible endpoint. Provider
-routing, provider credentials, throttling, and fallback policy belong to the
-proxy configuration, not to `worker-ml`.
+logical model aliases (`shkandal-article-gate`, `shkandal-article-card`,
+`shkandal-case-resolution`, `shkandal-entity-resolution`,
+`shkandal-event-resolution`, and `shkandal-repair`) through the proxy's
+OpenAI-compatible endpoint. Provider routing, provider credentials, throttling,
+and fallback policy belong to the proxy configuration, not to `worker-ml`.
 Pending runs and failures without a provider response keep
 `llm_runs.model_name` null. Completed calls store the model identifier returned
 by the provider rather than the requested `shkandal-*` routing alias. If a
@@ -96,6 +98,18 @@ method. When enabled, task chains ask LangChain/OpenAI for the task Pydantic
 contract directly and the runner still applies deterministic normalization and
 provenance handling to the returned object.
 
+LLM requests use explicit prompt budgets instead of relying on provider
+defaults. `llm_max_output_tokens` caps completion size for every task, and
+payload builders record `prompt_size_chars` plus original/included evidence
+counts in `llm_runs.metadata`. Evidence that can grow with article or Case
+history is selected deterministically: article text is capped, Case-copy and
+review audits use lifecycle samples, and link audits use compact first/latest
+Case evidence rather than the whole linked-article history.
+The tracked `apps/worker-ml/config.yaml` exposes these operational budgets,
+including article-card text length, Case-link audit card count, Case review and
+copy card counts, Case audit batch size and minimum batch floor, and the
+representative title count attached to retrieved Case candidates.
+
 When HTTP `429` still reaches the worker after LiteLLM routing, the
 worker persists a shared LLM cooldown, defers the rejected job without consuming
 a job attempt, and ends the current pass. Later scheduled passes exit before
@@ -103,18 +117,21 @@ model loading or job claiming until the cooldown expires. The worker honors
 usable `Retry-After` values. A first ambiguous `429` creates a five-minute
 cooldown; a second within 15 minutes infers a one-hour cooldown. Other API
 errors and invalid output remain per-job failures, and each LLM request has a
-five-minute timeout.
+five-minute timeout. Transient dependency and mutation-lock deferrals use
+`transient_retry_delay_min_seconds` as their minimum retry delay, with polling
+intervals able to stretch dependency retries when they are longer.
 
 The current implementation supports a systemd-scheduled bounded pass that
 creates idempotent `classify_article` jobs for articles missing
 `article_relevance` and processes one configured batch. Relevant classifier
-results enqueue `create_article_card`; the worker sends compact article evidence
-through the `article_card` prompt, validates `ArticleCardOutput`, and stores the
-result in `article_cards` with `llm_runs` provenance. Article text sent to the
-LLM is capped at 20,000 characters. The table stores an indexed
-`is_case_candidate` column so later resolution stages can select only trackable
-cases; the gate is omitted from `card_json` to avoid duplicating it. An explicit
-continuous polling mode remains available for direct use. It also includes an
+results enqueue `gate_article`; accepted gate decisions are stored in
+`article_gate_decisions` and enqueue `create_article_card`. Rejected gate
+decisions stop before rich card extraction. The worker sends compact article
+evidence through the `article_gate` and `article_card` prompts, validates
+`ArticleGateOutput` and `ArticleCardOutput`, and stores `llm_runs` provenance.
+Article text sent to the LLM is capped by `article_card_text_max_chars`,
+defaulting to 20,000 characters. An explicit continuous polling mode remains
+available for direct use. It also includes an
 embedding service and vector-index integration for future card resolution jobs.
 
 The article-card prompt considers only the main article and excludes related
@@ -128,14 +145,14 @@ future developments; importance alone is insufficient. Explainers, statistics,
 PR, human-interest stories, routine legislation, and routine war chronology
 remain non-cases. Assessments, interviews, columns, and expert discussions may
 be case material when they add substantial context to a named trackable process
-or conflict. Case candidates have a main event, one to three events, up to eight
-central entities, and up to eight case-signature terms. Non-case cards retain
-only the cleaned title, summary, and a fixed noise reason; their events,
-entities, and signature terms are empty.
+or conflict. Article cards have a cleaned title, summary, main event, one to
+three events, up to eight central entities, and up to eight case-signature
+terms.
 
 Case, Entity, and Event resolution handlers load cards through the
-case-candidate gate. A stored non-case card remains available for inspection but
-does not create provisional cases, events, or entities downstream.
+case-candidate gate. Rejected gate decisions remain inspectable through
+`article_gate_decisions` and `llm_runs`, but they do not create article cards,
+provisional cases, events, or entities downstream.
 
 Case resolution returns an explicit `resolved` or `rejected` outcome with a
 Ukrainian decision reason. A resolved first-pass output must link at least one
@@ -148,6 +165,9 @@ links survive and no new Case remains, the final result is rewritten to
 `llm_runs`, and enqueue no Entity or Event jobs. After every new
 article-case link, a unique case-scoped job regenerates summary copy and
 reviews whether the stable title materially needs replacement.
+The second-pass `case_link_audit` receives at most
+`case_link_audit_card_limit` compact linked Article Cards, preserving earliest
+and latest evidence and recording whether evidence was truncated.
 
 Resolved Case output enqueues separate article-scoped Entity and Event jobs.
 Each stage retrieves candidates independently for every provisional item, then
@@ -158,9 +178,11 @@ Case resolution retrieves up to `case_resolution_candidate_limit` Case
 candidates per article. Entity and Event resolution retrieve up to
 `entity_resolution_candidate_limit` and `event_resolution_candidate_limit`
 candidates per provisional item. The tracked `config.yaml` defaults preserve
-the current limits of 12 Cases, 8 Entities, and 8 Events. LLM run metadata
-records the actual candidate counts returned after vector retrieval and
-PostgreSQL filtering.
+the current limits of 12 Cases, 8 Entities, and 8 Events, plus 8
+representative Article Card titles per retrieved Case. LLM run metadata records
+the actual candidate counts returned after vector retrieval and PostgreSQL
+filtering. Identity resolution also records provisional item counts and prompt
+size for budget inspection.
 
 Use the read-only connectivity report to inspect how many case-candidate
 articles completed Case resolution but still have no `case_articles` link:
@@ -172,7 +194,8 @@ uv run python -m worker_ml.scripts.case_resolution_connectivity_report --example
 
 The report counts succeeded `resolve_article_cases` jobs, linked articles,
 unconnected articles after succeeded resolution, failed jobs, unfinished jobs,
-and recent unconnected examples for audit.
+and recent unconnected examples for audit. Its default example count comes from
+`case_resolution_connectivity_example_limit`; `--example-limit` overrides it.
 
 To reprocess historical case-candidate articles that likely fell through after
 all provisional links were dropped by `case_link_audit`, use the dry-run reset
@@ -194,9 +217,11 @@ article's provenance and materialized Case links without deleting global
 identity rows.
 
 After an article-card prompt or contract change, inspect and explicitly apply a
-full regeneration. Apply mode refuses to run while any article-card job is
-running, deletes current cards, and resets or creates card jobs for all
-classifier-positive articles while preserving historical `llm_runs`:
+card-only regeneration. Apply mode refuses to run while any article-card job is
+running, deletes current cards, and resets or creates card jobs for accepted
+gate decisions while preserving historical `llm_runs`. It does not rerun the
+gate. Its default job attempts and upsert chunk size come from
+`job_max_attempts` and `article_card_reprocess_job_upsert_batch_size`:
 
 ```bash
 uv run python -m worker_ml.scripts.reprocess_article_cards
@@ -219,11 +244,12 @@ python -m worker_ml.main --loop
 ```
 
 Use repeatable `--job-type` flags to run only selected stages. Enabled
-classification and article-card stages discover their own missing work before
-claiming jobs. Downstream jobs created by a selected stage remain queued when
-their job type is not selected:
+classification, gate, and article-card stages discover their own missing work
+before claiming jobs. Downstream jobs created by a selected stage remain queued
+when their job type is not selected:
 
 ```bash
+python -m worker_ml.main --job-type gate_article
 python -m worker_ml.main --job-type create_article_card
 python -m worker_ml.main --loop --job-type create_article_card
 python -m worker_ml.main --backfill --job-type create_article_card
@@ -255,8 +281,8 @@ successful domain output.
 
 On servers, `shkandal-ml-worker.timer` starts a one-shot pass five minutes after
 the previous pass becomes inactive. `worker-ml` continues to depend on the
-Compose `llm-proxy` because article-card and resolution stages use its logical
-model aliases.
+Compose `llm-proxy` because gate, article-card, and resolution stages use its
+logical model aliases.
 
 Local model artifacts live under `artifacts/models/` in the repository working
 tree. Binary artifacts are ignored by Git and tracked by DVC; small manifests
@@ -285,9 +311,9 @@ are separate pipeline stages; Case, Entity, and Event resolution are implemented
 non-retrieval jobs do not require the local embedding artifact directory to be
 present at process start.
 
-Each pass rotates through pipeline-priority order: article-card creation,
-Case-copy update, Case resolution, Entity resolution, Event resolution, then
-classification. The rotation preserves that order without allowing an
+Each pass rotates through pipeline-priority order: gate decisions, article-card
+creation, Case-copy update, Case resolution, Entity resolution, Event
+resolution, then classification. The rotation preserves that order without allowing an
 earlier-stage backlog to starve later-stage work. Up to four jobs run
 concurrently by default.
 Case resolution and copy updates share one serialized mutation namespace, while
@@ -370,6 +396,8 @@ coherence job succeeded; `--apply` requests a fresh job revision for that
 selection. `worker_ml.scripts.enqueue_case_audits --rerun-public-interest` does the
 same for active Case public-interest audits regardless of the prior result, so
 prompt or contract tightening can be backfilled across the current active set.
+Without a `--limit`, manual due-audit enqueueing uses
+`case_audit_manual_default_limit`.
 Public-interest audits permanently hide routine incidents, isolated headlines,
 and broad topic umbrellas while preserving their complete internal dossiers.
 Routine `ДТП`, domestic violence, child abuse, and other local crime stories
