@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 from uuid import UUID
 
 from shkandal_database.config import DatabaseConfig
-from shkandal_database.models import ArticleCard, CaseArticle, Job, LlmRun
+from shkandal_database.models import ArticleCard, ArticleGateDecision, CaseArticle, Job, LlmRun
 from shkandal_database.session import create_async_engine_from_config, create_async_sessionmaker
 from sqlalchemy import Text, cast, exists, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -57,11 +57,12 @@ async def reset_unconnected_case_resolution_jobs(
         query = (
             select(Job.id, Job.article_id)
             .join(ArticleCard, ArticleCard.article_id == Job.article_id)
+            .join(ArticleGateDecision, ArticleGateDecision.article_id == Job.article_id)
             .where(
                 Job.job_type == RESOLVE_ARTICLE_CASES_JOB,
                 Job.status == "succeeded",
                 Job.article_id.is_not(None),
-                ArticleCard.is_case_candidate.is_(True),
+                ArticleGateDecision.is_case_candidate.is_(True),
                 ~exists().where(CaseArticle.article_id == Job.article_id).correlate(Job),
                 exists()
                 .where(

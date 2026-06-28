@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 from worker_ml.llm.contracts import (
     ArticleCardOutput,
+    ArticleGateOutput,
     CaseCoherenceAuditOutput,
     CaseDuplicateAuditOutput,
     CaseLinkAuditOutput,
@@ -275,14 +276,83 @@ def test_case_link_audit_rejects_drop_without_disconnect_basis() -> None:
         )
 
 
+def test_article_gate_contract_accepts_candidate_decision() -> None:
+    output = ArticleGateOutput.model_validate(
+        {
+            "case_diagnosis": article_case_diagnosis(),
+            "noise_reason": None,
+            "case_decision_reason_uk": "Матеріал описує конкретну закупівельну справу.",
+            "is_case_candidate": True,
+        }
+    )
+
+    assert output.is_case_candidate is True
+
+
+@pytest.mark.parametrize(
+    "noise_reason",
+    [
+        "culture",
+        "diplomacy",
+        "policy_law",
+        "routine_regulatory",
+        "routine_crime",
+        "foreign_no_ukraine_nexus",
+    ],
+)
+def test_article_gate_contract_accepts_rejected_decision(noise_reason: str) -> None:
+    output = ArticleGateOutput.model_validate(
+        {
+            "case_diagnosis": article_case_diagnosis(
+                ukraine_nexus_uk=None,
+                concrete_story_core_uk=None,
+                public_accountability_anchor_uk=None,
+                continuation_potential_uk=None,
+                noise_signals_uk=["Культурний матеріал без справи."],
+            ),
+            "noise_reason": noise_reason,
+            "case_decision_reason_uk": "Матеріал не описує окрему справу.",
+            "is_case_candidate": False,
+        }
+    )
+
+    assert output.noise_reason == noise_reason
+
+
+def test_article_gate_contract_rejects_candidate_without_ukraine_nexus() -> None:
+    with pytest.raises(ValidationError, match="Ukraine nexus"):
+        ArticleGateOutput.model_validate(
+            {
+                "case_diagnosis": article_case_diagnosis(ukraine_nexus_uk=None),
+                "noise_reason": None,
+                "case_decision_reason_uk": "Матеріал описує справу.",
+                "is_case_candidate": True,
+            }
+        )
+
+
+def test_article_gate_contract_rejects_rejection_without_noise_reason() -> None:
+    with pytest.raises(ValidationError, match="noise reason"):
+        ArticleGateOutput.model_validate(
+            {
+                "case_diagnosis": article_case_diagnosis(
+                    ukraine_nexus_uk=None,
+                    concrete_story_core_uk=None,
+                    public_accountability_anchor_uk=None,
+                    continuation_potential_uk=None,
+                ),
+                "noise_reason": None,
+                "case_decision_reason_uk": "Матеріал не описує справу.",
+                "is_case_candidate": False,
+            }
+        )
+
+
 def test_article_card_contract_accepts_representative_json() -> None:
     output = ArticleCardOutput.model_validate(
         {
             "title_uk": "Справа про закупівлі у міській раді",
             "summary_uk": "Стаття описує підозру щодо закупівель.",
-            "case_diagnosis": article_case_diagnosis(),
-            "is_case_candidate": True,
-            "noise_reason": None,
             "main_event_title_uk": "НАБУ повідомило про підозру",
             "entities": [
                 {
@@ -312,47 +382,9 @@ def test_article_card_contract_accepts_representative_json() -> None:
 
 
 @pytest.mark.parametrize(
-    "noise_reason",
-    [
-        "culture",
-        "diplomacy",
-        "policy_law",
-        "routine_regulatory",
-        "routine_crime",
-        "foreign_no_ukraine_nexus",
-    ],
-)
-def test_article_card_contract_accepts_non_case_card_without_case_signals(
-    noise_reason: str,
-) -> None:
-    output = ArticleCardOutput.model_validate(
-        {
-            "title_uk": "Огляд культурної виставки",
-            "summary_uk": "Матеріал розповідає про мистецьку виставку.",
-            "case_diagnosis": article_case_diagnosis(
-                ukraine_nexus_uk=None,
-                concrete_story_core_uk=None,
-                public_accountability_anchor_uk=None,
-                continuation_potential_uk=None,
-                noise_signals_uk=["Культурний матеріал без справи."],
-            ),
-            "is_case_candidate": False,
-            "noise_reason": noise_reason,
-            "main_event_title_uk": None,
-            "entities": [],
-            "events": [],
-            "case_signature_terms": [],
-        }
-    )
-
-    assert output.noise_reason == noise_reason
-
-
-@pytest.mark.parametrize(
     "changes",
     [
-        {"noise_reason": "culture"},
-        {"main_event_title_uk": None},
+        {"main_event_title_uk": ""},
         {"events": []},
         {"case_signature_terms": []},
         {"events": [{"title_uk": "Подія", "description_uk": "Опис"}] * 4},
@@ -368,13 +400,10 @@ def test_article_card_contract_accepts_non_case_card_without_case_signals(
         },
     ],
 )
-def test_article_card_contract_rejects_invalid_case_shape(changes: dict[str, object]) -> None:
+def test_article_card_contract_rejects_invalid_shape(changes: dict[str, object]) -> None:
     payload: dict[str, object] = {
         "title_uk": "Справа",
         "summary_uk": "Опис справи.",
-        "case_diagnosis": article_case_diagnosis(),
-        "is_case_candidate": True,
-        "noise_reason": None,
         "main_event_title_uk": "НБУ оштрафував банк",
         "entities": [],
         "events": [
@@ -389,52 +418,6 @@ def test_article_card_contract_rejects_invalid_case_shape(changes: dict[str, obj
 
     with pytest.raises(ValidationError):
         ArticleCardOutput.model_validate(payload)
-
-
-def test_article_card_contract_rejects_case_signals_for_non_case_card() -> None:
-    with pytest.raises(ValidationError):
-        ArticleCardOutput.model_validate(
-            {
-                "title_uk": "Рейтинг",
-                "summary_uk": "Матеріал містить рейтинг.",
-                "case_diagnosis": article_case_diagnosis(
-                    ukraine_nexus_uk=None,
-                    concrete_story_core_uk=None,
-                    public_accountability_anchor_uk=None,
-                    continuation_potential_uk=None,
-                    noise_signals_uk=["Рейтинг без конкретної справи."],
-                ),
-                "is_case_candidate": False,
-                "noise_reason": "ranking",
-                "main_event_title_uk": None,
-                "entities": [],
-                "events": [],
-                "case_signature_terms": ["рейтинг"],
-            }
-        )
-
-
-def test_article_card_contract_rejects_case_candidate_without_ukraine_nexus() -> None:
-    with pytest.raises(ValidationError, match="Ukraine nexus"):
-        ArticleCardOutput.model_validate(
-            {
-                "title_uk": "Справа",
-                "summary_uk": "Опис справи.",
-                "case_diagnosis": article_case_diagnosis(ukraine_nexus_uk=None),
-                "is_case_candidate": True,
-                "noise_reason": None,
-                "main_event_title_uk": "Суд ухвалив рішення",
-                "entities": [],
-                "events": [
-                    {
-                        "provisional_ref": "event_core",
-                        "title_uk": "Суд ухвалив рішення",
-                        "description_uk": "Суд розглянув справу.",
-                    }
-                ],
-                "case_signature_terms": ["суд", "рішення"],
-            }
-        )
 
 
 @pytest.mark.parametrize(
@@ -828,9 +811,6 @@ def test_article_card_contract_rejects_inconsistent_event_dates(
             {
                 "title_uk": "Справа",
                 "summary_uk": "Опис справи.",
-                "case_diagnosis": article_case_diagnosis(),
-                "is_case_candidate": True,
-                "noise_reason": None,
                 "main_event_title_uk": "Суд ухвалив рішення",
                 "entities": [],
                 "events": [

@@ -3,6 +3,7 @@
 from worker_ml.llm.contracts.articles import (
     ArticleCardOutput,
     ArticleCaseDiagnosis,
+    ArticleGateOutput,
     ProvisionalEntity,
     ProvisionalEvent,
 )
@@ -46,6 +47,7 @@ from worker_ml.llm.contracts.types import (
 __all__ = [
     "ArticleCardOutput",
     "ArticleCaseDiagnosis",
+    "ArticleGateOutput",
     "CaseAuditDetachedArticle",
     "CaseAuditStory",
     "CaseCandidate",

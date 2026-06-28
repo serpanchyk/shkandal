@@ -171,7 +171,6 @@ async def test_case_link_audit_uses_bounded_compact_case_evidence() -> None:
         article_id=article.id,
         title_uk="Поточна стаття",
         summary_uk="Короткий опис.",
-        is_case_candidate=True,
         card_json={"entities": [{"name_uk": "Зайве поле"}]},
     )
     case = Case(
@@ -264,7 +263,6 @@ async def test_handler_stops_after_explicit_case_rejection() -> None:
         article_id=article.id,
         title_uk="Заголовок",
         summary_uk="Короткий опис.",
-        is_case_candidate=True,
         card_json={},
     )
     session = MagicMock()
@@ -354,7 +352,6 @@ async def test_handler_runs_new_case_fallback_after_all_existing_links_drop() ->
         article_id=article.id,
         title_uk="Заголовок",
         summary_uk="Короткий опис.",
-        is_case_candidate=True,
         card_json={"case_signature_terms": ["закупівля"]},
     )
     candidate_case = Case(
@@ -482,7 +479,6 @@ async def test_handler_does_not_persist_or_enqueue_when_dropped_link_fallback_re
         article_id=article.id,
         title_uk="Заголовок",
         summary_uk="Короткий опис.",
-        is_case_candidate=True,
         card_json={},
     )
     candidate_case = Case(
@@ -580,7 +576,6 @@ async def test_case_candidate_limit_is_forwarded_to_vector_search() -> None:
         article_id=uuid4(),
         title_uk="Заголовок",
         summary_uk="Короткий опис.",
-        is_case_candidate=True,
         card_json={},
     )
 
@@ -684,7 +679,6 @@ async def test_link_recheck_keeps_only_connecting_existing_cases() -> None:
         article_id=article.id,
         title_uk="Заголовок",
         summary_uk="Короткий опис.",
-        is_case_candidate=True,
         card_json={},
     )
     keep_case = Case(
@@ -803,7 +797,6 @@ async def test_link_recheck_turns_resolution_into_rejection_when_all_existing_ca
         article_id=article.id,
         title_uk="Заголовок",
         summary_uk="Короткий опис.",
-        is_case_candidate=True,
         card_json={},
     )
     case = Case(
@@ -906,7 +899,6 @@ async def test_link_recheck_does_not_trigger_fallback_when_original_output_has_n
         article_id=article.id,
         title_uk="Заголовок",
         summary_uk="Короткий опис.",
-        is_case_candidate=True,
         card_json={},
     )
     case = Case(
@@ -993,7 +985,6 @@ async def test_dropped_link_fallback_rejects_existing_links_defensively() -> Non
         article_id=article.id,
         title_uk="Заголовок",
         summary_uk="Короткий опис.",
-        is_case_candidate=True,
         card_json={},
     )
     existing_id = uuid4()

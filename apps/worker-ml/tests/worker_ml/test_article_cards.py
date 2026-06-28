@@ -75,14 +75,6 @@ async def test_handler_creates_article_card_from_valid_llm_output() -> None:
         {
             "title_uk": "Картка",
             "summary_uk": "Короткий опис",
-            "case_diagnosis": {
-                "ukraine_nexus_uk": "Подія стосується українського регулятора.",
-                "concrete_story_core_uk": "НБУ оштрафував банк у конкретній справі.",
-                "public_accountability_anchor_uk": "Йдеться про дії державного регулятора.",
-                "continuation_potential_uk": "Можливі подальші рішення або оскарження.",
-                "noise_signals_uk": [],
-            },
-            "is_case_candidate": True,
             "main_event_title_uk": "НБУ оштрафував банк",
             "entities": [],
             "events": [
@@ -124,63 +116,32 @@ async def test_handler_creates_article_card_from_valid_llm_output() -> None:
     assert params["llm_run_id"] == run_id
     assert params["title_uk"] == "Картка"
     assert params["summary_uk"] == "Короткий опис"
-    assert params["is_case_candidate"] is True
-    assert params["card_json"] == output.model_dump(
-        mode="json",
-        exclude={"is_case_candidate"},
-    )
+    assert params["card_json"] == output.model_dump(mode="json")
 
 
 @pytest.mark.asyncio
-async def test_handler_persists_non_case_card_without_case_signals() -> None:
+async def test_handler_does_not_create_card_without_accepted_gate() -> None:
     article, source = _article_and_source()
     read_session = MagicMock()
     read_result = MagicMock()
-    read_result.one_or_none.return_value = (article, source, True, None)
+    read_result.one_or_none.return_value = (article, source, False, None)
     read_session.execute = AsyncMock(return_value=read_result)
-    write_session = MagicMock()
-    write_session.commit = AsyncMock()
-    write_session.rollback = AsyncMock()
-    write_session.execute = AsyncMock()
-    session_factory = Mock(
-        side_effect=[_session_context(read_session), _session_context(write_session)]
-    )
-    output = ArticleCardOutput.model_validate(
-        {
-            "title_uk": "Словаччина підтримала переговори з ЄС",
-            "summary_uk": "Словаччина заявила про підтримку переговорів.",
-            "case_diagnosis": {
-                "ukraine_nexus_uk": None,
-                "concrete_story_core_uk": None,
-                "public_accountability_anchor_uk": None,
-                "continuation_potential_uk": None,
-                "noise_signals_uk": ["Дипломатична новина без окремої справи Shkandal."],
-            },
-            "is_case_candidate": False,
-            "noise_reason": "diplomacy",
-        }
-    )
+    session_factory = Mock(return_value=_session_context(read_session))
     runner = Mock(spec=LlmTaskRunner)
-    runner.run_with_provenance = AsyncMock(
-        return_value=LlmTaskResult(output=output, run_id=uuid4())
-    )
+    runner.run_with_provenance = AsyncMock()
 
-    await ArticleCardJobHandler(
+    result = await ArticleCardJobHandler(
         session_factory,
         runner,
         model_name="shkandal-article-card",
     ).handle(_job(article))
 
-    statement = write_session.execute.await_args.args[0]
-    params = statement.compile().params
-    assert params["is_case_candidate"] is False
-    assert params["card_json"]["entities"] == []
-    assert params["card_json"]["events"] == []
-    assert params["card_json"]["case_signature_terms"] == []
+    assert result is None
+    runner.run_with_provenance.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_case_candidate_gate_filters_on_persisted_column() -> None:
+async def test_case_candidate_gate_filters_on_gate_decision() -> None:
     article, _ = _article_and_source()
     expected_card = Mock()
     session = MagicMock()
@@ -190,11 +151,11 @@ async def test_case_candidate_gate_filters_on_persisted_column() -> None:
 
     assert result is expected_card
     statement = session.scalar.await_args.args[0]
-    assert "article_cards.is_case_candidate IS true" in str(statement)
+    assert "article_gate_decisions.is_case_candidate IS true" in str(statement)
 
 
 @pytest.mark.asyncio
-async def test_handler_does_not_call_llm_for_irrelevant_article() -> None:
+async def test_handler_does_not_call_llm_without_gate_decision() -> None:
     article, source = _article_and_source()
     session = MagicMock()
     result = MagicMock()

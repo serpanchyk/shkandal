@@ -32,6 +32,7 @@ class MlConfig(BaseServiceConfig):
     llm_api_base: str = "http://llm-proxy:4000/v1"
     llm_api_key: str = "replace-me"
     llm_request_timeout_seconds: int = 300
+    llm_article_gate_model: str = "shkandal-article-gate"
     llm_article_card_model: str = "shkandal-article-card"
     llm_case_resolution_model: str = "shkandal-case-resolution"
     llm_entity_resolution_model: str = "shkandal-entity-resolution"

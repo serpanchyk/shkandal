@@ -4,6 +4,7 @@ from typing import Any
 
 from worker_ml.llm.contracts import (
     ArticleCardOutput,
+    ArticleGateOutput,
     CaseCoherenceAuditOutput,
     CaseCopyUpdateOutput,
     CaseDuplicateAuditOutput,
@@ -17,6 +18,7 @@ from worker_ml.llm.schema import prompt_schema, runtime_schema_json
 
 LLM_OUTPUT_MODELS = (
     ArticleCardOutput,
+    ArticleGateOutput,
     CaseResolutionOutput,
     CaseLinkAuditOutput,
     EntityResolutionOutput,
@@ -42,7 +44,7 @@ def test_runtime_repair_schema_retains_categorical_constraints() -> None:
 
 
 def test_prompt_schema_places_decision_basis_before_article_choice() -> None:
-    properties = list(prompt_schema(ArticleCardOutput)["properties"])
+    properties = list(prompt_schema(ArticleGateOutput)["properties"])
 
     assert properties.index("case_diagnosis") < properties.index("case_decision_reason_uk")
     assert properties[-1] == "is_case_candidate"

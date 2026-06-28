@@ -33,6 +33,7 @@ async def testrun_cycle_enqueues_and_processes_bounded_batch() -> None:
             existing_jobs=6,
         )
     )
+    planner.enqueue_missing_article_gate_jobs = AsyncMock(return_value=EnqueueStats(0, 0, 0, 0, 0))
     planner.enqueue_missing_article_card_jobs = AsyncMock(return_value=EnqueueStats(0, 0, 0, 0, 0))
     claimed_jobs = [
         SimpleNamespace(
@@ -685,6 +686,7 @@ def test_no_args_dispatches_one_cycle(monkeypatch: pytest.MonkeyPatch) -> None:
 
     run_once.assert_awaited_once_with(
         job_types=(
+            "gate_article",
             "create_article_card",
             "update_case_copy",
             "audit_case_coherence",
@@ -707,6 +709,7 @@ def test_loop_flag_dispatches_worker_loop(monkeypatch: pytest.MonkeyPatch) -> No
 
     run_worker.assert_awaited_once_with(
         job_types=(
+            "gate_article",
             "create_article_card",
             "update_case_copy",
             "audit_case_coherence",
@@ -768,6 +771,7 @@ def test_backfill_flag_dispatches_successful_backfill(monkeypatch: pytest.Monkey
 
     run_backfill.assert_awaited_once_with(
         job_types=(
+            "gate_article",
             "create_article_card",
             "update_case_copy",
             "audit_case_coherence",
@@ -1182,6 +1186,7 @@ def test_llm_config_defaults_to_litellm_proxy_aliases() -> None:
 
     assert fields["llm_api_base"].default == "http://llm-proxy:4000/v1"
     assert fields["case_audit_card_batch_size"].default == 20
+    assert fields["llm_article_gate_model"].default == "shkandal-article-gate"
     assert fields["llm_article_card_model"].default == "shkandal-article-card"
     assert fields["llm_case_resolution_model"].default == "shkandal-case-resolution"
     assert fields["llm_entity_resolution_model"].default == "shkandal-entity-resolution"

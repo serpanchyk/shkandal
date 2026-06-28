@@ -20,7 +20,7 @@ def test_key_prompts_require_pre_decision_diagnostics() -> None:
     registry = PromptRegistry()
 
     for name in (
-        "article_card",
+        "article_gate",
         "case_resolution",
         "case_creation_after_dropped_links",
         "case_link_audit",
@@ -41,7 +41,7 @@ def test_prompts_no_longer_use_old_reason_then_choose_pattern() -> None:
     legacy_pattern = re.compile(r"спочатку.+reason_uk.+потім.+обери", re.IGNORECASE | re.DOTALL)
 
     for name in (
-        "article_card",
+        "article_gate",
         "case_link_audit",
         "case_coherence_audit",
         "case_duplicate_audit",

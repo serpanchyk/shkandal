@@ -19,6 +19,7 @@ article_card_text_max_chars: 20000
 llm_max_output_tokens: 4096
 llm_request_timeout_seconds: 300
 llm_api_base: http://llm-proxy:4000/v1
+llm_article_gate_model: shkandal-article-gate
 llm_article_card_model: shkandal-article-card
 llm_case_resolution_model: shkandal-case-resolution
 llm_entity_resolution_model: shkandal-entity-resolution

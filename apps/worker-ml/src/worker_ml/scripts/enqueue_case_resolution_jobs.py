@@ -10,7 +10,7 @@ from itertools import islice
 
 from shkandal_database.config import DatabaseConfig
 from shkandal_database.jobs import ArticleJobStore
-from shkandal_database.models import ArticleCard, Job
+from shkandal_database.models import ArticleCard, ArticleGateDecision, Job
 from shkandal_database.session import create_async_engine_from_config, create_async_sessionmaker
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -73,7 +73,8 @@ async def enqueue_case_resolution_jobs(
     async with session_factory() as session:
         query = (
             select(ArticleCard.article_id)
-            .where(ArticleCard.is_case_candidate.is_(True))
+            .join(ArticleGateDecision, ArticleGateDecision.article_id == ArticleCard.article_id)
+            .where(ArticleGateDecision.is_case_candidate.is_(True))
             .order_by(ArticleCard.created_at.asc(), ArticleCard.article_id.asc())
         )
 

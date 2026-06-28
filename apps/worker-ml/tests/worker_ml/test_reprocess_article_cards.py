@@ -156,7 +156,7 @@ async def test_reprocess_article_cards_targets_latest_existing_cards() -> None:
     )
 
     assert stats.cards_to_delete == 2
-    assert stats.relevant_articles == 2
+    assert stats.accepted_gate_articles == 2
     assert stats.jobs_to_reset == 2
     delete_statement = session.execute.await_args_list[0].args[0]
     delete_params = delete_statement.compile().params

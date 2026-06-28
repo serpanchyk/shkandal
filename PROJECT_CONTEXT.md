@@ -70,15 +70,17 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - Ingestion is not queued as a job in the MVP. After historical backfill, systemd starts a one-shot full-source pass every two hours that persists new articles to PostgreSQL and retries failed fetches up to five attempts.
 - `worker-ml` owns ML job creation. It polls PostgreSQL for articles missing
   `article_relevance`, enqueues idempotent `classify_article` jobs, and processes
-  relevant articles through `create_article_card` into `article_cards` with
-  `llm_runs` provenance. Article cards apply a stricter LLM case-candidate gate;
-  non-case cards retain a summary but do not expose events, entities, or case
-  signature terms. Prompt-facing schemas omit enum constraints and request a
-  concise decision basis before categorical choices; runtime contracts remain
-  strict. Conservative deterministic normalization is recorded as repaired LLM
-  provenance without changing raw provider output, and now truncates only
-  whitelisted bounded diagnosis and decision-summary strings to their runtime
-  max lengths when verbose model wording would otherwise fail validation.
+  relevant articles through `gate_article` into `article_gate_decisions`.
+  Accepted gate decisions enqueue `create_article_card` into `article_cards`
+  with `llm_runs` provenance; rejected gate decisions stop before card
+  extraction. Historical combined article-card decisions are migrated into gate
+  rows without automatic LLM reprocessing. Prompt-facing schemas omit enum
+  constraints and request a concise decision basis before categorical choices;
+  runtime contracts remain strict. Conservative deterministic normalization is
+  recorded as repaired LLM provenance without changing raw provider output, and
+  now truncates only whitelisted bounded diagnosis and decision-summary strings
+  to their runtime max lengths when verbose model wording would otherwise fail
+  validation.
 - Article jobs are gated by durable outputs. Each successful step enqueues the next step only after its output row/link exists; downstream jobs are not pre-enqueued.
 - Case resolution is now two-stage for existing Cases: the first LLM pass
   matches against retrieved Case cards, and each provisional existing-Case link
@@ -97,9 +99,9 @@ review and correction tooling are later quality layers, not blocking MVP stages.
   requested `shkandal-*` LiteLLM routing alias. It remains null when no provider
   response identifies a model; repair model identity is stored in run metadata.
 - `worker-ml` accepts repeatable `--job-type` filters in one-shot, loop, and
-  backfill modes. Enabled classification and article-card stages discover
-  missing durable jobs; filtered backfills drain and report only selected job
-  types while leaving unselected downstream work queued.
+  backfill modes. Enabled classification, gate, and article-card stages
+  discover missing durable jobs; filtered backfills drain and report only
+  selected job types while leaving unselected downstream work queued.
 - Claiming a job increments `attempt_count`; crashes count as attempts. Failed jobs with attempts remaining return to `queued` with `run_after`, and exhausted jobs become `failed`.
 - Qdrant failures remain retryable job failures and include operation,
   collection, and point context where available. Persisted job errors are never

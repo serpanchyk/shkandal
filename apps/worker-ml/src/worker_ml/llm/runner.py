@@ -468,6 +468,7 @@ def model_aliases(settings: MlConfig) -> dict[str, str]:
     """Return logical LiteLLM aliases by task name."""
 
     return {
+        "article_gate": settings.llm_article_gate_model,
         "article_card": settings.llm_article_card_model,
         "case_resolution": settings.llm_case_resolution_model,
         "case_link_audit": settings.llm_case_coherence_audit_model,

@@ -21,6 +21,7 @@ from worker_ml.runtime.planning import (
     AUDIT_CASE_COHERENCE_JOB,
     CLASSIFY_ARTICLE_JOB,
     CREATE_ARTICLE_CARD_JOB,
+    GATE_ARTICLE_JOB,
     JOB_TYPE_SCHEDULE,
     RESOLVE_ARTICLE_CASES_JOB,
     RESOLVE_ARTICLE_ENTITIES_JOB,
@@ -115,6 +116,15 @@ async def run_cycle(
         if CLASSIFY_ARTICLE_JOB in job_types
         else EnqueueStats(0, 0, 0, 0, 0)
     )
+    article_gate_stats = (
+        await planner.enqueue_missing_article_gate_jobs(
+            limit=settings.enqueue_batch_size,
+            max_attempts=settings.job_max_attempts,
+            requeue_failed=requeue_failed,
+        )
+        if GATE_ARTICLE_JOB in job_types
+        else EnqueueStats(0, 0, 0, 0, 0)
+    )
     article_card_stats = (
         await planner.enqueue_missing_article_card_jobs(
             limit=settings.enqueue_batch_size,
@@ -136,6 +146,7 @@ async def run_cycle(
         else EnqueueStats(0, 0, 0, 0, 0)
     )
     _log_enqueue_stats(logger, job_type=CLASSIFY_ARTICLE_JOB, stats=classification_stats)
+    _log_enqueue_stats(logger, job_type=GATE_ARTICLE_JOB, stats=article_gate_stats)
     _log_enqueue_stats(logger, job_type=CREATE_ARTICLE_CARD_JOB, stats=article_card_stats)
 
     executor = _CycleExecutor(
@@ -150,8 +161,10 @@ async def run_cycle(
 
     stats = {
         "scanned_articles": classification_stats.scanned_articles
+        + article_gate_stats.scanned_articles
         + article_card_stats.scanned_articles,
         "ensured_jobs": classification_stats.ensured_jobs
+        + article_gate_stats.ensured_jobs
         + article_card_stats.ensured_jobs
         + audit_stats.ensured_jobs,
         "processed_jobs": processed_jobs,

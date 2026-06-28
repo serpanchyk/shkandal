@@ -6,7 +6,7 @@ from typing import Any, cast
 from uuid import UUID
 
 from shkandal_database.jobs import ArticleJobStore, ClaimedJob
-from shkandal_database.models import Article, ArticleCard, ArticleRelevance, Source
+from shkandal_database.models import Article, ArticleCard, ArticleGateDecision, Source
 from shkandal_database.session import async_session_scope
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
@@ -33,7 +33,12 @@ async def get_case_candidate_card(
         await session.scalar(
             select(ArticleCard).where(
                 ArticleCard.article_id == article_id,
-                ArticleCard.is_case_candidate.is_(True),
+                select(ArticleGateDecision.id)
+                .where(
+                    ArticleGateDecision.article_id == ArticleCard.article_id,
+                    ArticleGateDecision.is_case_candidate.is_(True),
+                )
+                .exists(),
             )
         ),
     )
@@ -65,12 +70,14 @@ class ArticleCardJobHandler:
         async with self._session_factory() as session:
             row = (
                 await session.execute(
-                    select(Article, Source, ArticleRelevance.is_relevant, ArticleCard.id)
-                    .join(Source, Source.id == Article.source_id)
-                    .outerjoin(
-                        ArticleRelevance,
-                        ArticleRelevance.article_id == Article.id,
+                    select(
+                        Article,
+                        Source,
+                        ArticleGateDecision.is_case_candidate,
+                        ArticleCard.id,
                     )
+                    .join(Source, Source.id == Article.source_id)
+                    .outerjoin(ArticleGateDecision, ArticleGateDecision.article_id == Article.id)
                     .outerjoin(ArticleCard, ArticleCard.article_id == Article.id)
                     .where(Article.id == job.article_id)
                 )
@@ -78,8 +85,8 @@ class ArticleCardJobHandler:
 
         if row is None:
             raise ValueError(f"article not found for job {job.id}")
-        article, source, is_relevant, article_card_id = row
-        if not is_relevant or article_card_id is not None:
+        article, source, is_case_candidate, article_card_id = row
+        if not is_case_candidate or article_card_id is not None:
             return None
 
         article_json, budget = build_article_json_with_budget(
@@ -114,15 +121,11 @@ class ArticleCardJobHandler:
                     llm_run_id=result.run_id,
                     title_uk=output.title_uk,
                     summary_uk=output.summary_uk,
-                    is_case_candidate=output.is_case_candidate,
-                    card_json=output.model_dump(
-                        mode="json",
-                        exclude={"is_case_candidate"},
-                    ),
+                    card_json=output.model_dump(mode="json"),
                 )
                 .on_conflict_do_nothing(index_elements=[ArticleCard.article_id])
             )
-        if output.is_case_candidate and self._job_store is not None:
+        if self._job_store is not None:
             await self._job_store.enqueue_article_job(
                 job_type=RESOLVE_ARTICLE_CASES_JOB,
                 article_id=job.article_id,

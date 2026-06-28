@@ -61,8 +61,8 @@ Runtime settings should select model endpoints and secrets through environment
 variables or file secrets, never committed values. `worker-ml` uses
 `LLM_API_BASE`, `LLM_API_KEY`, the five-minute default
 `LLM_REQUEST_TIMEOUT_SECONDS`, and logical model aliases such as
-`LLM_ARTICLE_CARD_MODEL` and `LLM_CASE_COPY_UPDATE_MODEL`; the LiteLLM proxy
-consumes provider credentials such
+`LLM_ARTICLE_GATE_MODEL`, `LLM_ARTICLE_CARD_MODEL`, and
+`LLM_CASE_COPY_UPDATE_MODEL`; the LiteLLM proxy consumes provider credentials such
 as `LAPATONIA_API_KEY`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and
 `AWS_REGION`. The tracked proxy configuration routes every logical alias
 through one shared Lapathoniia deployment with a combined 60 RPM limit and falls

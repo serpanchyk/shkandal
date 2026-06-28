@@ -116,38 +116,11 @@ class ArticleCaseDiagnosis(StrictOutput):
     )
 
 
-class ArticleCardOutput(StrictOutput):
-    """Compact Ukrainian article card generated from one source article."""
+class ArticleGateOutput(StrictOutput):
+    """Second-layer LLM relevance gate decision for one source article."""
 
-    title_uk: str = Field(
-        min_length=1,
-        description="Очищений український заголовок основного матеріалу.",
-    )
-    summary_uk: str = Field(
-        min_length=1,
-        description="Нейтральний фактичний підсумок основного матеріалу у 1-2 реченнях.",
-    )
     case_diagnosis: ArticleCaseDiagnosis = Field(
         description="Коротка структурована діагностика перед рішенням, чи є матеріал справою.",
-    )
-    main_event_title_uk: str | None = Field(
-        default=None,
-        description="Головна конкретна дія справи; null для матеріалу, що не є справою.",
-    )
-    entities: list[ProvisionalEntity] = Field(
-        default_factory=list,
-        max_length=8,
-        description="Лише центральні для основного матеріалу учасники справи.",
-    )
-    events: list[ProvisionalEvent] = Field(
-        default_factory=list,
-        max_length=3,
-        description="Від однієї до трьох конкретних подій основного матеріалу.",
-    )
-    case_signature_terms: list[str] = Field(
-        default_factory=list,
-        max_length=8,
-        description="Специфічні не загальні якорі для кластеризації тієї самої справи.",
     )
     noise_reason: NoiseReason | None = Field(
         default=None,
@@ -163,8 +136,8 @@ class ArticleCardOutput(StrictOutput):
     )
 
     @model_validator(mode="after")
-    def validate_case_candidate_shape(self) -> ArticleCardOutput:
-        """Keep non-case material out of downstream case signals."""
+    def validate_gate_decision_shape(self) -> ArticleGateOutput:
+        """Require gate diagnostics to support the final decision."""
 
         if self.is_case_candidate:
             if self.noise_reason is not None:
@@ -180,24 +153,52 @@ class ArticleCardOutput(StrictOutput):
                 raise ValueError(
                     "case candidates require a public accountability anchor or clear continuation"
                 )
-            if not self.main_event_title_uk:
-                raise ValueError("case candidates require a main event title")
-            if not self.events:
-                raise ValueError("case candidates require at least one event")
-            if not self.case_signature_terms:
-                raise ValueError("case candidates require case signature terms")
-            entity_refs = [entity.provisional_ref for entity in self.entities]
-            event_refs = [event.provisional_ref for event in self.events]
-            if len(entity_refs) != len(set(entity_refs)):
-                raise ValueError("provisional entity refs must be unique")
-            if len(event_refs) != len(set(event_refs)):
-                raise ValueError("provisional event refs must be unique")
             return self
 
         if self.noise_reason is None:
-            raise ValueError("non-case cards require a noise reason")
-        if self.main_event_title_uk is not None:
-            raise ValueError("non-case cards cannot have a main event title")
-        if self.entities or self.events or self.case_signature_terms:
-            raise ValueError("non-case cards cannot contain case signals")
+            raise ValueError("rejected gate decisions require a noise reason")
+        return self
+
+
+class ArticleCardOutput(StrictOutput):
+    """Compact Ukrainian article card generated for an accepted gate decision."""
+
+    title_uk: str = Field(
+        min_length=1,
+        description="Очищений український заголовок основного матеріалу.",
+    )
+    summary_uk: str = Field(
+        min_length=1,
+        description="Нейтральний фактичний підсумок основного матеріалу у 1-2 реченнях.",
+    )
+    main_event_title_uk: str = Field(
+        min_length=1,
+        description="Головна конкретна дія справи.",
+    )
+    entities: list[ProvisionalEntity] = Field(
+        default_factory=list,
+        max_length=8,
+        description="Лише центральні для основного матеріалу учасники справи.",
+    )
+    events: list[ProvisionalEvent] = Field(
+        min_length=1,
+        max_length=3,
+        description="Від однієї до трьох конкретних подій основного матеріалу.",
+    )
+    case_signature_terms: list[str] = Field(
+        min_length=1,
+        max_length=8,
+        description="Специфічні не загальні якорі для кластеризації тієї самої справи.",
+    )
+
+    @model_validator(mode="after")
+    def validate_card_shape(self) -> ArticleCardOutput:
+        """Keep provisional references unique within one card."""
+
+        entity_refs = [entity.provisional_ref for entity in self.entities]
+        event_refs = [event.provisional_ref for event in self.events]
+        if len(entity_refs) != len(set(entity_refs)):
+            raise ValueError("provisional entity refs must be unique")
+        if len(event_refs) != len(set(event_refs)):
+            raise ValueError("provisional event refs must be unique")
         return self

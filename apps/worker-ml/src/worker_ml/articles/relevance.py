@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from worker_ml.runtime.planning import CREATE_ARTICLE_CARD_JOB
+from worker_ml.runtime.planning import GATE_ARTICLE_JOB
 
 POSITIVE_ARTIFACT_LABEL = "assigned"
 NEGATIVE_ARTIFACT_LABEL = "noise"
@@ -157,7 +157,7 @@ class ClassificationJobHandler:
 
         if prediction.is_relevant:
             await self._job_store.enqueue_article_job(
-                job_type=CREATE_ARTICLE_CARD_JOB,
+                job_type=GATE_ARTICLE_JOB,
                 article_id=job.article_id,
                 payload={"article_id": str(job.article_id)},
                 max_attempts=job.max_attempts,

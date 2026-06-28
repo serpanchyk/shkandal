@@ -46,8 +46,8 @@ LLM calls are routed through the LiteLLM proxy service in Compose. The proxy is
 infrastructure for provider access, throttling, and routing; PostgreSQL remains
 the source of truth for run history and generated data.
 Initial job types are expected to cover downstream article processing, such as
-relevance classification, article-card creation, case resolution, entity
-resolution, and event resolution.
+relevance classification, article gating, article-card creation, case
+resolution, entity resolution, and event resolution.
 
 Article jobs form a gated chain. Each job should enqueue the next job only after
 its own durable output exists. `classify_article` succeeds by writing

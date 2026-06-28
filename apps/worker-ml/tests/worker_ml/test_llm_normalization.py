@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 from worker_ml.llm.contracts import (
     ArticleCardOutput,
+    ArticleGateOutput,
     CaseResolutionOutput,
     EntityResolutionOutput,
     EventResolutionOutput,
@@ -20,15 +21,6 @@ def test_normalizes_observed_article_card_contract_failures() -> None:
         output={
             "title_uk": "Справа",
             "summary_uk": "Опис.",
-            "case_diagnosis": {
-                "ukraine_nexus_uk": "Подія стосується українського суду.",
-                "concrete_story_core_uk": "Судове рішення у конкретній справі.",
-                "public_accountability_anchor_uk": "Йдеться про дію державного органу.",
-                "continuation_potential_uk": "Можливе оскарження або наступні етапи.",
-                "noise_signals_uk": [],
-            },
-            "is_case_candidate": True,
-            "noise_reason": "generic_news",
             "main_event_title_uk": "Суд ухвалив рішення",
             "entities": [
                 {
@@ -58,31 +50,21 @@ def test_normalizes_observed_article_card_contract_failures() -> None:
     assert output.entities[0].aliases == []
     assert output.events[0].provisional_ref == "event_1"
     assert output.events[0].event_date_precision == "month"
-    assert output.noise_reason is None
     assert result.actions
 
 
-def test_normalizes_non_case_signals_and_invalid_noise_reason() -> None:
+def test_normalizes_rejected_article_gate_invalid_noise_reason() -> None:
     result = normalize_llm_output(
-        run_type="article_card",
+        run_type="article_gate",
         variables={},
         output={
-            "title_uk": "Новини",
-            "summary_uk": "Огляд новин.",
             "is_case_candidate": False,
             "noise_reason": "other",
-            "main_event_title_uk": "Подія",
-            "entities": [{"name_uk": "Орган"}],
-            "events": [{"title_uk": "Подія"}],
-            "case_signature_terms": ["подія"],
         },
     )
 
-    output = ArticleCardOutput.model_validate(result.output)
+    output = ArticleGateOutput.model_validate(result.output)
     assert output.noise_reason == "generic_news"
-    assert output.entities == []
-    assert output.events == []
-    assert output.case_signature_terms == []
 
 
 def test_resolution_refs_follow_supplied_provisional_inputs_one_to_one() -> None:

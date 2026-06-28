@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from worker_ml.config import MlConfig
 from worker_ml.llm.contracts import (
     ArticleCardOutput,
+    ArticleGateOutput,
     CaseCoherenceAuditOutput,
     CaseCopyUpdateOutput,
     CaseDuplicateAuditOutput,
@@ -40,6 +41,24 @@ from worker_ml.llm.runner import (
 from worker_ml.llm.runs import LlmRunStore
 from worker_ml.llm.tasks import LLM_TASKS
 
+ARTICLE_CARD_PAYLOAD = {
+    "title_uk": "Заголовок",
+    "summary_uk": "Опис",
+    "main_event_title_uk": "Суд ухвалив рішення",
+    "entities": [],
+    "events": [
+        {
+            "provisional_ref": "event_core",
+            "title_uk": "Суд ухвалив рішення",
+            "description_uk": "Суд розглянув справу.",
+            "event_date": None,
+            "event_date_precision": "unknown",
+        }
+    ],
+    "case_signature_terms": ["суд", "рішення"],
+}
+ARTICLE_CARD_JSON = json.dumps(ARTICLE_CARD_PAYLOAD, ensure_ascii=False)
+
 
 @pytest.mark.asyncio
 async def test_runner_returns_valid_output_without_repair() -> None:
@@ -47,13 +66,7 @@ async def test_runner_returns_valid_output_without_repair() -> None:
     cooldown_observer.clear_expired_ambiguous_observation = AsyncMock()
     runner = LlmTaskRunner(
         prompt_registry=PromptRegistry(),
-        task_chains={
-            "article_card": FakeChain(
-                '{"title_uk":"Заголовок","summary_uk":"Опис","is_case_candidate":false,'
-                '"noise_reason":"generic_news","main_event_title_uk":null,"entities":[],'
-                '"events":[],"case_signature_terms":[]}'
-            )
-        },
+        task_chains={"article_card": FakeChain(ARTICLE_CARD_JSON)},
         cooldown_observer=cooldown_observer,
     )
 
@@ -77,13 +90,7 @@ async def test_runner_returns_persisted_run_provenance() -> None:
     runner = LlmTaskRunner(
         prompt_registry=PromptRegistry(),
         run_store=run_store,
-        task_chains={
-            "article_card": FakeChain(
-                '{"title_uk":"Заголовок","summary_uk":"Опис","is_case_candidate":false,'
-                '"noise_reason":"generic_news","main_event_title_uk":null,"entities":[],'
-                '"events":[],"case_signature_terms":[]}'
-            )
-        },
+        task_chains={"article_card": FakeChain(ARTICLE_CARD_JSON)},
     )
 
     result = await runner.run_with_provenance(
@@ -109,12 +116,7 @@ async def test_runner_persists_resolved_model_from_text_response() -> None:
         task_chains={
             "article_card": FakeObjectChain(
                 AIMessage(
-                    content=(
-                        '{"title_uk":"Заголовок","summary_uk":"Опис",'
-                        '"is_case_candidate":false,"noise_reason":"generic_news",'
-                        '"main_event_title_uk":null,"entities":[],"events":[],'
-                        '"case_signature_terms":[]}'
-                    ),
+                    content=ARTICLE_CARD_JSON,
                     response_metadata={"model_name": "openai/MamayLM-Gemma-3-27B-IT-v2.0"},
                 )
             )
@@ -143,19 +145,16 @@ async def test_runner_persists_resolved_model_from_structured_response() -> None
         {
             "title_uk": "Заголовок",
             "summary_uk": "Опис",
-            "case_diagnosis": {
-                "ukraine_nexus_uk": None,
-                "concrete_story_core_uk": None,
-                "public_accountability_anchor_uk": None,
-                "continuation_potential_uk": None,
-                "noise_signals_uk": [],
-            },
-            "is_case_candidate": False,
-            "noise_reason": "generic_news",
-            "main_event_title_uk": None,
+            "main_event_title_uk": "Суд ухвалив рішення",
             "entities": [],
-            "events": [],
-            "case_signature_terms": [],
+            "events": [
+                {
+                    "provisional_ref": "event_core",
+                    "title_uk": "Суд ухвалив рішення",
+                    "description_uk": "Суд розглянув справу.",
+                }
+            ],
+            "case_signature_terms": ["суд", "рішення"],
         }
     )
     runner = LlmTaskRunner(
@@ -250,28 +249,24 @@ async def test_runner_persists_deterministically_normalized_output_as_repaired()
     run_store = Mock(spec=LlmRunStore)
     run_store.create_run = AsyncMock(return_value=run_id)
     run_store.finish_run = AsyncMock()
-    raw_output = (
-        '{"title_uk":"Новини","summary_uk":"Опис","is_case_candidate":false,'
-        '"noise_reason":null,"main_event_title_uk":"Подія","entities":[],'
-        '"events":[],"case_signature_terms":["подія"]}'
-    )
+    raw_output = '{"is_case_candidate":false,"noise_reason":"other"}'
     runner = LlmTaskRunner(
         prompt_registry=PromptRegistry(),
         run_store=run_store,
-        task_chains={"article_card": FakeChain(raw_output)},
+        task_chains={"article_gate": FakeChain(raw_output)},
     )
 
     result = await runner.run_with_provenance(
-        run_type="article_card",
-        model_name="shkandal-article-card",
+        run_type="article_gate",
+        model_name="shkandal-article-gate",
         variables={"article_json": "{}", "schema_json": "{}"},
     )
 
-    assert isinstance(result.output, ArticleCardOutput)
+    assert isinstance(result.output, ArticleGateOutput)
     call = run_store.finish_run.await_args.kwargs
     assert call["status"] == "repaired"
-    assert call["raw_output"]["main_event_title_uk"] == "Подія"
-    assert call["repaired_output"]["main_event_title_uk"] is None
+    assert call["raw_output"]["noise_reason"] == "other"
+    assert call["repaired_output"]["noise_reason"] == "generic_news"
     assert call["metadata"]["normalization_actions"]
 
 
@@ -283,8 +278,10 @@ async def test_runner_repairs_only_unescaped_json_control_characters() -> None:
     run_store.finish_run = AsyncMock()
     raw_output = (
         '{"title_uk":"Заголовок","summary_uk":"Перший рядок\nДругий рядок",'
-        '"is_case_candidate":false,"noise_reason":"generic_news",'
-        '"main_event_title_uk":null,"entities":[],"events":[],"case_signature_terms":[]}'
+        '"main_event_title_uk":"Суд ухвалив рішення","entities":[],'
+        '"events":[{"provisional_ref":"event_core","title_uk":"Суд ухвалив рішення",'
+        '"description_uk":"Суд розглянув справу.","event_date":null,'
+        '"event_date_precision":"unknown"}],"case_signature_terms":["суд","рішення"]}'
     )
     runner = LlmTaskRunner(
         prompt_registry=PromptRegistry(),
@@ -320,8 +317,10 @@ def test_parse_json_response_escapes_only_control_characters_inside_strings() ->
 async def test_runner_accepts_repair_output_with_raw_string_newline() -> None:
     repair_output = (
         '{"title_uk":"Виправлено","summary_uk":"Перший рядок\nДругий рядок",'
-        '"is_case_candidate":false,"noise_reason":"generic_news",'
-        '"main_event_title_uk":null,"entities":[],"events":[],"case_signature_terms":[]}'
+        '"main_event_title_uk":"Суд ухвалив рішення","entities":[],'
+        '"events":[{"provisional_ref":"event_core","title_uk":"Суд ухвалив рішення",'
+        '"description_uk":"Суд розглянув справу.","event_date":null,'
+        '"event_date_precision":"unknown"}],"case_signature_terms":["суд","рішення"]}'
     )
     runner = LlmTaskRunner(
         prompt_registry=PromptRegistry(),
@@ -412,20 +411,7 @@ async def test_runner_persists_non_candidate_entity_link_as_repaired_reject() ->
 async def test_runner_accepts_structured_dict_output_without_text_parsing() -> None:
     runner = LlmTaskRunner(
         prompt_registry=PromptRegistry(),
-        task_chains={
-            "article_card": FakeObjectChain(
-                {
-                    "title_uk": "Заголовок",
-                    "summary_uk": "Опис",
-                    "is_case_candidate": False,
-                    "noise_reason": "generic_news",
-                    "main_event_title_uk": None,
-                    "entities": [],
-                    "events": [],
-                    "case_signature_terms": [],
-                }
-            )
-        },
+        task_chains={"article_card": FakeObjectChain(ARTICLE_CARD_PAYLOAD)},
     )
 
     result = await runner.run(
@@ -601,11 +587,7 @@ async def test_runner_fails_when_repaired_resolution_output_drops_decisions() ->
 
 @pytest.mark.asyncio
 async def test_runner_repairs_invalid_output_once() -> None:
-    repair_chain = FakeChain(
-        '{"title_uk":"Виправлено","summary_uk":"Опис","is_case_candidate":false,'
-        '"noise_reason":"generic_news","main_event_title_uk":null,"entities":[],'
-        '"events":[],"case_signature_terms":[]}'
-    )
+    repair_chain = FakeChain(ARTICLE_CARD_JSON)
     runner = LlmTaskRunner(
         prompt_registry=PromptRegistry(),
         task_chains={"article_card": FakeChain('{"title_uk":"Без обовязкових полів"}')},
@@ -619,7 +601,7 @@ async def test_runner_repairs_invalid_output_once() -> None:
     )
 
     assert isinstance(result, ArticleCardOutput)
-    assert result.title_uk == "Виправлено"
+    assert result.title_uk == "Заголовок"
     assert repair_chain.calls[0]["invalid_output"] == '{"title_uk":"Без обовязкових полів"}'
     assert "article_json" not in repair_chain.calls[0]
     assert '"enum"' in repair_chain.calls[0]["schema_json"]
@@ -763,12 +745,7 @@ async def test_runner_records_primary_and_repair_models_separately() -> None:
         },
         repair_chain=FakeObjectChain(
             AIMessage(
-                content=(
-                    '{"title_uk":"Виправлено","summary_uk":"Опис",'
-                    '"is_case_candidate":false,"noise_reason":"generic_news",'
-                    '"main_event_title_uk":null,"entities":[],"events":[],'
-                    '"case_signature_terms":[]}'
-                ),
+                content=ARTICLE_CARD_JSON,
                 response_metadata={"model_name": "RepairLLM"},
             )
         ),
@@ -804,12 +781,7 @@ async def test_runner_preserves_primary_model_when_text_parse_fails() -> None:
         },
         repair_chain=FakeObjectChain(
             AIMessage(
-                content=(
-                    '{"title_uk":"Виправлено","summary_uk":"Опис",'
-                    '"is_case_candidate":false,"noise_reason":"generic_news",'
-                    '"main_event_title_uk":null,"entities":[],"events":[],'
-                    '"case_signature_terms":[]}'
-                ),
+                content=ARTICLE_CARD_JSON,
                 response_metadata={"model_name": "RepairLLM"},
             )
         ),
@@ -1080,6 +1052,7 @@ def test_json_parse_fallback_rejects_other_malformed_json() -> None:
 def test_model_aliases_use_stage_specific_settings() -> None:
     aliases = model_aliases(MlConfig())
 
+    assert aliases["article_gate"] == "shkandal-article-gate"
     assert aliases["article_card"] == "shkandal-article-card"
     assert aliases["case_resolution"] == "shkandal-case-resolution"
     assert aliases["case_link_audit"] == "shkandal-case-coherence-audit"

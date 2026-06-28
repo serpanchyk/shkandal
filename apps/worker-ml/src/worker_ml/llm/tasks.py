@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from worker_ml.llm.contracts import (
     ArticleCardOutput,
+    ArticleGateOutput,
     CaseCoherenceAuditOutput,
     CaseCopyUpdateOutput,
     CaseDuplicateAuditOutput,
@@ -88,6 +89,7 @@ class LlmTaskDefinition:
 
 
 LLM_TASKS: dict[LlmRunType, LlmTaskDefinition] = {
+    "article_gate": LlmTaskDefinition(ArticleGateOutput),
     "article_card": LlmTaskDefinition(ArticleCardOutput),
     "case_resolution": LlmTaskDefinition(CaseResolutionOutput),
     "case_link_audit": LlmTaskDefinition(CaseLinkAuditOutput, inconclusive_on_invalid_output=True),

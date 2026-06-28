@@ -452,15 +452,17 @@ docker compose --profile jobs run --rm worker-ingestion python -m worker_ingesti
 docker compose --profile jobs run --rm worker-ml
 ```
 
-Select up to ten relevant articles without cards and ensure their card jobs are
-queued at high priority:
+Select up to ten accepted gate articles without cards and ensure their card
+jobs are queued at high priority:
 
 ```bash
 docker compose exec -T postgres psql -U shkandal -d shkandal <<'SQL'
 WITH candidates AS (
     SELECT a.id
     FROM articles AS a
-    JOIN article_relevance AS ar ON ar.article_id = a.id AND ar.is_relevant = true
+    JOIN article_gate_decisions AS ag
+      ON ag.article_id = a.id
+     AND ag.is_case_candidate = true
     LEFT JOIN article_cards AS ac ON ac.article_id = a.id
     LEFT JOIN jobs AS j
       ON j.article_id = a.id
@@ -505,6 +507,9 @@ docker compose exec postgres psql -U shkandal -d shkandal -c \
   "SELECT id, job_type, article_id, status, attempt_count, last_error, updated_at FROM jobs ORDER BY updated_at DESC LIMIT 20;"
 
 docker compose exec postgres psql -U shkandal -d shkandal -c \
+  "SELECT article_id, is_case_candidate, noise_reason, case_decision_reason_uk, created_at FROM article_gate_decisions ORDER BY created_at DESC LIMIT 10;"
+
+docker compose exec postgres psql -U shkandal -d shkandal -c \
   "SELECT id, article_id, llm_run_id, title_uk, summary_uk, card_json, created_at FROM article_cards ORDER BY created_at DESC LIMIT 10;"
 
 docker compose exec postgres psql -U shkandal -d shkandal -c \
@@ -512,9 +517,9 @@ docker compose exec postgres psql -U shkandal -d shkandal -c \
 ```
 
 After changing the article-card prompt or JSON contract, preview and apply a
-full card regeneration. Stop active ML workers first; apply mode also refuses
-to proceed if any `create_article_card` job is running. Existing `llm_runs`
-remain available for comparison and debugging:
+card-only regeneration for accepted gate decisions. Stop active ML workers
+first; apply mode also refuses to proceed if any `create_article_card` job is
+running. Existing `llm_runs` remain available for comparison and debugging:
 
 ```bash
 uv run python -m worker_ml.scripts.reprocess_article_cards
@@ -528,7 +533,7 @@ before/after comparison:
 uv run python -m worker_ml.scripts.reprocess_article_cards --apply --limit 10
 docker compose --profile jobs run --rm -e CLAIM_BATCH_SIZE=10 worker-ml
 docker compose exec postgres psql -U shkandal -d shkandal -c \
-  "SELECT article_id, is_case_candidate, card_json->>'noise_reason' AS noise_reason, title_uk, card_json FROM article_cards ORDER BY created_at DESC LIMIT 10;"
+  "SELECT ac.article_id, ag.is_case_candidate, ac.title_uk, ac.card_json FROM article_cards AS ac JOIN article_gate_decisions AS ag ON ag.article_id = ac.article_id ORDER BY ac.created_at DESC LIMIT 10;"
 ```
 
 To route through another provider, add its credential to `infra/litellm/.env`
@@ -621,8 +626,8 @@ reboot.
 
 Ingestion runs every even-numbered hour. ML runs five minutes after the previous
 pass becomes inactive and exits immediately while a durable LLM cooldown is
-active. `llm-proxy` remains in Compose because the ML pipeline uses it for
-article-card and resolution stages.
+active. `llm-proxy` remains in Compose because the ML pipeline uses it for gate,
+article-card, and resolution stages.
 
 Manage system-wide server timers:
 

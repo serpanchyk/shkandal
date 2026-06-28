@@ -21,6 +21,12 @@ _Avoid_: weak relevance, secondary news
 An article with enough relevance signal to be evaluated by case resolution, but not yet accepted as public dossier evidence.
 _Avoid_: relevant article, final relevance
 
+**Second-Layer Relevance Gate**:
+An LLM decision after Article Relevance that decides whether a classifier-positive
+article is a concrete Case candidate. Rejected articles stop before Article Card
+creation.
+_Avoid_: Article Relevance, second-layer relevance
+
 **Ukraine Connection**:
 A material connection to Ukrainian people, institutions, companies, public money, territory, law, courts, public policy, war impact, or Ukrainian society. Foreign stories only have this connection when they materially affect Ukraine or involve Ukrainian actors.
 _Avoid_: Ukrainian-language article, international news

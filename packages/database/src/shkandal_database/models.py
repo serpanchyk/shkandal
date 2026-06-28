@@ -172,13 +172,46 @@ class ArticleRelevance(Base):
     )
 
 
+class ArticleGateDecision(Base):
+    """Second-layer LLM relevance gate decision for an article."""
+
+    __tablename__ = "article_gate_decisions"
+    __table_args__ = (
+        Index(
+            "ix_article_gate_decisions_is_case_candidate_created_at",
+            "is_case_candidate",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[UUID] = uuid_pk_column()
+    article_id: Mapped[UUID] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    llm_run_id: Mapped[UUID | None] = mapped_column(ForeignKey("llm_runs.id"))
+    is_case_candidate: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    noise_reason: Mapped[str | None] = mapped_column(Text)
+    case_diagnosis: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    case_decision_reason_uk: Mapped[str | None] = mapped_column(Text)
+    metadata_: Mapped[dict[str, Any]] = mapped_column(
+        "metadata",
+        JSONB,
+        nullable=False,
+        server_default=json_object_default,
+    )
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+
+
 class LlmRun(Base):
     """LLM call metadata for debugging and reprocessing."""
 
     __tablename__ = "llm_runs"
     __table_args__ = (
         CheckConstraint(
-            "run_type in ('article_card', 'case_resolution', 'entity_resolution', "
+            "run_type in ('article_gate', 'article_card', 'case_resolution', 'entity_resolution', "
             "'event_resolution', 'case_copy_update', 'case_link_audit', 'case_coherence_audit', "
             "'case_public_interest_audit', 'case_duplicate_audit')",
             name="ck_llm_runs_run_type",
@@ -234,7 +267,6 @@ class ArticleCard(Base):
     """Provisional structured article card."""
 
     __tablename__ = "article_cards"
-    __table_args__ = (Index("ix_article_cards_is_case_candidate", "is_case_candidate"),)
 
     id: Mapped[UUID] = uuid_pk_column()
     article_id: Mapped[UUID] = mapped_column(
@@ -245,7 +277,6 @@ class ArticleCard(Base):
     llm_run_id: Mapped[UUID | None] = mapped_column(ForeignKey("llm_runs.id"))
     title_uk: Mapped[str] = mapped_column(Text, nullable=False)
     summary_uk: Mapped[str] = mapped_column(Text, nullable=False)
-    is_case_candidate: Mapped[bool] = mapped_column(Boolean, nullable=False)
     card_json: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()

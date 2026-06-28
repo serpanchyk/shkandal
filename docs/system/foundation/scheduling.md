@@ -14,7 +14,7 @@ Long-lived services are:
 - frontend;
 - PostgreSQL;
 - Qdrant;
-- LiteLLM proxy for article-card and resolution stages in the ML pipeline.
+- LiteLLM proxy for gate, article-card, and resolution stages in the ML pipeline.
 
 Scheduled one-shot jobs are:
 
