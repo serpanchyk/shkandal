@@ -13,7 +13,7 @@ LlmRunType = Literal[
     "case_link_audit",
     "entity_resolution",
     "event_resolution",
-    "case_copy_update",
+    "refresh_case",
     "case_coherence_audit",
     "case_public_interest_audit",
     "case_duplicate_audit",

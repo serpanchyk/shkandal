@@ -10,7 +10,7 @@ PUBLIC_ALIASES = {
     "shkandal-case-resolution",
     "shkandal-entity-resolution",
     "shkandal-event-resolution",
-    "shkandal-case-copy-update",
+    "shkandal-refresh-case",
     "shkandal-case-coherence-audit",
     "shkandal-case-public-interest-audit",
     "shkandal-case-duplicate-audit",

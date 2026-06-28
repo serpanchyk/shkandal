@@ -57,6 +57,7 @@ Architecture rules:
 * Understand the target service responsibility before changing code.
 * `postgres` is the source of truth; `qdrant` is a rebuildable retrieval index.
 * Do not introduce Redis, queues, or new databases unless the product need is documented first.
+* magic numbers always should be in the config.yaml
 
 ---
 

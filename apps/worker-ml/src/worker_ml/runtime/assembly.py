@@ -12,7 +12,7 @@ from worker_ml.articles.cards import ArticleCardJobHandler
 from worker_ml.articles.gates import ArticleGateJobHandler
 from worker_ml.articles.relevance import ClassificationJobHandler, RelevanceModel
 from worker_ml.cases.audits import CaseCoherenceAuditJobHandler
-from worker_ml.cases.copy import CaseCopyUpdateJobHandler
+from worker_ml.cases.refresh import RefreshCaseJobHandler
 from worker_ml.cases.resolution import ArticleCaseResolutionJobHandler
 from worker_ml.cases.reviews import CaseDuplicateAuditJobHandler, CasePublicInterestAuditJobHandler
 from worker_ml.config import MlConfig
@@ -31,10 +31,10 @@ from worker_ml.runtime.planning import (
     CLASSIFY_ARTICLE_JOB,
     CREATE_ARTICLE_CARD_JOB,
     GATE_ARTICLE_JOB,
+    REFRESH_CASE_JOB,
     RESOLVE_ARTICLE_CASES_JOB,
     RESOLVE_ARTICLE_ENTITIES_JOB,
     RESOLVE_ARTICLE_EVENTS_JOB,
-    UPDATE_CASE_COPY_JOB,
 )
 
 
@@ -75,7 +75,7 @@ class _LazyJobHandlers(Mapping[str, JobHandler]):
             RESOLVE_ARTICLE_CASES_JOB: self._create_case_resolution_handler,
             RESOLVE_ARTICLE_ENTITIES_JOB: self._create_entity_resolution_handler,
             RESOLVE_ARTICLE_EVENTS_JOB: self._create_event_resolution_handler,
-            UPDATE_CASE_COPY_JOB: self._create_case_copy_handler,
+            REFRESH_CASE_JOB: self._create_refresh_case_handler,
             AUDIT_CASE_COHERENCE_JOB: self._create_case_coherence_audit_handler,
             AUDIT_CASE_PUBLIC_INTEREST_JOB: self._create_case_public_interest_audit_handler,
             AUDIT_CASE_DUPLICATES_JOB: self._create_case_duplicate_audit_handler,
@@ -164,13 +164,13 @@ class _LazyJobHandlers(Mapping[str, JobHandler]):
             candidate_limit=self._settings.event_resolution_candidate_limit,
         )
 
-    def _create_case_copy_handler(self) -> JobHandler:
-        return CaseCopyUpdateJobHandler(
+    def _create_refresh_case_handler(self) -> JobHandler:
+        return RefreshCaseJobHandler(
             self._session_factory,
             self._runner,
             self._get_vector_index(),
-            model_name=self._settings.llm_case_copy_update_model,
-            card_limit=self._settings.case_copy_card_limit,
+            model_name=self._settings.llm_refresh_case_model,
+            card_limit=self._settings.refresh_case_card_limit,
         )
 
     def _create_case_coherence_audit_handler(self) -> JobHandler:
@@ -182,6 +182,7 @@ class _LazyJobHandlers(Mapping[str, JobHandler]):
             model_name=self._settings.llm_case_coherence_audit_model,
             card_batch_size=self._settings.case_audit_card_batch_size,
             min_card_batch_size=self._settings.case_audit_min_card_batch_size,
+            refresh_case_priority=self._settings.refresh_case_repair_priority,
         )
 
     def _create_case_public_interest_audit_handler(self) -> JobHandler:
@@ -202,6 +203,7 @@ class _LazyJobHandlers(Mapping[str, JobHandler]):
             self._job_store,
             model_name=self._settings.llm_case_duplicate_audit_model,
             card_limit=self._settings.case_review_card_limit,
+            refresh_case_priority=self._settings.refresh_case_repair_priority,
         )
 
 

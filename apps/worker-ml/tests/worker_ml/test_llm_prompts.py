@@ -29,7 +29,7 @@ def test_key_prompts_require_pre_decision_diagnostics() -> None:
         "case_public_interest_audit",
         "entity_resolution",
         "event_resolution",
-        "case_copy_update",
+        "refresh_case",
     ):
         prompt = registry.load_text(name)
         assert "Перед вибором" in prompt

@@ -13,7 +13,7 @@ without shared transactions.
 
 ## Decision
 
-Article-case resolution and case-copy updates share one PostgreSQL advisory
+Article-case resolution and Case Refresh jobs share one PostgreSQL advisory
 lock. An unavailable lock defers the job without consuming an attempt. The
 worker hydrates retrieved candidates from PostgreSQL and upserts affected Case
 vectors before committing PostgreSQL Case mutations. A Qdrant failure rolls

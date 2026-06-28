@@ -21,9 +21,21 @@ from worker_ml.runtime.execution import drain_backfill, run_cycle
 from worker_ml.runtime.planning import EnqueueStats, MlJobPlanner
 
 
+def _planner_mock() -> Mock:
+    planner = Mock(spec=MlJobPlanner)
+    planner.enqueue_missing_classification_jobs = AsyncMock(
+        return_value=EnqueueStats(0, 0, 0, 0, 0)
+    )
+    planner.enqueue_missing_article_gate_jobs = AsyncMock(return_value=EnqueueStats(0, 0, 0, 0, 0))
+    planner.enqueue_missing_article_card_jobs = AsyncMock(return_value=EnqueueStats(0, 0, 0, 0, 0))
+    planner.enqueue_due_case_refresh_jobs = AsyncMock(return_value=EnqueueStats(0, 0, 0, 0, 0))
+    planner.enqueue_due_case_audit_jobs = AsyncMock(return_value=EnqueueStats(0, 0, 0, 0, 0))
+    return planner
+
+
 @pytest.mark.asyncio
 async def testrun_cycle_enqueues_and_processes_bounded_batch() -> None:
-    planner = Mock(spec=MlJobPlanner)
+    planner = _planner_mock()
     planner.enqueue_missing_classification_jobs = AsyncMock(
         return_value=EnqueueStats(
             scanned_articles=10,
@@ -88,7 +100,7 @@ async def testrun_cycle_enqueues_and_processes_bounded_batch() -> None:
 
 @pytest.mark.asyncio
 async def testrun_cycle_discovers_and_claims_only_selected_job_types() -> None:
-    planner = Mock(spec=MlJobPlanner)
+    planner = _planner_mock()
     planner.enqueue_missing_article_card_jobs = AsyncMock(
         return_value=EnqueueStats(
             scanned_articles=2,
@@ -137,7 +149,7 @@ async def testrun_cycle_discovers_and_claims_only_selected_job_types() -> None:
 
 @pytest.mark.asyncio
 async def testrun_cycle_defers_rate_limited_job_and_ends_pass() -> None:
-    planner = Mock(spec=MlJobPlanner)
+    planner = _planner_mock()
     planner.enqueue_missing_classification_jobs = AsyncMock(
         return_value=EnqueueStats(
             scanned_articles=0,
@@ -204,7 +216,7 @@ async def testrun_cycle_defers_rate_limited_job_and_ends_pass() -> None:
 
 @pytest.mark.asyncio
 async def test_run_cycle_defers_qdrant_unavailable_without_consuming_failure() -> None:
-    planner = Mock(spec=MlJobPlanner)
+    planner = _planner_mock()
     planner.enqueue_missing_classification_jobs = AsyncMock(
         return_value=EnqueueStats(0, 0, 0, 0, 0)
     )
@@ -255,7 +267,7 @@ async def test_run_cycle_defers_qdrant_unavailable_without_consuming_failure() -
 
 @pytest.mark.asyncio
 async def test_run_cycle_defers_litellm_unavailable_without_consuming_failure() -> None:
-    planner = Mock(spec=MlJobPlanner)
+    planner = _planner_mock()
     planner.enqueue_missing_classification_jobs = AsyncMock(
         return_value=EnqueueStats(0, 0, 0, 0, 0)
     )
@@ -298,7 +310,7 @@ async def test_run_cycle_defers_litellm_unavailable_without_consuming_failure() 
 
 @pytest.mark.asyncio
 async def testrun_cycle_executes_at_most_configured_concurrency() -> None:
-    planner = Mock(spec=MlJobPlanner)
+    planner = _planner_mock()
     planner.enqueue_missing_classification_jobs = AsyncMock(
         return_value=EnqueueStats(0, 0, 0, 0, 0)
     )
@@ -351,7 +363,7 @@ async def testrun_cycle_executes_at_most_configured_concurrency() -> None:
 
 @pytest.mark.asyncio
 async def testrun_cycle_claims_downstream_work_while_cards_remain() -> None:
-    planner = Mock(spec=MlJobPlanner)
+    planner = _planner_mock()
     planner.enqueue_missing_classification_jobs = AsyncMock(
         return_value=EnqueueStats(0, 0, 0, 0, 0)
     )
@@ -412,7 +424,7 @@ async def testrun_cycle_claims_downstream_work_while_cards_remain() -> None:
 
 @pytest.mark.asyncio
 async def testrun_cycle_claims_jobs_in_pipeline_priority_order() -> None:
-    planner = Mock(spec=MlJobPlanner)
+    planner = _planner_mock()
     planner.enqueue_missing_classification_jobs = AsyncMock(
         return_value=EnqueueStats(0, 0, 0, 0, 0)
     )
@@ -426,12 +438,12 @@ async def testrun_cycle_claims_jobs_in_pipeline_priority_order() -> None:
                 max_attempts=3,
             )
         ],
-        "update_case_copy": [
+        "refresh_case": [
             SimpleNamespace(
                 id="copy-job",
                 article_id=None,
                 case_id="case-id",
-                job_type="update_case_copy",
+                job_type="refresh_case",
                 attempt_count=1,
                 max_attempts=3,
                 requested_revision=1,
@@ -498,7 +510,7 @@ async def testrun_cycle_claims_jobs_in_pipeline_priority_order() -> None:
 
     assert handled_job_types == [
         "create_article_card",
-        "update_case_copy",
+        "refresh_case",
         "resolve_article_cases",
         "resolve_article_entities",
         "resolve_article_events",
@@ -507,7 +519,7 @@ async def testrun_cycle_claims_jobs_in_pipeline_priority_order() -> None:
 
 @pytest.mark.asyncio
 async def testrun_cycle_serializes_case_namespace_jobs() -> None:
-    planner = Mock(spec=MlJobPlanner)
+    planner = _planner_mock()
     planner.enqueue_missing_classification_jobs = AsyncMock(
         return_value=EnqueueStats(0, 0, 0, 0, 0)
     )
@@ -521,12 +533,12 @@ async def testrun_cycle_serializes_case_namespace_jobs() -> None:
                 max_attempts=3,
             )
         ],
-        "update_case_copy": [
+        "refresh_case": [
             SimpleNamespace(
                 id="copy-job",
                 article_id=None,
                 case_id="case-id",
-                job_type="update_case_copy",
+                job_type="refresh_case",
                 attempt_count=1,
                 max_attempts=3,
                 requested_revision=1,
@@ -566,7 +578,7 @@ async def testrun_cycle_serializes_case_namespace_jobs() -> None:
         cooldown_store=cooldown_store,
         handlers={
             "resolve_article_cases": case_handler,
-            "update_case_copy": copy_handler,
+            "refresh_case": copy_handler,
         },
     )
 
@@ -575,7 +587,7 @@ async def testrun_cycle_serializes_case_namespace_jobs() -> None:
 
 @pytest.mark.asyncio
 async def testrun_cycle_exits_before_enqueue_or_claim_during_active_cooldown() -> None:
-    planner = Mock(spec=MlJobPlanner)
+    planner = _planner_mock()
     planner.enqueue_missing_classification_jobs = AsyncMock(
         return_value=EnqueueStats(
             scanned_articles=0,
@@ -607,7 +619,7 @@ async def testrun_cycle_exits_before_enqueue_or_claim_during_active_cooldown() -
 
 @pytest.mark.asyncio
 async def testrun_cycle_continues_after_ordinary_api_failure() -> None:
-    planner = Mock(spec=MlJobPlanner)
+    planner = _planner_mock()
     planner.enqueue_missing_classification_jobs = AsyncMock(
         return_value=EnqueueStats(0, 0, 0, 0, 0)
     )
@@ -688,7 +700,7 @@ def test_no_args_dispatches_one_cycle(monkeypatch: pytest.MonkeyPatch) -> None:
         job_types=(
             "gate_article",
             "create_article_card",
-            "update_case_copy",
+            "refresh_case",
             "audit_case_coherence",
             "audit_case_public_interest",
             "audit_case_duplicates",
@@ -711,7 +723,7 @@ def test_loop_flag_dispatches_worker_loop(monkeypatch: pytest.MonkeyPatch) -> No
         job_types=(
             "gate_article",
             "create_article_card",
-            "update_case_copy",
+            "refresh_case",
             "audit_case_coherence",
             "audit_case_public_interest",
             "audit_case_duplicates",
@@ -773,7 +785,7 @@ def test_backfill_flag_dispatches_successful_backfill(monkeypatch: pytest.Monkey
         job_types=(
             "gate_article",
             "create_article_card",
-            "update_case_copy",
+            "refresh_case",
             "audit_case_coherence",
             "audit_case_public_interest",
             "audit_case_duplicates",
@@ -838,7 +850,7 @@ async def test_run_backfill_builds_resources_once_and_disposes_engine(
     session_factory = Mock()
     model = Mock()
     job_store = Mock(spec=ArticleJobStore)
-    planner = Mock(spec=MlJobPlanner)
+    planner = _planner_mock()
     cooldown_store = Mock(spec=LlmCooldownStore)
     handlers = {"classify_article": Mock()}
     summary = JobQueueSummary(
@@ -1145,7 +1157,9 @@ def test_resolution_candidate_limit_defaults() -> None:
     assert config.llm_max_output_tokens == 4_096
     assert config.case_link_audit_card_limit == 20
     assert config.case_review_card_limit == 40
-    assert config.case_copy_card_limit == 40
+    assert config.refresh_case_card_limit == 40
+    assert config.refresh_case_enqueue_batch_size == 20
+    assert config.refresh_case_repair_priority == 100
     assert config.transient_retry_delay_min_seconds == 10
     assert config.case_audit_min_card_batch_size == 2
     assert config.case_audit_manual_default_limit == 5
@@ -1166,7 +1180,9 @@ def test_resolution_candidate_limit_defaults() -> None:
         "case_audit_card_batch_size",
         "case_link_audit_card_limit",
         "case_review_card_limit",
-        "case_copy_card_limit",
+        "refresh_case_card_limit",
+        "refresh_case_enqueue_batch_size",
+        "refresh_case_repair_priority",
         "transient_retry_delay_min_seconds",
         "case_audit_min_card_batch_size",
         "case_audit_manual_default_limit",
@@ -1191,7 +1207,7 @@ def test_llm_config_defaults_to_litellm_proxy_aliases() -> None:
     assert fields["llm_case_resolution_model"].default == "shkandal-case-resolution"
     assert fields["llm_entity_resolution_model"].default == "shkandal-entity-resolution"
     assert fields["llm_event_resolution_model"].default == "shkandal-event-resolution"
-    assert fields["llm_case_copy_update_model"].default == "shkandal-case-copy-update"
+    assert fields["llm_refresh_case_model"].default == "shkandal-refresh-case"
     assert fields["llm_case_coherence_audit_model"].default == "shkandal-case-coherence-audit"
     assert (
         fields["llm_case_public_interest_audit_model"].default

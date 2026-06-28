@@ -30,7 +30,7 @@ async def test_recover_failed_jobs_is_dry_run_by_default_behavior() -> None:
 
     stats = await recover_failed_jobs(
         Mock(return_value=_session_context(session)),
-        job_type="update_case_copy",
+        job_type="refresh_case",
         apply=False,
     )
 
@@ -52,7 +52,7 @@ async def test_recover_failed_jobs_applies_filters_and_resets_only_selected_jobs
 
     stats = await recover_failed_jobs(
         Mock(return_value=_session_context(session)),
-        job_type="update_case_copy",
+        job_type="refresh_case",
         error_contains="Qdrant",
         limit=12,
         apply=True,
@@ -74,4 +74,4 @@ async def test_recover_failed_jobs_applies_filters_and_resets_only_selected_jobs
 @pytest.mark.parametrize("limit", [0, -1])
 async def test_recover_failed_jobs_rejects_non_positive_limit(limit: int) -> None:
     with pytest.raises(ValueError, match="greater than zero"):
-        await recover_failed_jobs(Mock(), job_type="update_case_copy", apply=False, limit=limit)
+        await recover_failed_jobs(Mock(), job_type="refresh_case", apply=False, limit=limit)

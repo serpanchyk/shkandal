@@ -858,8 +858,6 @@ def test_case_resolution_contract_rejects_resolved_without_story_core() -> None:
                 "new_cases": [
                     {
                         "new_case_ref": "new_case",
-                        "title_uk": "Нова справа",
-                        "summary_uk": "Опис.",
                         "link_reason_uk": "Причина.",
                         "confidence": 0.8,
                     }
@@ -879,8 +877,6 @@ def test_case_resolution_contract_rejects_resolved_without_specific_case_core() 
                 "new_cases": [
                     {
                         "new_case_ref": "new_case",
-                        "title_uk": "Нова справа",
-                        "summary_uk": "Опис.",
                         "link_reason_uk": "Причина.",
                         "confidence": 0.8,
                     }
@@ -931,8 +927,6 @@ def test_case_duplicate_audit_rejects_merge_without_shared_specific_core() -> No
             "new_cases": [
                 {
                     "new_case_ref": "new_case",
-                    "title_uk": "Нова справа",
-                    "summary_uk": "Опис.",
                     "link_reason_uk": "Причина.",
                     "confidence": 0.8,
                 }

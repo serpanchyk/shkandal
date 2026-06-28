@@ -164,9 +164,9 @@ def normalize_llm_output(
                     _normalize_entity_decision(decision, actions, f"entities[{index}]")
                 else:
                     _normalize_event_decision(decision, actions, f"events[{index}]")
-    elif run_type == "case_copy_update":
+    elif run_type == "refresh_case":
         if not isinstance(normalized, dict):
-            raise ValueError("case copy update output must be a JSON object")
+            raise ValueError("refresh case output must be a JSON object")
         if normalized.get("title_action") == "keep":
             _set(normalized, "replacement_title_uk", None, actions, "clear kept replacement title")
     elif not isinstance(normalized, dict):

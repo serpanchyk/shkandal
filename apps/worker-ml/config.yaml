@@ -13,9 +13,11 @@ case_audit_min_card_batch_size: 2
 case_audit_manual_default_limit: 5
 case_link_audit_card_limit: 20
 case_review_card_limit: 40
-case_copy_card_limit: 40
+refresh_case_card_limit: 40
+refresh_case_enqueue_batch_size: 20
+refresh_case_repair_priority: 100
 case_audit_automatic_enabled: true
-article_card_text_max_chars: 20000
+article_card_text_max_chars: 10000
 llm_max_output_tokens: 4096
 llm_request_timeout_seconds: 300
 llm_api_base: http://llm-proxy:4000/v1
@@ -24,7 +26,7 @@ llm_article_card_model: shkandal-article-card
 llm_case_resolution_model: shkandal-case-resolution
 llm_entity_resolution_model: shkandal-entity-resolution
 llm_event_resolution_model: shkandal-event-resolution
-llm_case_copy_update_model: shkandal-case-copy-update
+llm_refresh_case_model: shkandal-refresh-case
 llm_case_coherence_audit_model: shkandal-case-coherence-audit
 llm_case_public_interest_audit_model: shkandal-case-public-interest-audit
 llm_case_duplicate_audit_model: shkandal-case-duplicate-audit
@@ -34,9 +36,9 @@ relevance_model_dir: artifacts/models/relevance/tfidf_logistic_noise_assigned
 relevance_threshold: 0.5
 embedding_model_dir: artifacts/models/embeddings/multilingual_e5_small/model
 embedding_vector_size: 384
-case_resolution_candidate_limit: 12
-entity_resolution_candidate_limit: 8
-event_resolution_candidate_limit: 8
+case_resolution_candidate_limit: 6
+entity_resolution_candidate_limit: 6
+event_resolution_candidate_limit: 6
 case_resolution_representative_title_limit: 8
 case_resolution_enqueue_batch_size: 5000
 article_card_reprocess_job_upsert_batch_size: 1000

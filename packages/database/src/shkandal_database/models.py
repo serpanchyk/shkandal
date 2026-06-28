@@ -212,7 +212,7 @@ class LlmRun(Base):
     __table_args__ = (
         CheckConstraint(
             "run_type in ('article_gate', 'article_card', 'case_resolution', 'entity_resolution', "
-            "'event_resolution', 'case_copy_update', 'case_link_audit', 'case_coherence_audit', "
+            "'event_resolution', 'refresh_case', 'case_link_audit', 'case_coherence_audit', "
             "'case_public_interest_audit', 'case_duplicate_audit')",
             name="ck_llm_runs_run_type",
         ),
@@ -315,6 +315,11 @@ class Case(Base):
     first_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     article_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    last_refreshed_article_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        server_default=text("0"),
+    )
     event_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     evidence_revision: Mapped[int] = mapped_column(
         Integer,

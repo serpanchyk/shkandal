@@ -173,7 +173,7 @@ async def test_enqueue_case_job_requests_another_revision() -> None:
     session.execute = AsyncMock(return_value=existing_result)
 
     result = await ArticleJobStore(session_factory).enqueue_case_job(
-        job_type="update_case_copy",
+        job_type="refresh_case",
         case_id=case_id,
     )
 
@@ -194,7 +194,7 @@ async def test_enqueue_case_job_gives_non_running_revision_fresh_attempts(status
     session.execute = AsyncMock(return_value=existing_result)
 
     await ArticleJobStore(session_factory).enqueue_case_job(
-        job_type="update_case_copy",
+        job_type="refresh_case",
         case_id=uuid4(),
     )
 

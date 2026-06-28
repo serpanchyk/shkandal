@@ -1,4 +1,4 @@
-"""Article-case identity resolution and case-copy regeneration."""
+"""Article-case identity resolution."""
 
 from __future__ import annotations
 
@@ -35,7 +35,6 @@ from worker_ml.retrieval.vector_index import VectorIndexService
 from worker_ml.runtime.planning import (
     RESOLVE_ARTICLE_ENTITIES_JOB,
     RESOLVE_ARTICLE_EVENTS_JOB,
-    UPDATE_CASE_COPY_JOB,
 )
 
 CASE_CREATION_AFTER_DROPPED_LINKS_PROMPT = "case_creation_after_dropped_links"
@@ -92,11 +91,7 @@ class ArticleCaseResolutionJobHandler:
                 ).all()
             )
             if existing_case_ids:
-                await _enqueue_resolution_followups(
-                    job_store=self._job_store,
-                    job=job,
-                    case_ids=existing_case_ids,
-                )
+                await _enqueue_resolution_followups(job_store=self._job_store, job=job)
                 return None
             article_row = (
                 await session.execute(
@@ -146,6 +141,7 @@ class ArticleCaseResolutionJobHandler:
             affected_case_ids = await self._persist_resolution(
                 session,
                 article=article,
+                card=card,
                 output=output,
                 run_id=rechecked.run_id,
                 candidate_ids=candidate_ids,
@@ -156,11 +152,7 @@ class ArticleCaseResolutionJobHandler:
                     await self._vector_index.upsert_case(case.id, case_vector_payload(case))
             await session.commit()
 
-        await _enqueue_resolution_followups(
-            job_store=self._job_store,
-            job=job,
-            case_ids=affected_case_ids,
-        )
+        await _enqueue_resolution_followups(job_store=self._job_store, job=job)
         return output
 
     async def _load_candidates(
@@ -401,6 +393,7 @@ class ArticleCaseResolutionJobHandler:
         session: AsyncSession,
         *,
         article: Article,
+        card: ArticleCard,
         output: CaseResolutionOutput,
         run_id: UUID | None,
         candidate_ids: set[str],
@@ -447,8 +440,8 @@ class ArticleCaseResolutionJobHandler:
                 Case(
                     id=case_id,
                     slug=f"case-{case_id.hex}",
-                    title_uk=decision.title_uk,
-                    summary_uk=decision.summary_uk,
+                    title_uk=card.title_uk,
+                    summary_uk=None,
                     status="active",
                     first_seen_at=published_at,
                     last_updated_at=published_at,
@@ -497,17 +490,9 @@ async def _enqueue_resolution_followups(
     *,
     job_store: ArticleJobStore,
     job: ClaimedJob,
-    case_ids: set[UUID],
 ) -> None:
     if job.article_id is None:
         raise ValueError("article-case resolution follow-ups require article_id")
-    for case_id in case_ids:
-        await job_store.enqueue_case_job(
-            job_type=UPDATE_CASE_COPY_JOB,
-            case_id=case_id,
-            payload={"case_id": str(case_id)},
-            max_attempts=job.max_attempts,
-        )
     for job_type in (RESOLVE_ARTICLE_ENTITIES_JOB, RESOLVE_ARTICLE_EVENTS_JOB):
         await job_store.enqueue_article_job(
             job_type=job_type,
