@@ -1,5 +1,7 @@
 """Tests for database model metadata."""
 
+from pathlib import Path
+
 from shkandal_database.models import (
     Article,
     ArticleGateDecision,
@@ -138,3 +140,14 @@ def test_jobs_have_exactly_one_typed_subject() -> None:
 
 def test_article_gate_case_candidate_is_queryable() -> None:
     assert ArticleGateDecision.is_case_candidate.property.columns[0].nullable is False
+
+
+def test_article_gate_migration_preserves_timestamp_defaults() -> None:
+    migration_path = (
+        Path(__file__).parents[2] / "migrations" / "versions" / "202606280001_split_article_gate.py"
+    )
+    migration_text = migration_path.read_text()
+    table_block = migration_text.split('op.create_table(\n        "article_gate_decisions"', 1)[1]
+    table_block = table_block.split("sa.ForeignKeyConstraint", 1)[0]
+
+    assert table_block.count('server_default=sa.text("now()")') == 2
