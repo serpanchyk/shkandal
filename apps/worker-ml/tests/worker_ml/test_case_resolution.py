@@ -7,8 +7,8 @@ import pytest
 import worker_ml.cases.resolution as case_resolution
 from shkandal_database.jobs import ArticleJobStore, ClaimedJob
 from shkandal_database.models import Article, ArticleCard, Case, Source
-from worker_ml.cases.copy import lifecycle_sample
 from worker_ml.cases.publication import case_vector_payload
+from worker_ml.cases.refresh import lifecycle_sample
 from worker_ml.cases.resolution import (
     ArticleCaseResolutionJobHandler,
     _enqueue_resolution_followups,
@@ -55,8 +55,6 @@ def _case_resolution_with_existing(
         new_cases.append(
             {
                 "new_case_ref": "new_case_1",
-                "title_uk": "Окрема нова справа",
-                "summary_uk": "Опис окремої нової справи.",
                 "link_reason_uk": "Стаття також описує окрему справу.",
                 "confidence": 0.8,
             }
@@ -110,8 +108,6 @@ def _fallback_new_case_output() -> CaseResolutionOutput:
             "new_cases": [
                 {
                     "new_case_ref": "new_case_1",
-                    "title_uk": "Нова закупівельна справа",
-                    "summary_uk": "Опис нової конкретної закупівельної справи.",
                     "link_reason_uk": "Аудит відкинув кандидатів, але стаття має нове ядро.",
                     "confidence": 0.86,
                 }
@@ -452,7 +448,7 @@ async def test_handler_runs_new_case_fallback_after_all_existing_links_drop() ->
         case_vector_payload(created_case),
     )
     session.commit.assert_awaited_once()
-    assert job_store.enqueue_case_job.await_count == 1
+    job_store.enqueue_case_job.assert_not_awaited()
     assert job_store.enqueue_article_job.await_count == 2
     monkeypatch.undo()
 
@@ -605,9 +601,8 @@ def test_case_payload_is_rebuildable_from_postgres_case() -> None:
 
 
 @pytest.mark.asyncio
-async def test_resolution_followups_are_idempotently_ensured() -> None:
+async def test_resolution_followups_enqueue_entity_and_event_resolution_only() -> None:
     article_id = uuid4()
-    case_ids = {uuid4(), uuid4()}
     job_store = Mock(spec=ArticleJobStore)
     job_store.enqueue_case_job = AsyncMock()
     job_store.enqueue_article_job = AsyncMock()
@@ -622,10 +617,9 @@ async def test_resolution_followups_are_idempotently_ensured() -> None:
             attempt_count=1,
             max_attempts=3,
         ),
-        case_ids=case_ids,
     )
 
-    assert job_store.enqueue_case_job.await_count == 2
+    job_store.enqueue_case_job.assert_not_awaited()
     assert job_store.enqueue_article_job.await_count == 2
     assert {call.kwargs["job_type"] for call in job_store.enqueue_article_job.await_args_list} == {
         "resolve_article_entities",

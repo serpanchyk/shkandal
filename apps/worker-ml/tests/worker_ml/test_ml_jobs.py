@@ -14,6 +14,7 @@ from worker_ml.runtime.planning import (
     CLASSIFY_ARTICLE_JOB,
     CREATE_ARTICLE_CARD_JOB,
     GATE_ARTICLE_JOB,
+    REFRESH_CASE_JOB,
     EnqueueStats,
     MlJobPlanner,
 )
@@ -191,6 +192,45 @@ def test_missing_gate_query_selects_only_relevant_articles_without_gate() -> Non
 
     assert "article_relevance.is_relevant IS true" in query
     assert "article_gate_decisions.id IS NULL" in query
+
+
+def test_case_refresh_query_selects_missing_summary_or_square_thresholds() -> None:
+    query = str(MlJobPlanner._cases_due_for_refresh_query(limit=10))
+
+    assert "cases.status = " in query
+    assert "cases.summary_uk IS NULL" in query
+    assert "cases.article_count > cases.last_refreshed_article_count" in query
+    assert "floor(sqrt(cases.article_count))" in query
+
+
+@pytest.mark.asyncio
+async def test_job_planner_enqueues_due_case_refreshes_without_revision_bumps() -> None:
+    case_ids = [uuid4(), uuid4()]
+    session = AsyncMock()
+    session.scalars = AsyncMock(return_value=SimpleNamespace(all=lambda: case_ids))
+    session_context = AsyncMock()
+    session_context.__aenter__.return_value = session
+    session_factory = Mock(return_value=session_context)
+    job_store = Mock(spec=ArticleJobStore)
+    job_store.ensure_case_job = AsyncMock(
+        side_effect=[
+            SimpleNamespace(state="inserted"),
+            SimpleNamespace(state="existing"),
+        ]
+    )
+
+    stats = await MlJobPlanner(session_factory, job_store).enqueue_due_case_refresh_jobs(
+        limit=2,
+        max_attempts=3,
+    )
+
+    assert stats.scanned_articles == 2
+    assert stats.inserted_jobs == 1
+    assert stats.existing_jobs == 1
+    assert all(
+        call.kwargs["job_type"] == REFRESH_CASE_JOB
+        for call in job_store.ensure_case_job.await_args_list
+    )
 
 
 @pytest.mark.asyncio

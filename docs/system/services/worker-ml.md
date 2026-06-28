@@ -102,13 +102,14 @@ LLM requests use explicit prompt budgets instead of relying on provider
 defaults. `llm_max_output_tokens` caps completion size for every task, and
 payload builders record `prompt_size_chars` plus original/included evidence
 counts in `llm_runs.metadata`. Evidence that can grow with article or Case
-history is selected deterministically: article text is capped, Case-copy and
+history is selected deterministically: article text is capped, Case Refresh and
 review audits use lifecycle samples, and link audits use compact first/latest
 Case evidence rather than the whole linked-article history.
 The tracked `apps/worker-ml/config.yaml` exposes these operational budgets,
 including article-card text length, Case-link audit card count, Case review and
-copy card counts, Case audit batch size and minimum batch floor, and the
-representative title count attached to retrieved Case candidates.
+refresh card counts, refresh enqueue batch size and repair priority, Case audit
+batch size and minimum batch floor, and the representative title count attached
+to retrieved Case candidates.
 
 When HTTP `429` still reaches the worker after LiteLLM routing, the
 worker persists a shared LLM cooldown, defers the rejected job without consuming
@@ -271,8 +272,8 @@ Inspect and explicitly recover selected exhausted failures after fixing their
 cause:
 
 ```bash
-uv run python -m worker_ml.scripts.recover_failed_jobs --job-type update_case_copy
-uv run python -m worker_ml.scripts.recover_failed_jobs --job-type update_case_copy --error-contains Qdrant --limit 12 --apply
+uv run python -m worker_ml.scripts.recover_failed_jobs --job-type refresh_case
+uv run python -m worker_ml.scripts.recover_failed_jobs --job-type refresh_case --error-contains Qdrant --limit 12 --apply
 ```
 
 The command is dry-run by default and requeues only exhausted failed jobs. It
@@ -312,11 +313,11 @@ non-retrieval jobs do not require the local embedding artifact directory to be
 present at process start.
 
 Each pass rotates through pipeline-priority order: gate decisions, article-card
-creation, Case-copy update, Case resolution, Entity resolution, Event
+creation, Case Refresh, Case resolution, Entity resolution, Event
 resolution, then classification. The rotation preserves that order without allowing an
 earlier-stage backlog to starve later-stage work. Up to four jobs run
 concurrently by default.
-Case resolution and copy updates share one serialized mutation namespace, while
+Case resolution and Case Refresh jobs share one serialized mutation namespace, while
 Entity and Event mutations are serialized independently. Classification jobs
 are enqueued in bulk, and Entity/Event candidate embeddings and Qdrant searches
 are batched per article.
@@ -328,8 +329,11 @@ Event links also persist date and location anchors from the source article card,
 not resolver-generated replacements. If those source anchors conflict with a
 retrieved Event candidate, the worker creates a new source-grounded Event
 instead of merging incompatible occurrences.
-Case-resolution retries idempotently ensure downstream Case-copy, Entity, and
-Event jobs when article-Case links already exist.
+Case-resolution retries idempotently ensure downstream Entity and Event jobs
+when article-Case links already exist. Case Refresh scheduling is planner-owned:
+new summary-less Cases and square article-count thresholds (`1`, `4`, `9`, ...)
+enqueue refresh jobs, while split and merge repairs request high-priority
+refreshes immediately.
 Primary links to unretrieved Cases remain invalid.
 Case resolution uses explicit coherence diagnostics before resolving: the
 article must have one concrete Case nucleus, broad-only overlaps with a court,
@@ -345,7 +349,7 @@ records a temporal-scope check before accepting, linking, or rejecting a
 provisional Event. Future-dated Events are surfaced as model-visible warnings;
 planned actions that have not occurred remain rejected as future events.
 
-Case-copy jobs are revisioned. A newly requested revision receives a fresh
+Case Refresh jobs are revisioned. A newly requested revision receives a fresh
 attempt budget once the previous revision is no longer running. If a newer
 revision arrives during a running attempt, completion or failure requeues that
 newer revision with a fresh attempt budget. Exhausted queued jobs are not

@@ -32,7 +32,8 @@ review and correction tooling are later quality layers, not blocking MVP stages.
   Entity, sitemap, and anonymous Case-view contracts.
 - `worker-ingestion`: two-hourly systemd-scheduled one-shot curated-source discovery from sitemaps, RSS/Atom feeds, and section pages; bounded fetch retries; date-bounded backfill traversal; fetching; generic-first extraction; publication-date repair from stored raw HTML; URL identity normalization; image URL extraction; and PostgreSQL upsert.
 - `worker-ml`: async worker entrypoint with article relevance, article cards,
-  Case resolution/copy, and article-scoped global Entity/Event resolution.
+  Case resolution, Case Refresh, and article-scoped global Entity/Event
+  resolution.
 - `frontend`: server-rendered Next.js public feed, Case pages, Entity pages,
   provenance interactions, metadata, and sitemap.
 - `postgres`: source-of-truth database and Postgres-backed job store schema.
@@ -87,6 +88,9 @@ review and correction tooling are later quality layers, not blocking MVP stages.
   then goes through an inline second pass against that Case's linked Article
   Cards before any `case_articles` row is written. Inconclusive second-pass
   checks are dropped, not preserved.
+- Case Refresh is planner-owned. New summary-less Cases and square article-count
+  thresholds request refresh jobs; ordinary Case resolution does not enqueue
+  refresh directly.
 - Workers claim jobs with PostgreSQL `FOR UPDATE SKIP LOCKED` row locking so multiple workers do not process the same job.
 - `running` jobs are reclaimable leases. If `locked_at` becomes older than the configured stale-job timeout, defaulting to 30 minutes, another worker may retry the job.
 - `worker-ml` uses weighted fair scheduling and four concurrent execution slots
@@ -139,6 +143,8 @@ review and correction tooling are later quality layers, not blocking MVP stages.
 - Case-to-Case relations are not persisted. Public Other Cases navigation is
   derived from shared Articles, materialized Events, and Mentioned Entities.
 - One relevant article is enough to create a public case.
+- New Cases are created internally with an Article Card title seed and no public
+  summary, then become public after Case Refresh writes reader-facing copy.
 - Articles, entities, and events can connect to multiple cases.
 - Case resolution can explicitly reject a case-candidate article without
   creating domain records; the decision remains auditable through its LLM run.

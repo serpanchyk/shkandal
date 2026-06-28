@@ -106,8 +106,8 @@ current database rows.
 - Existing-case links are not persisted directly from the first match. Each
   provisional existing-case link is rechecked against the chosen Case's linked
   Article Cards, and inconclusive rechecks are treated as drops.
-- Case copy updates are unique case-scoped jobs triggered after every new
-  article-case link.
+- Case Refresh is a unique case-scoped job scheduled for new summary-less Cases,
+  square article-count thresholds, and immediate split/merge repair follow-ups.
 - Entity and event resolvers receive all linked cases and assign each resolved item only to relevant cases.
 - Every provisional Entity/Event item receives an explicit link, create, or
   reject decision; accepted items must be assigned to at least one linked Case.

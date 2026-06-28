@@ -65,7 +65,7 @@ worker can enqueue
 `resolve_article_entities` and `resolve_article_events`. Later jobs are not
 pre-enqueued because they depend on upstream outputs and relevance gates.
 
-Case identity resolution and case-copy updates share one PostgreSQL advisory
+Case identity resolution and Case Refresh jobs share one PostgreSQL advisory
 lock. If unavailable, the job is deferred without consuming an attempt. Affected
 Case vectors are upserted before PostgreSQL commits; Qdrant failure rolls back
 the Case mutation.

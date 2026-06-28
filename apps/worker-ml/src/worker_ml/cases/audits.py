@@ -40,6 +40,7 @@ from worker_ml.llm.contracts import CaseCoherenceAuditOutput
 from worker_ml.llm.runner import LlmTaskRunner
 from worker_ml.llm.schema import prompt_schema_json
 from worker_ml.retrieval.vector_index import VectorIndexService
+from worker_ml.runtime.planning import REFRESH_CASE_JOB
 
 
 class CaseAuditSupersededError(RuntimeError):
@@ -59,6 +60,7 @@ class CaseCoherenceAuditJobHandler:
         model_name: str,
         card_batch_size: int,
         min_card_batch_size: int = 2,
+        refresh_case_priority: int = 100,
     ) -> None:
         self._session_factory = session_factory
         self._runner = runner
@@ -66,6 +68,7 @@ class CaseCoherenceAuditJobHandler:
         self._job_store = job_store
         self._model_name = model_name
         self._card_batch_size = max(min_card_batch_size, card_batch_size)
+        self._refresh_case_priority = refresh_case_priority
 
     async def handle(self, job: ClaimedJob) -> CaseCoherenceAuditOutput | None:
         """Prepare an audit without locks, then publish it under the Case lock."""
@@ -134,6 +137,12 @@ class CaseCoherenceAuditJobHandler:
             await session.commit()
         if self._job_store is not None:
             for affected_case in affected:
+                await self._job_store.enqueue_case_job(
+                    job_type=REFRESH_CASE_JOB,
+                    case_id=affected_case.id,
+                    payload={"case_id": str(affected_case.id)},
+                    priority=self._refresh_case_priority,
+                )
                 await self._job_store.enqueue_case_job(
                     job_type="audit_case_public_interest",
                     case_id=affected_case.id,

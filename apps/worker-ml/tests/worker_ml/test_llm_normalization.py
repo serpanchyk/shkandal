@@ -357,8 +357,6 @@ def test_case_resolution_truncates_whitelisted_diagnostic_fields() -> None:
             "new_cases": [
                 {
                     "new_case_ref": "new_case",
-                    "title_uk": "Нова справа",
-                    "summary_uk": "Опис.",
                     "link_reason_uk": "Причина.",
                     "confidence": 0.8,
                 }
@@ -455,8 +453,6 @@ def test_case_resolution_keeps_non_whitelisted_fields_strictly_invalid() -> None
             "new_cases": [
                 {
                     "new_case_ref": "bad-ref",
-                    "title_uk": "Нова справа " * 80,
-                    "summary_uk": "Опис.",
                     "link_reason_uk": "Причина.",
                     "confidence": 0.8,
                 }

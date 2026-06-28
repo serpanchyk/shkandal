@@ -52,11 +52,6 @@ class NewCaseDecision(StrictOutput):
         pattern=r"^new_[a-z0-9_]+$",
         description="Унікальне тимчасове посилання на запропоновану нову справу.",
     )
-    title_uk: str = Field(min_length=1, description="Український заголовок нової справи.")
-    summary_uk: str = Field(
-        min_length=1,
-        description="Нейтральний український підсумок нової справи.",
-    )
     link_reason_uk: str = Field(
         min_length=1,
         description="Фактична підстава включення статті до нової справи.",
@@ -273,7 +268,7 @@ class CaseLinkAuditOutput(StrictOutput):
         return self
 
 
-class CaseCopyTitleDiagnosis(StrictOutput):
+class RefreshCaseTitleDiagnosis(StrictOutput):
     """Short factual checks before deciding whether to replace a Case title."""
 
     current_title_specific_enough: bool = Field(
@@ -289,10 +284,10 @@ class CaseCopyTitleDiagnosis(StrictOutput):
     )
 
 
-class CaseCopyUpdateOutput(StrictOutput):
+class RefreshCaseOutput(StrictOutput):
     """Updated reader-facing copy for one existing case."""
 
-    title_diagnosis: CaseCopyTitleDiagnosis = Field(
+    title_diagnosis: RefreshCaseTitleDiagnosis = Field(
         description="Коротка структурована діагностика перед рішенням щодо заголовка справи.",
     )
     replacement_title_uk: str | None = Field(
@@ -312,7 +307,7 @@ class CaseCopyUpdateOutput(StrictOutput):
     )
 
     @model_validator(mode="after")
-    def validate_title_action(self) -> CaseCopyUpdateOutput:
+    def validate_title_action(self) -> RefreshCaseOutput:
         """Require replacement copy only for an explicit replacement."""
 
         if self.title_action == "replace" and not self.replacement_title_uk:

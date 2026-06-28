@@ -37,7 +37,7 @@ class MlConfig(BaseServiceConfig):
     llm_case_resolution_model: str = "shkandal-case-resolution"
     llm_entity_resolution_model: str = "shkandal-entity-resolution"
     llm_event_resolution_model: str = "shkandal-event-resolution"
-    llm_case_copy_update_model: str = "shkandal-case-copy-update"
+    llm_refresh_case_model: str = "shkandal-refresh-case"
     llm_case_coherence_audit_model: str = "shkandal-case-coherence-audit"
     llm_case_public_interest_audit_model: str = "shkandal-case-public-interest-audit"
     llm_case_duplicate_audit_model: str = "shkandal-case-duplicate-audit"
@@ -50,7 +50,9 @@ class MlConfig(BaseServiceConfig):
     case_audit_manual_default_limit: int = Field(default=5, gt=0)
     case_link_audit_card_limit: int = Field(default=20, gt=0)
     case_review_card_limit: int = Field(default=40, gt=0)
-    case_copy_card_limit: int = Field(default=40, gt=0)
+    refresh_case_card_limit: int = Field(default=40, gt=0)
+    refresh_case_enqueue_batch_size: int = Field(default=20, gt=0)
+    refresh_case_repair_priority: int = Field(default=100, gt=0)
     case_resolution_representative_title_limit: int = Field(default=8, gt=0)
     case_resolution_enqueue_batch_size: int = Field(default=5_000, gt=0)
     article_card_reprocess_job_upsert_batch_size: int = Field(default=1_000, gt=0)

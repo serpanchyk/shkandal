@@ -96,10 +96,18 @@ original Case and creates new Cases for other coherent stories. Articles may
 materially contribute to multiple resulting Cases.
 _Avoid_: exclusive partition, duplicate merge
 
+**Case Refresh**:
+Regeneration of a Case's reader-facing title and summary from its current
+supporting evidence, followed by updating the rebuildable Case vector. Normal
+evidence changes may defer this work until a configured freshness threshold,
+while split and merge repairs request it immediately.
+_Avoid_: Case Publication, article linking, full dossier rebuild
+
 **Case Publication**:
-The serialized operation that makes complete reader-facing Case state visible
-by updating Case copy, article assignments, materialized Entity/Event links,
-counts, and rebuildable vectors before PostgreSQL commits.
+The serialized operation that makes a completed Case mutation visible by
+updating article assignments, materialized Entity/Event links, counts, and
+rebuildable vectors before PostgreSQL commits. It does not necessarily
+regenerate reader-facing copy.
 _Avoid_: case save, partial update
 
 **Entity**:

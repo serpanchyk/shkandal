@@ -406,8 +406,8 @@ them. The recovery command is dry-run by default and does not modify successful
 domain output:
 
 ```bash
-docker compose --profile jobs run --rm worker-ml python -m worker_ml.scripts.recover_failed_jobs --job-type update_case_copy
-docker compose --profile jobs run --rm worker-ml python -m worker_ml.scripts.recover_failed_jobs --job-type update_case_copy --error-contains Qdrant --limit 12 --apply
+docker compose --profile jobs run --rm worker-ml python -m worker_ml.scripts.recover_failed_jobs --job-type refresh_case
+docker compose --profile jobs run --rm worker-ml python -m worker_ml.scripts.recover_failed_jobs --job-type refresh_case --error-contains Qdrant --limit 12 --apply
 ```
 
 ### Smoke-test 10 article cards

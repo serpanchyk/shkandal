@@ -1,4 +1,4 @@
-"""Reader-facing Case copy regeneration."""
+"""Reader-facing Case refresh."""
 
 import time
 from collections.abc import Sequence
@@ -23,7 +23,7 @@ from worker_ml.llm.budgeting import (
 from worker_ml.llm.budgeting import (
     lifecycle_sample as budget_lifecycle_sample,
 )
-from worker_ml.llm.contracts import CaseCopyUpdateOutput
+from worker_ml.llm.contracts import RefreshCaseOutput
 from worker_ml.llm.runner import LlmTaskRunner
 from worker_ml.llm.schema import prompt_schema_json
 from worker_ml.retrieval.vector_index import VectorIndexService
@@ -31,8 +31,8 @@ from worker_ml.retrieval.vector_index import VectorIndexService
 MAX_CASE_EVIDENCE_CARDS = 40
 
 
-class CaseCopyUpdateJobHandler:
-    """Regenerate stable reader-facing Case copy from accumulated evidence."""
+class RefreshCaseJobHandler:
+    """Regenerate stable reader-facing Case text from accumulated evidence."""
 
     def __init__(
         self,
@@ -49,11 +49,11 @@ class CaseCopyUpdateJobHandler:
         self._model_name = model_name
         self._card_limit = card_limit
 
-    async def handle(self, job: ClaimedJob) -> CaseCopyUpdateOutput | None:
+    async def handle(self, job: ClaimedJob) -> RefreshCaseOutput | None:
         """Update one Case and its vector under the global Case lock."""
 
         if job.case_id is None:
-            raise ValueError("case-copy update job requires case_id")
+            raise ValueError("refresh case job requires case_id")
         async with self._session_factory() as session:
             if not await try_case_mutation_lock(session):
                 raise CaseMutationBusyError("case mutation lock is busy")
@@ -71,9 +71,9 @@ class CaseCopyUpdateJobHandler:
                     "article_cards": sampled_cards,
                 }
             )
-            schema_json = prompt_schema_json(CaseCopyUpdateOutput)
+            schema_json = prompt_schema_json(RefreshCaseOutput)
             result = await self._runner.run_with_provenance(
-                run_type="case_copy_update",
+                run_type="refresh_case",
                 model_name=self._model_name,
                 variables={
                     "case_json": case_json,
@@ -91,10 +91,11 @@ class CaseCopyUpdateJobHandler:
                     "prompt_size_chars": prompt_size_chars(case_json, schema_json),
                 },
             )
-            output = cast(CaseCopyUpdateOutput, result.output)
+            output = cast(RefreshCaseOutput, result.output)
             if output.title_action == "replace":
                 case.title_uk = cast(str, output.replacement_title_uk)
             case.summary_uk = output.summary_uk
+            case.last_refreshed_article_count = case.article_count
             await self._vector_index.upsert_case(case.id, case_vector_payload(case))
             await session.commit()
             return output

@@ -50,19 +50,21 @@ configured for the proxy rather than application packages.
   `CASE_RESOLUTION_REPRESENTATIVE_TITLE_LIMIT`,
   `ENTITY_RESOLUTION_CANDIDATE_LIMIT`, `EVENT_RESOLUTION_CANDIDATE_LIMIT`,
   `ARTICLE_CARD_TEXT_MAX_CHARS`, `CASE_LINK_AUDIT_CARD_LIMIT`,
-  `CASE_REVIEW_CARD_LIMIT`, `CASE_COPY_CARD_LIMIT`,
+  `CASE_REVIEW_CARD_LIMIT`, `REFRESH_CASE_CARD_LIMIT`,
   `CASE_AUDIT_CARD_BATCH_SIZE`, and `CASE_AUDIT_MIN_CARD_BATCH_SIZE`: prompt
   evidence and retrieval budgets.
 - `CASE_AUDIT_MANUAL_DEFAULT_LIMIT`, `CASE_RESOLUTION_ENQUEUE_BATCH_SIZE`,
+  `REFRESH_CASE_ENQUEUE_BATCH_SIZE`, `REFRESH_CASE_REPAIR_PRIORITY`,
   `ARTICLE_CARD_REPROCESS_JOB_UPSERT_BATCH_SIZE`, and
   `CASE_RESOLUTION_CONNECTIVITY_EXAMPLE_LIMIT`: defaults for worker-ml
-  maintenance scripts when the CLI caller does not pass an explicit override.
+  maintenance scripts, refresh scheduling, and repair-triggered refresh priority
+  when the CLI caller does not pass an explicit override.
 Runtime settings should select model endpoints and secrets through environment
 variables or file secrets, never committed values. `worker-ml` uses
 `LLM_API_BASE`, `LLM_API_KEY`, the five-minute default
 `LLM_REQUEST_TIMEOUT_SECONDS`, and logical model aliases such as
 `LLM_ARTICLE_GATE_MODEL`, `LLM_ARTICLE_CARD_MODEL`, and
-`LLM_CASE_COPY_UPDATE_MODEL`; the LiteLLM proxy consumes provider credentials such
+`LLM_REFRESH_CASE_MODEL`; the LiteLLM proxy consumes provider credentials such
 as `LAPATONIA_API_KEY`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and
 `AWS_REGION`. The tracked proxy configuration routes every logical alias
 through one shared Lapathoniia deployment with a combined 60 RPM limit and falls

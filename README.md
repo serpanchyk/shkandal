@@ -264,9 +264,12 @@ mutation is serialized, and new or changed case vectors must be written before
 the PostgreSQL mutation commits.
 
 Case titles should be broader durable dossier names, not one-off event headlines.
-Existing case copy is refreshed by a unique case-scoped job after each new
-article link. The job always refreshes the summary and replaces the title only
-when the current title is materially inadequate.
+Case Refresh is a unique case-scoped job that regenerates title/summary and the
+Case vector from current evidence. New Cases are created internally with the
+Article Card title and no public summary; they become public after the first
+refresh writes a non-empty summary. Ordinary evidence changes refresh at square
+article counts (`1`, `4`, `9`, ...), while split and merge repairs request an
+immediate high-priority refresh.
 
 ### 6. Resolve Entities
 
@@ -358,7 +361,7 @@ not retried. Four Lapathoniia failures within one hour start a shared one-hour
 in-memory cooldown; restarting `llm-proxy` clears it.
 `worker-ml` caps completion size with `llm_max_output_tokens` and bounds
 prompt evidence per task. Article-card input caps extracted text; Case link
-audits use compact earliest/latest linked evidence; Case copy and Case review
+audits use compact earliest/latest linked evidence; Case Refresh and Case review
 audits use lifecycle samples. These operational budgets, retry deferral floors,
 and maintenance-script defaults are tracked in `apps/worker-ml/config.yaml`.
 LLM run metadata records prompt size and original/included evidence counts

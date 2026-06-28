@@ -45,7 +45,7 @@ from worker_ml.llm.schema import prompt_schema_json
 from worker_ml.retrieval.vector_index import VectorIndexService
 
 AUDIT_CASE_DUPLICATES_JOB = "audit_case_duplicates"
-UPDATE_CASE_COPY_JOB = "update_case_copy"
+REFRESH_CASE_JOB = "refresh_case"
 MAX_REVIEW_EVIDENCE_CARDS = 40
 
 
@@ -154,6 +154,7 @@ class CaseDuplicateAuditJobHandler:
         *,
         model_name: str,
         card_limit: int = MAX_REVIEW_EVIDENCE_CARDS,
+        refresh_case_priority: int = 100,
     ) -> None:
         self._session_factory = session_factory
         self._runner = runner
@@ -161,6 +162,7 @@ class CaseDuplicateAuditJobHandler:
         self._job_store = job_store
         self._model_name = model_name
         self._card_limit = card_limit
+        self._refresh_case_priority = refresh_case_priority
 
     async def handle(self, job: ClaimedJob) -> list[CaseDuplicateAuditOutput] | None:
         if job.case_id is None:
@@ -254,9 +256,10 @@ class CaseDuplicateAuditJobHandler:
                 await self._vector_index.upsert_case(survivor.id, _case_vector(survivor))
                 await self._vector_index.delete_case(absorbed.id)
                 await self._job_store.enqueue_case_job(
-                    job_type=UPDATE_CASE_COPY_JOB,
+                    job_type=REFRESH_CASE_JOB,
                     case_id=survivor.id,
                     payload={"case_id": str(survivor.id)},
+                    priority=self._refresh_case_priority,
                 )
             pair_a, pair_b = sorted((case_a.id, case_b.id))
             revisions_by_id = {case_a.id: revisions[0], case_b.id: revisions[1]}

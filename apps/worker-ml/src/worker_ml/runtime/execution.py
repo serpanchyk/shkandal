@@ -23,11 +23,11 @@ from worker_ml.runtime.planning import (
     CREATE_ARTICLE_CARD_JOB,
     GATE_ARTICLE_JOB,
     JOB_TYPE_SCHEDULE,
+    REFRESH_CASE_JOB,
     RESOLVE_ARTICLE_CASES_JOB,
     RESOLVE_ARTICLE_ENTITIES_JOB,
     RESOLVE_ARTICLE_EVENTS_JOB,
     SUPPORTED_JOB_TYPES,
-    UPDATE_CASE_COPY_JOB,
     EnqueueStats,
     MlJobPlanner,
 )
@@ -145,9 +145,18 @@ async def run_cycle(
         and AUDIT_CASE_COHERENCE_JOB in handlers
         else EnqueueStats(0, 0, 0, 0, 0)
     )
+    refresh_stats = (
+        await planner.enqueue_due_case_refresh_jobs(
+            limit=settings.refresh_case_enqueue_batch_size,
+            max_attempts=settings.job_max_attempts,
+        )
+        if REFRESH_CASE_JOB in job_types and REFRESH_CASE_JOB in handlers
+        else EnqueueStats(0, 0, 0, 0, 0)
+    )
     _log_enqueue_stats(logger, job_type=CLASSIFY_ARTICLE_JOB, stats=classification_stats)
     _log_enqueue_stats(logger, job_type=GATE_ARTICLE_JOB, stats=article_gate_stats)
     _log_enqueue_stats(logger, job_type=CREATE_ARTICLE_CARD_JOB, stats=article_card_stats)
+    _log_enqueue_stats(logger, job_type=REFRESH_CASE_JOB, stats=refresh_stats)
 
     executor = _CycleExecutor(
         settings=settings,
@@ -162,10 +171,12 @@ async def run_cycle(
     stats = {
         "scanned_articles": classification_stats.scanned_articles
         + article_gate_stats.scanned_articles
-        + article_card_stats.scanned_articles,
+        + article_card_stats.scanned_articles
+        + refresh_stats.scanned_articles,
         "ensured_jobs": classification_stats.ensured_jobs
         + article_gate_stats.ensured_jobs
         + article_card_stats.ensured_jobs
+        + refresh_stats.ensured_jobs
         + audit_stats.ensured_jobs,
         "processed_jobs": processed_jobs,
         "failed_jobs": failed_jobs,
@@ -206,7 +217,7 @@ class _CycleExecutor:
         case_limit = asyncio.Semaphore(1)
         self._namespace_limits = {
             RESOLVE_ARTICLE_CASES_JOB: case_limit,
-            UPDATE_CASE_COPY_JOB: case_limit,
+            REFRESH_CASE_JOB: case_limit,
             AUDIT_CASE_COHERENCE_JOB: case_limit,
             RESOLVE_ARTICLE_ENTITIES_JOB: asyncio.Semaphore(1),
             RESOLVE_ARTICLE_EVENTS_JOB: asyncio.Semaphore(1),

@@ -63,10 +63,10 @@ PROMPTS: dict[str, PromptDefinition] = {
         filename="event_resolution.uk.md",
         input_variables=("resolution_json", "schema_json", "current_date_kyiv"),
     ),
-    "case_copy_update": PromptDefinition(
-        name="case_copy_update",
+    "refresh_case": PromptDefinition(
+        name="refresh_case",
         version="2026-06-15-2",
-        filename="case_copy_update.uk.md",
+        filename="refresh_case.uk.md",
         input_variables=("case_json", "schema_json"),
     ),
     "case_coherence_audit": PromptDefinition(

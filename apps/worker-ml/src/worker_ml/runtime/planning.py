@@ -16,7 +16,7 @@ from shkandal_database.models import (
     CasePublicInterestAudit,
     Job,
 )
-from sqlalchemy import Select, or_, select
+from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 CLASSIFY_ARTICLE_JOB = "classify_article"
@@ -25,7 +25,7 @@ CREATE_ARTICLE_CARD_JOB = "create_article_card"
 RESOLVE_ARTICLE_CASES_JOB = "resolve_article_cases"
 RESOLVE_ARTICLE_ENTITIES_JOB = "resolve_article_entities"
 RESOLVE_ARTICLE_EVENTS_JOB = "resolve_article_events"
-UPDATE_CASE_COPY_JOB = "update_case_copy"
+REFRESH_CASE_JOB = "refresh_case"
 AUDIT_CASE_COHERENCE_JOB = "audit_case_coherence"
 AUDIT_CASE_PUBLIC_INTEREST_JOB = "audit_case_public_interest"
 AUDIT_CASE_DUPLICATES_JOB = "audit_case_duplicates"
@@ -37,7 +37,7 @@ SUPPORTED_JOB_TYPES = (
     RESOLVE_ARTICLE_CASES_JOB,
     RESOLVE_ARTICLE_ENTITIES_JOB,
     RESOLVE_ARTICLE_EVENTS_JOB,
-    UPDATE_CASE_COPY_JOB,
+    REFRESH_CASE_JOB,
     AUDIT_CASE_COHERENCE_JOB,
     AUDIT_CASE_PUBLIC_INTEREST_JOB,
     AUDIT_CASE_DUPLICATES_JOB,
@@ -45,7 +45,7 @@ SUPPORTED_JOB_TYPES = (
 JOB_TYPE_SCHEDULE = (
     GATE_ARTICLE_JOB,
     CREATE_ARTICLE_CARD_JOB,
-    UPDATE_CASE_COPY_JOB,
+    REFRESH_CASE_JOB,
     AUDIT_CASE_COHERENCE_JOB,
     AUDIT_CASE_PUBLIC_INTEREST_JOB,
     AUDIT_CASE_DUPLICATES_JOB,
@@ -226,6 +226,41 @@ class MlJobPlanner:
             existing_jobs=len(states) - inserted - requeued,
         )
 
+    async def enqueue_due_case_refresh_jobs(
+        self,
+        *,
+        limit: int,
+        max_attempts: int,
+    ) -> EnqueueStats:
+        """Enqueue active Cases that need reader-facing refresh."""
+
+        async with self._session_factory() as session:
+            case_ids = list(
+                (
+                    await session.scalars(
+                        self._cases_due_for_refresh_query(limit=limit),
+                    )
+                ).all()
+            )
+        states = [
+            await self._job_store.ensure_case_job(
+                job_type=REFRESH_CASE_JOB,
+                case_id=case_id,
+                payload={"case_id": str(case_id)},
+                max_attempts=max_attempts,
+            )
+            for case_id in case_ids
+        ]
+        inserted = sum(result.state == "inserted" for result in states)
+        requeued = sum(result.state == "requeued" for result in states)
+        return EnqueueStats(
+            scanned_articles=len(case_ids),
+            ensured_jobs=inserted + requeued,
+            inserted_jobs=inserted,
+            requeued_jobs=requeued,
+            existing_jobs=len(states) - inserted - requeued,
+        )
+
     async def enqueue_coherent_successful_case_audit_reruns(
         self,
         *,
@@ -388,5 +423,27 @@ class MlJobPlanner:
                 ArticleGateDecision.id.is_(None),
             )
             .order_by(Article.published_at.asc().nulls_last(), Article.created_at.asc())
+            .limit(limit)
+        )
+
+    @staticmethod
+    def _cases_due_for_refresh_query(*, limit: int) -> Select[tuple[UUID]]:
+        square_root = func.floor(func.sqrt(Case.article_count))
+        missing_public_summary = or_(
+            Case.summary_uk.is_(None),
+            func.length(func.trim(Case.summary_uk)) == 0,
+        )
+        due_square_threshold = and_(
+            Case.article_count > Case.last_refreshed_article_count,
+            Case.article_count > 0,
+            square_root * square_root == Case.article_count,
+        )
+        return (
+            select(Case.id)
+            .where(
+                Case.status == "active",
+                or_(missing_public_summary, due_square_threshold),
+            )
+            .order_by(Case.last_updated_at.asc().nulls_first(), Case.created_at.asc())
             .limit(limit)
         )

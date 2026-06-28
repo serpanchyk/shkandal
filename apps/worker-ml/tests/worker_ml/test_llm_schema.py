@@ -6,13 +6,13 @@ from worker_ml.llm.contracts import (
     ArticleCardOutput,
     ArticleGateOutput,
     CaseCoherenceAuditOutput,
-    CaseCopyUpdateOutput,
     CaseDuplicateAuditOutput,
     CaseLinkAuditOutput,
     CasePublicInterestAuditOutput,
     CaseResolutionOutput,
     EntityResolutionOutput,
     EventResolutionOutput,
+    RefreshCaseOutput,
 )
 from worker_ml.llm.schema import prompt_schema, runtime_schema_json
 
@@ -23,7 +23,7 @@ LLM_OUTPUT_MODELS = (
     CaseLinkAuditOutput,
     EntityResolutionOutput,
     EventResolutionOutput,
-    CaseCopyUpdateOutput,
+    RefreshCaseOutput,
     CaseCoherenceAuditOutput,
     CasePublicInterestAuditOutput,
     CaseDuplicateAuditOutput,
@@ -85,14 +85,14 @@ def test_schema_exposes_diagnosis_objects_and_terminal_choice_fields() -> None:
     assert interest_properties[-1] == "outcome"
     assert "diagnosis" in interest_properties
 
-    copy_properties = list(prompt_schema(CaseCopyUpdateOutput)["properties"])
-    assert copy_properties[-1] == "title_action"
-    assert "title_diagnosis" in copy_properties
+    refresh_properties = list(prompt_schema(RefreshCaseOutput)["properties"])
+    assert refresh_properties[-1] == "title_action"
+    assert "title_diagnosis" in refresh_properties
 
 
-def test_case_copy_prompt_schema_does_not_cap_internal_rationale_lengths() -> None:
-    schema = prompt_schema(CaseCopyUpdateOutput)
-    diagnosis_properties = schema["$defs"]["CaseCopyTitleDiagnosis"]["properties"]
+def test_refresh_case_prompt_schema_does_not_cap_internal_rationale_lengths() -> None:
+    schema = prompt_schema(RefreshCaseOutput)
+    diagnosis_properties = schema["$defs"]["RefreshCaseTitleDiagnosis"]["properties"]
 
     replacement_reason = diagnosis_properties["replacement_needed_reason_uk"]["anyOf"][0]
     proposed_title_core = diagnosis_properties["proposed_title_core_uk"]["anyOf"][0]

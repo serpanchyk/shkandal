@@ -10,7 +10,6 @@ from worker_ml.llm.contracts import (
     ArticleCardOutput,
     ArticleGateOutput,
     CaseCoherenceAuditOutput,
-    CaseCopyUpdateOutput,
     CaseDuplicateAuditOutput,
     CaseLinkAuditOutput,
     CasePublicInterestAuditOutput,
@@ -18,6 +17,7 @@ from worker_ml.llm.contracts import (
     EntityResolutionOutput,
     EventResolutionOutput,
     LlmRunType,
+    RefreshCaseOutput,
 )
 from worker_ml.llm.normalization import NormalizationResult, normalize_llm_output
 
@@ -95,7 +95,7 @@ LLM_TASKS: dict[LlmRunType, LlmTaskDefinition] = {
     "case_link_audit": LlmTaskDefinition(CaseLinkAuditOutput, inconclusive_on_invalid_output=True),
     "entity_resolution": LlmTaskDefinition(EntityResolutionOutput, allow_top_level_array=True),
     "event_resolution": LlmTaskDefinition(EventResolutionOutput, allow_top_level_array=True),
-    "case_copy_update": LlmTaskDefinition(CaseCopyUpdateOutput),
+    "refresh_case": LlmTaskDefinition(RefreshCaseOutput),
     "case_coherence_audit": LlmTaskDefinition(
         CaseCoherenceAuditOutput, inconclusive_on_invalid_output=True
     ),
