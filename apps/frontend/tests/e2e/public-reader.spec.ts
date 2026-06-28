@@ -211,9 +211,33 @@ test("reader can inspect Case provenance and navigate to an Entity", async ({ pa
 });
 
 test("Case view is counted once per browser session", async ({ page }) => {
+  const viewKey = "shkandal:viewed:e2e-public-case";
+  const viewRequests: string[] = [];
+
+  page.on("request", (request) => {
+    if (
+      request.method() === "POST" &&
+      request.url().includes("/api/cases/e2e-public-case/views")
+    ) {
+      viewRequests.push(request.url());
+    }
+  });
+
   await page.goto("/cases/e2e-public-case");
+
+  await page.waitForFunction(
+    (key) => sessionStorage.getItem(key) === "1",
+    viewKey,
+  );
+
+  await expect.poll(() => viewRequests.length).toBe(1);
+
   await page.reload();
 
-  const keys = await page.evaluate(() => Object.keys(sessionStorage));
-  expect(keys.filter((key) => key === "shkandal:viewed:e2e-public-case")).toHaveLength(1);
+  await page.waitForLoadState("networkidle");
+
+  expect(viewRequests).toHaveLength(1);
+  await expect
+    .poll(() => page.evaluate((key) => sessionStorage.getItem(key), viewKey))
+    .toBe("1");
 });
