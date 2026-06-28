@@ -201,6 +201,11 @@ def test_case_refresh_query_selects_missing_summary_or_square_thresholds() -> No
     assert "cases.summary_uk IS NULL" in query
     assert "cases.article_count > cases.last_refreshed_article_count" in query
     assert "floor(sqrt(cases.article_count))" in query
+    assert "floor(sqrt(cases.last_refreshed_article_count))" in query
+    assert (
+        "floor(sqrt(cases.article_count)) > floor(sqrt(cases.last_refreshed_article_count))"
+        in query
+    )
 
 
 @pytest.mark.asyncio

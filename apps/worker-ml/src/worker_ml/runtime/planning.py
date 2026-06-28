@@ -428,7 +428,8 @@ class MlJobPlanner:
 
     @staticmethod
     def _cases_due_for_refresh_query(*, limit: int) -> Select[tuple[UUID]]:
-        square_root = func.floor(func.sqrt(Case.article_count))
+        article_square_bucket = func.floor(func.sqrt(Case.article_count))
+        refreshed_square_bucket = func.floor(func.sqrt(Case.last_refreshed_article_count))
         missing_public_summary = or_(
             Case.summary_uk.is_(None),
             func.length(func.trim(Case.summary_uk)) == 0,
@@ -436,7 +437,7 @@ class MlJobPlanner:
         due_square_threshold = and_(
             Case.article_count > Case.last_refreshed_article_count,
             Case.article_count > 0,
-            square_root * square_root == Case.article_count,
+            article_square_bucket > refreshed_square_bucket,
         )
         return (
             select(Case.id)
